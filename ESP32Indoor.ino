@@ -19,7 +19,7 @@
 
 #define WEBSERVER_PORT 80
 
-#define MAX_SOIL_READS 10  // Max 255, coz is uint8_t
+#define MAX_SOIL_READS 10  // Max 255, cuz is uint8_t
 #define MAX_ENVIRONMENT_READS 5
 
 #define HW080_MIN 0
@@ -27,8 +27,9 @@
 
 #define TOTAL_SOIL_HUMIDITY_SENSORS 2
 
-#define D882_FREQUENCY 1000
-#define D882_RESOLUTION 16
+#define S8050_FREQUENCY 1000
+#define S8050_RESOLUTION 12
+#define S8050_MAX_VALUE 4095
 
 #define DHT_VCC_PIN 22
 #define DHT_DATA_PIN 16
@@ -38,7 +39,7 @@
 #define RELAY_2_PIN 26  // Ventilation
 #define RELAY_3_PIN 25  // Water Pump
 
-#define D882_PWM_PIN 33
+#define S8050_PWM_PIN 33  // It have 1K resistor in serie
 
 #define SOIL_SENSORS_VCC_PIN 32
 
@@ -59,8 +60,7 @@ String strSSID, strSSIDPWD;
 
 uint8_t uStartLightTime = 0;
 uint8_t uStopLightTime = 0;
-
-uint16_t uLightBrightness = 65535;
+uint16_t uLightBrightness = 0;
 
 uint8_t uStartFanTemperature = 0;
 
@@ -271,6 +271,8 @@ String HTMLProcessor(const String &var) {
     return String(uStartLightTime);
   } else if (var == "STOPLIGHT") {
     return String(uStopLightTime);
+  } else if (var == "MAXBRIGHT") {
+    return String(S8050_MAX_VALUE);
   } else if (var == "BRIGHTLEVEL") {
     return String(uLightBrightness);
   } else if (var == "STARTINTERNALFAN") {
@@ -408,15 +410,14 @@ void setup() {
   pinMode(RELAY_3_PIN, OUTPUT);
   digitalWrite(RELAY_3_PIN, HIGH);
 
-  ledcAttach(D882_PWM_PIN, D882_FREQUENCY, D882_RESOLUTION);
+  ledcAttach(S8050_PWM_PIN, S8050_FREQUENCY, S8050_RESOLUTION);
+  ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - uLightBrightness);
 
   pinMode(SOIL_SENSORS_VCC_PIN, OUTPUT);
   digitalWrite(SOIL_SENSORS_VCC_PIN, LOW);
 
   for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
     pinMode(uSoilsHumidityPins[i], INPUT);
-
-  ledcWrite(D882_PWM_PIN, uLightBrightness);
 
   LOGGER("Initializing Settings...", INFO);
 
@@ -430,8 +431,7 @@ void setup() {
 
   uStartLightTime = Settings.getUChar("StartLightTime", 6);
   uStopLightTime = Settings.getUChar("StopLightTime", 24);
-
-  uLightBrightness = Settings.getUShort("LightBright", 65535);
+  uLightBrightness = Settings.getUShort("LightBright", 0);  // 0 = 100%
 
   uStartFanTemperature = Settings.getUChar("StartFanTemp", 27);
 
@@ -554,7 +554,7 @@ void setup() {
         if (uNewValue != uLightBrightness) {
           uLightBrightness = uNewValue;
 
-          ledcWrite(D882_PWM_PIN, uLightBrightness);
+          ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - uLightBrightness);
 
           Settings.putUShort("LightBright", uLightBrightness);
 

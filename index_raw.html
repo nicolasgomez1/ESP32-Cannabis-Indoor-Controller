@@ -140,7 +140,8 @@
 			}
 
 			function CalcBright(){
-				document.getElementById('lightbrightind').innerText=Math.round((parseInt(document.getElementById('lightbright').value)/65535)*100);
+				let per=Math.round((parseInt(document.getElementById('lightbright').value)/%MAXBRIGHT%)*100);
+				document.getElementById('lightbrightind').innerText=per>0?per+'%% (Aproximadamente: '+((per/100)*1008).toFixed(0)+'ppfd)':'Apagado';
 			}
 
 			function WateringMode(){
@@ -301,7 +302,9 @@
 				</tr>
 				<tr>
 					<td>Intensidad:</td>
-					<td colspan=2><input type=range class=slider id=lightbright min=0 max=65535 value='%BRIGHTLEVEL%'oninput=CalcBright()><span id=lightbrightind></span>%%</td>
+					<td colspan=2>
+						<input type=range class=slider id=lightbright min=0 max=%MAXBRIGHT% step=409.5 value='%BRIGHTLEVEL%'oninput=CalcBright()><span id=lightbrightind></span>
+					</td>
 				</tr>
 				<th align=left colspan=3><div></div>Ventilador Interno <img class='fan f1'src=fan.webp></th>
 				<tr>
