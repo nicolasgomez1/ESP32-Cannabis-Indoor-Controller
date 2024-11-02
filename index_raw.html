@@ -139,9 +139,10 @@
 				document.getElementById('lightdur').innerText='Horas de Luz: '+(stop-start+24)%%24;
 			}
 
-			function CalcBright(){
+			function CalcBright(send){
 				let per=Math.round((parseInt(document.getElementById('lightbright').value)/%MAXBRIGHT%)*100);
 				document.getElementById('lightbrightind').innerText=per>0?per+'%% (Aproximadamente: '+((per/100)*1008).toFixed(0)+'ppfd)':'Apagado';
+				if(send)SendAction('update', 'lightbright');
 			}
 
 			function WateringMode(){
@@ -161,7 +162,7 @@
 			}
 
 			function CalcDrip(){
-				document.getElementById('waterdripind').innerText='Equivale a: '+(parseInt(document.getElementById('wateringtime').value)*parseInt('%DRIPPERMINUTE%')/60).toFixed(2)+'cc';
+				document.getElementById('waterdripind').innerText='Equivale a: '+(parseInt(document.getElementById('wateringtime').value)*parseInt('%DPM%')/60).toFixed(2)+'cc';
 			}
 
 			function SendAction(action,...args){
@@ -170,8 +171,10 @@
 
 				if(action=='ask'){
 					currentUrl.searchParams.set(args[0],args[1]);
-				}else if(action=='update'){
-					let inputIds=['lightstart','lightstop','lightbright','internalfanstart','venttempstart','venthumstart','wateringhumidity','wateringmode','wateringtime','restinterval','restdur','soilreadinterval','temphys','humhys','dripperminute','ssid','ssidpwd'];
+				}else if(action=='update'&&args[0]!=null){
+					currentUrl.searchParams.set(args[0],document.getElementById(args[0]).value);
+				}else if(action=='update'&&args[0]==null){
+					let inputIds=['lightstart','lightstop','lightbright','intfansta','venttempstart','venthumstart','wathum','wateringmode','wateringtime','restinterval','restdur','soilreadinterval','temphys','humhys','dripperminute','ssid','ssidpwd'];
 
 					inputIds.forEach(id=>{
 						let value=document.getElementById(id).value;
@@ -192,7 +195,8 @@
 						let data=returns.substring(3).split(':');
 						document.getElementById(data[0]).value=data[1];
 					}else if(returns.substring(0,3)=='MSG'){
-						alert(returns.substring(3));
+						if(args[0]==null)
+							alert(returns.substring(3));
 					}else if(returns.substring(0,7)=='REFRESH'){
 						let data=returns.substring(7).split(':');
 
@@ -302,14 +306,12 @@
 				</tr>
 				<tr>
 					<td>Intensidad:</td>
-					<td colspan=2>
-						<input type=range class=slider id=lightbright min=0 max=%MAXBRIGHT% step=409.5 value='%BRIGHTLEVEL%'oninput=CalcBright()><span id=lightbrightind></span>
-					</td>
+					<td colspan=2><input type=range class=slider id=lightbright min=0 max=%MAXBRIGHT% step=409.5 value='%BRIGHTLEVEL%'oninput=CalcBright(true)><span id=lightbrightind></span></td>
 				</tr>
 				<th align=left colspan=3><div></div>Ventilador Interno <img class='fan f1'src=fan.webp></th>
 				<tr>
 					<td>Temperatura ambiente de Encendido:</td>
-					<td><input id=internalfanstart value='%STARTINTERNALFAN%'>°C</td>
+					<td><input id=intfansta value='%STAINTFAN%'>°C</td>
 					<td rowspan=4 id=reststate>%RESTSTATE%</td>
 				</tr>
 				<th align=left colspan=2><br>Recirculación de Aire <img class='fan f2'src=fan.webp></th>
@@ -331,7 +333,7 @@
 				</tr>
 				<tr>
 					<td id=wateringmodeind>Nivel de Humedad mínimo para Regar:</td>
-					<td><input id=wateringhumidity value='%STARTWATERINGHUMIDITY%'><font id=wateringmodeind2>%%</font></td>
+					<td><input id=wathum value='%STAWATHUM%'><font id=wateringmodeind2>%%</font></td>
 					<td>(Si el valor es 0, nunca iniciará el Riego)</td>
 				</tr>
 				<tr>
@@ -353,8 +355,8 @@
 				</tr>
 				<tr>
 					<td>Intervalo de Lectura de Humedad del Suelo:</td>
-					<td><input id=soilreadinterval value='%SOILREADINTERVAL%'>Segundos</td>
-					<td>(Un valor bajo degrada más rápido los electrodos de los sensores)</td>
+					<td><input id=soilreadinterval value='%SOILDREADINT%'>Segundos</td>
+					<td>(Un valor bajo degrada más rápido los electrodos)</td>
 				</tr>
 				<tr>
 					<td>Histéresis de Apagado por Temperatura:</td>
@@ -366,7 +368,7 @@
 				</tr>
 				<tr>
 					<td>Tasa de Goteo por Minuto:</td>
-					<td><input id=dripperminute value='%DRIPPERMINUTE%'>cc</td>
+					<td><input id=dripperminute value='%DPM%'>cc</td>
 				</tr>
 				<tr>
 					<td>SSID WiFi:</td>
