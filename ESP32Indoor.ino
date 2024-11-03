@@ -404,8 +404,8 @@ void setup() {
 
   LOGGER("Loading Settings...", INFO);
 
-  strSSID = Settings.getString("SSID", "TODO");
-  strSSIDPWD = Settings.getString("SSIDPWD", "TODO");
+  strSSID = Settings.getString("SSID", "Milei2023");
+  strSSIDPWD = Settings.getString("SSIDPWD", "vivaperon");
 
   uStartLightTime = Settings.getUChar("StartLightTime", 6);
   uStopLightTime = Settings.getUChar("StopLightTime", 24);
@@ -434,15 +434,12 @@ void setup() {
   uEffectiveStartLights = (uStartLightTime == 24) ? 0 : uStartLightTime;  // Si la Hora de encendido definida es 24 convertirla a 0 (Medianoche)
   uEffectiveStopLights = (uStopLightTime == 0) ? 24 : uStopLightTime;     // Si la Hora de apagado definida es 24 convertirla a 0 (Medianoche)
 
-  LOGGER("Setting up Light Brightness...", INFO);
-  ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - (uLightBrightness < 401 ? 0 : uLightBrightness));
-
   LOGGER("Initializing File System...", INFO);
   if (!LittleFS.begin())
     LOGGER("Failed to initialize File System.", ERROR);
 
   LOGGER("Initializing WiFi...", INFO);
-  
+
   WiFi.begin(strSSID, strSSIDPWD);
 
   uint8_t uConnectTrysCount = 0;
@@ -474,7 +471,10 @@ void setup() {
     LOGGER("mDNS Started at: %s.local Service: HTTP Protocol: TCP Port: %d.", INFO, DNS_ADDRESS, WEBSERVER_PORT);
   }
 
-  LOGGER("Configuring WebServer Paths & Commands...", INFO);
+  LOGGER("Setting up Light Brightness...", INFO);
+  ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - (uLightBrightness < 401 ? 0 : uLightBrightness));
+
+  LOGGER("Setting up WebServer Paths & Commands...", INFO);
 
   AsyncWebServerHandle.serveStatic("/fan.webp", LittleFS, "/fan.webp").setCacheControl("max-age=86400");
 
@@ -717,24 +717,14 @@ void setup() {
         // =============== WiFi =============== //
         bool bWiFiChanges = false;
 
-        if (request->hasArg("ssid") && request->hasArg("ssidpwd")) {
-          if (request->arg("ssid") != strSSID) {
-            strSSID = request->arg("ssid");
+        if (request->hasArg("ssid") && request->arg("ssid") != strSSID) {
+          strReturn += "\r\nSe actualizó el SSID de WiFi.";
+          bWiFiChanges = true;
+        }
 
-            Settings.putString("SSID", strSSID);
-
-            strReturn += "\r\nSe actualizó el SSID de WiFi.";
-            bWiFiChanges = true;
-          }
-
-          if (request->arg("ssidpwd") != strSSIDPWD) {
-            strSSIDPWD = request->arg("ssidpwd");
-
-            Settings.putString("SSIDPWD", strSSIDPWD);
-
-            strReturn += "\r\nSe actualizó la Contraseña de WiFi.";
-            bWiFiChanges = true;
-          }
+        if (request->hasArg("ssidpwd") && request->arg("ssidpwd") != strSSIDPWD) {
+          strReturn += "\r\nSe actualizó la Contraseña de WiFi.";
+          bWiFiChanges = true;
         }
 
         if (strReturn != "") {
@@ -745,10 +735,20 @@ void setup() {
         }
 
         if (bWiFiChanges) {
-          WiFi.disconnect();  // Disconnect STA
-
-          WiFi.mode(WIFI_STA);
+          WiFi.disconnect();
           WiFi.softAPdisconnect(true);
+
+          if (request->hasArg("ssid") && request->arg("ssid") != strSSID) {
+            strSSID = request->arg("ssid");
+
+            Settings.putString("SSID", strSSID);
+          }
+
+          if (request->hasArg("ssidpwd") && request->arg("ssidpwd") != strSSIDPWD) {
+            strSSIDPWD = request->arg("ssidpwd");
+
+            Settings.putString("SSIDPWD", strSSIDPWD);
+          }
 
           if (eTaskGetState(taskhandleWiFiReconnect) == eRunning)
             vTaskSuspend(taskhandleWiFiReconnect);
