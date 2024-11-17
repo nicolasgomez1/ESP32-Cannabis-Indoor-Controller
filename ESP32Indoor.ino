@@ -50,6 +50,18 @@ enum ERR_TYPE {
   ERROR
 };
 
+String strSoilGraphColor[] = {
+    "#B57165",
+    "#784B43",
+    "#8A5B50",
+    "#9C6D5A" // Add more colors for graph here
+};
+
+struct GraphLine {
+  time_t time;
+  String value;
+};
+
 // ================================================== Globals ================================================== //
 // =============== Loaded from Settings =============== //
 String strSSID, strSSIDPWD;
@@ -93,6 +105,10 @@ bool bFansRest = false;
 uint8_t uEffectiveStartLights = 0;
 uint8_t uEffectiveStopLights = 0;
 TaskHandle_t taskhandleWiFiReconnect;
+unsigned long lGraphDataElapsedStoredTime = 0;
+uint8_t uGraphDataCount = 0;
+GraphLine uArrayGraphData[(3 + TOTAL_SOIL_HUMIDITY_SENSORS) * 48] = {};
+unsigned long lLastStoreElapsedTime = 0;
 
 // =============== Parameters from Indoor =============== //
 uint8_t nEnvironmentTemperature = 0;
@@ -196,8 +212,15 @@ uint8_t GetSoilHumidity(uint8_t nSensorNumber) {
   return constrain(map(uCombinedValues / MAX_SOIL_READS, HW080_MIN, HW080_MAX, 0, 100), 0, 100);
 }
 
+void clearGraphLine(GraphLine& line) {
+  line.time = 0;
+  line.value = "";
+}
+
 String HTMLProcessor(const String &var) {
-  if (var == "DPM") {
+  if (var == "TOTALSOILS") {
+    return String(TOTAL_SOIL_HUMIDITY_SENSORS);
+  } else if (var == "DPM") {
     return String(uDripPerMinute);
   } else if (var == "ENVTEMP") {
     return String(nEnvironmentTemperature);
@@ -309,6 +332,13 @@ String HTMLProcessor(const String &var) {
     return String(strSSID);
   } else if (var == "SSIDPWD") {
     return String(strSSIDPWD);
+  } else if (var == "SOILLINES") {
+    String strReturn;
+
+    for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
+      strReturn += ",{label:'Humedad de Maceta " + String(i) + "',borderColor:'" + strSoilGraphColor[i] + "',pointBackgroundColor:'" + strSoilGraphColor[i] + "'}";
+
+    return strReturn;
   }
 
   return String();
@@ -404,8 +434,8 @@ void setup() {
 
   LOGGER("Loading Settings...", INFO);
 
-  strSSID = Settings.getString("SSID", "Milei2023");
-  strSSIDPWD = Settings.getString("SSIDPWD", "vivaperon");
+  strSSID = Settings.getString("SSID", "TODO");
+  strSSIDPWD = Settings.getString("SSIDPWD", "TODO");
 
   uStartLightTime = Settings.getUChar("StartLightTime", 6);
   uStopLightTime = Settings.getUChar("StopLightTime", 24);
@@ -414,7 +444,7 @@ void setup() {
   uStartFanTemperature = Settings.getUChar("StartFanTemp", 27);
 
   uStartVentilationTemperature = Settings.getUChar("StartVentTemp", 30);
-  uStartVentilationHumidity = Settings.getUChar("StartVentHumi", 70);
+  uStartVentilationHumidity = Settings.getUChar("StartVentHumi", 65); // VEG: 60 ~ 70 BLOOM: 40 ~ 50
 
   uWateringMode = Settings.getUChar("WateringMode", 0);
   uWateringInterval = Settings.getULong64("WateringInt", 0);
@@ -488,7 +518,7 @@ void setup() {
         String strReturn = "UPD";
 
         if (request->hasArg("watering")) {
-          strReturn += "wateringhumidity:";
+          strReturn += "wathum:";
 
           if (request->arg("watering").toInt() == 0)
             strReturn += String(uStartWateringHumidity);
@@ -784,19 +814,41 @@ void setup() {
         // Ventilation
         strResponse += ":" + String(digitalRead(RELAY_2_PIN));  // HIGHT=1 A.K.A paused
 
+        // ================================================== Graph Section ================================================== //
+        strResponse += ":";
+        uint8_t uCount = 0;
+
+        while (uCount < 48 && uArrayGraphData[uCount * (3 + TOTAL_SOIL_HUMIDITY_SENSORS)].time != 0) {
+          uint8_t uIndex = uCount * (3 + TOTAL_SOIL_HUMIDITY_SENSORS);
+
+          strResponse += (uCount > 0 ? "," : "") + String(uArrayGraphData[uIndex].time) + "|" + uArrayGraphData[uIndex].value;  // Environment Temperature
+          strResponse += "," + String(uArrayGraphData[uIndex + 1].time) + "|" + uArrayGraphData[uIndex + 1].value;  // Environment Humidity
+          strResponse += "," + String(uArrayGraphData[uIndex + 2].time) + "|" + uArrayGraphData[uIndex + 2].value;  // VPD
+
+          for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
+            strResponse += "," + String(uArrayGraphData[uIndex + 3 + i].time) + "|" + uArrayGraphData[uIndex + 3 + i].value;  // Soil Moisture
+
+          uCount++;
+        }
+        //////////////////////////////////////////////////////////////////////////////////////////
         AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", strResponse);
         request->send(response);
         /*
-          [0] Environment Temperature
-          [1] Environment Humidity
-          [2] Environment VPD
-          [3] Number of Soil Sensors
-          [4 + iteration] Soil sensors values
-          [4 + [3]] Current Watering elapses Time (If is 0, is not watering)
-          [4 + [3]+1] Current Time (unixtimestamp)
-          [4 + [3]+2] Fans Rest Time remaining Indicator
-          [4 + [3]+3] Interval Fan State
-          [4 + [3]+4] Ventilation Fans State
+          data[0] Environment Temperature
+          data[1] Environment Humidity
+          data[2] VPD
+          data[3] Number of Soil Sensors
+          data[4+data[3]] Soil sensors values
+          data[next] Current Watering elapses Time (If is 0, is not watering)
+          data[next+1] Current Time (unixtimestamp)
+          data[next+2] Fans Rest Time remaining Indicator
+          data[next+3] Interval Fan State
+          data[next+4] Ventilation Fans State
+          data[next+5] Graph Data
+            Environment Temperature
+            Environment Humidity
+            VPD
+            Soil Moistures
         */
       }
     } else {  // Return panel content
@@ -821,12 +873,12 @@ void loop() {
 
   if (lCurrentMillis - lPreviousMillis >= 1000) {  // Each second
     lPreviousMillis = lCurrentMillis;
+    time_t now = time(nullptr);
+    struct tm *timeInfo = localtime(&now);
 
     GetEnvironmentParameters(nEnvironmentTemperature, nEnvironmentHumidity, fEnvironmentVPD);  // Get environment params to store in global vals
 
     // ================================================== Light Section ================================================== //
-    time_t now = time(nullptr);
-    struct tm *timeInfo = localtime(&now);
     // If current time in between Start Stop range
     if ((uEffectiveStartLights < uEffectiveStopLights && timeInfo->tm_hour >= uEffectiveStartLights && timeInfo->tm_hour < uEffectiveStopLights) || (uEffectiveStartLights >= uEffectiveStopLights && (timeInfo->tm_hour >= uEffectiveStartLights || timeInfo->tm_hour < uEffectiveStopLights))) {
       if (digitalRead(RELAY_0_PIN)) {
@@ -834,7 +886,7 @@ void loop() {
 
         LOGGER("Light Started.", INFO);
       }
-    } else if (!digitalRead(RELAY_0_PIN)) {  // If current time is out of ON range
+    } else {  // If current time is out of ON range
       if (!digitalRead(RELAY_0_PIN)) {
         digitalWrite(RELAY_0_PIN, HIGH);
 
@@ -937,20 +989,41 @@ void loop() {
         uWateringElapsedTime++;  // Incrementar el contador de Tiempo de Riego transcurrido +1
       }
     }
+
+    // ================================================== Store Data for Graph Section ================================================== //
+    if (millis() - lStartupTime >= uSoilReadsInterval * 2 && lCurrentMillis - lLastStoreElapsedTime >= 1800000) { // Do store each hour
+      lLastStoreElapsedTime = lCurrentMillis;
+
+      if (uGraphDataCount == 48) {
+        uGraphDataCount = 0;
+
+        for (uint8_t i = 0; i < sizeof(uArrayGraphData) / sizeof(GraphLine); i++)
+          clearGraphLine(uArrayGraphData[i]);
+      }
+
+      uint8_t uIndex = uGraphDataCount * (3 + TOTAL_SOIL_HUMIDITY_SENSORS);
+
+      uArrayGraphData[uIndex] = { now, String(nEnvironmentTemperature) + "°C" };  // Environment Temperature
+      uArrayGraphData[uIndex + 1] = { now, String(nEnvironmentHumidity) + "%" };  // Environment Humidity
+      uArrayGraphData[uIndex + 2] = { now, String(fEnvironmentVPD, 2) + "kPa"};  // VPD
+
+      for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
+        uArrayGraphData[uIndex + 3 + i] = { now, String(uSoilsHumidity[i]) + "%" };  // Soil Moisture
+
+      uGraphDataCount++;
+    }
   }
 
-  if (uWateringMode == 0) {
-    if (lCurrentMillis - lSoilHumidityElapsedReadTime >= uSoilReadsInterval) {
-      lSoilHumidityElapsedReadTime = lCurrentMillis;
+  if (lCurrentMillis - lSoilHumidityElapsedReadTime >= uSoilReadsInterval) {
+    lSoilHumidityElapsedReadTime = lCurrentMillis;
 
-      LOGGER("Environment Temperature: %d°C Humidity: %d%% VPD: %.2fkPa.", INFO, nEnvironmentTemperature, nEnvironmentHumidity, fEnvironmentVPD);
+    LOGGER("Environment Temperature: %d°C Humidity: %d%% VPD: %.2fkPa.", INFO, nEnvironmentTemperature, nEnvironmentHumidity, fEnvironmentVPD);
 
-      // ================================================== Soil Section ================================================== //
-      for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++) {
-        uSoilsHumidity[i] = GetSoilHumidity(i);
+    // ================================================== Soil Section ================================================== //
+    for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++) {
+      uSoilsHumidity[i] = GetSoilHumidity(i);
 
-        LOGGER("Soil Sensor %d Humidity: %d%%.", INFO, i, uSoilsHumidity[i]);
-      }
+      LOGGER("Soil Sensor %d Humidity: %d%%.", INFO, i, uSoilsHumidity[i]);
     }
   }
 
