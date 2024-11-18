@@ -52,14 +52,9 @@ enum ERR_TYPE {
 
 String strSoilGraphColor[] = {
     "#B57165",
-    "#784B43",
+    "#784B43"/*,
     "#8A5B50",
-    "#9C6D5A" // Add more colors for graph here
-};
-
-struct GraphLine {
-  time_t time;
-  String value;
+    "#9C6D5A"*/ // Add more colors for graph here
 };
 
 // ================================================== Globals ================================================== //
@@ -107,7 +102,7 @@ uint8_t uEffectiveStopLights = 0;
 TaskHandle_t taskhandleWiFiReconnect;
 unsigned long lGraphDataElapsedStoredTime = 0;
 uint8_t uGraphDataCount = 0;
-GraphLine uArrayGraphData[(3 + TOTAL_SOIL_HUMIDITY_SENSORS) * 48] = {};
+const char* strArrayGraphData[48] = {};
 unsigned long lLastStoreElapsedTime = 0;
 bool bResetNeeded = false;
 
@@ -213,15 +208,8 @@ uint8_t GetSoilHumidity(uint8_t nSensorNumber) {
   return constrain(map(uCombinedValues / MAX_SOIL_READS, HW080_MIN, HW080_MAX, 0, 100), 0, 100);
 }
 
-void clearGraphLine(GraphLine& line) {
-  line.time = 0;
-  line.value = "";
-}
-
 String HTMLProcessor(const String &var) {
-  if (var == "TOTALSOILS") {
-    return String(TOTAL_SOIL_HUMIDITY_SENSORS);
-  } else if (var == "DPM") {
+  if (var == "DPM") {
     return String(uDripPerMinute);
   } else if (var == "ENVTEMP") {
     return String(nEnvironmentTemperature);
@@ -243,19 +231,13 @@ String HTMLProcessor(const String &var) {
 
     return "<tr><td>Déficit de Presión de Vapor:</td><td><font id=vpd color=" + strHTMLColor + ">" + String(fEnvironmentVPD, 2) + "</font>kPa</td><td>(<font id=vpdstate color=" + strHTMLColor + ">" + strCondition + "</font>)</td></tr>";
   } else if (var == "SOILSECTION") {
-    String strReturn, strHTMLColor, strCondition;
+    String strReturn;
 
     for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++) {
       strReturn += "<tr><td>Humedad de Maceta " + String(i) + ":</td><td><p id=soil" + String(i) + ">" + String(uSoilsHumidity[i]) + "&#37;</p></td>";
 
-      if (i == 0) {
-        if (uWateringElapsedTime > 0) {
-          strCondition = "Regando...<br>Tiempo Transcurrido: " + String(uWateringElapsedTime) + " segundos";
-          strHTMLColor = "#72D6EB";
-        }
-
-        strReturn += "<td rowspan=" + String(TOTAL_SOIL_HUMIDITY_SENSORS) + " id=wateringstate style='color:" + strHTMLColor + "'>" + strCondition + "</td>";
-      }
+      if (i == 0)
+        strReturn += "<td rowspan=" + String(TOTAL_SOIL_HUMIDITY_SENSORS) + " id=wateringstate style='color:#72D6EB'>" + (uWateringElapsedTime > 0 ? "Regando...<br>Tiempo Transcurrido: " + String(uWateringElapsedTime) + " segundos" : "") + "</td>";
 
       strReturn += "</tr>";
     }
@@ -816,20 +798,15 @@ void setup() {
         strResponse += ":" + String(digitalRead(RELAY_2_PIN));  // HIGHT=1 A.K.A paused
 
         // ================================================== Graph Section ================================================== //
-        strResponse += ":";
-        uint8_t uCount = 0;
+        size_t sizeGraphArraySize = sizeof(strArrayGraphData) / sizeof(strArrayGraphData[0]);
 
-        while (uCount < 48 && uArrayGraphData[uCount * (3 + TOTAL_SOIL_HUMIDITY_SENSORS)].time != 0) {
-          uint8_t uIndex = uCount * (3 + TOTAL_SOIL_HUMIDITY_SENSORS);
+        if (sizeGraphArraySize > 0 && strArrayGraphData[0] != nullptr) {
+          strResponse += ":";
 
-          strResponse += (uCount > 0 ? "," : "") + String(uArrayGraphData[uIndex].time) + "|" + uArrayGraphData[uIndex].value;  // Environment Temperature
-          strResponse += "," + String(uArrayGraphData[uIndex + 1].time) + "|" + uArrayGraphData[uIndex + 1].value;  // Environment Humidity
-          strResponse += "," + String(uArrayGraphData[uIndex + 2].time) + "|" + uArrayGraphData[uIndex + 2].value;  // VPD
-
-          for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
-            strResponse += "," + String(uArrayGraphData[uIndex + 3 + i].time) + "|" + uArrayGraphData[uIndex + 3 + i].value;  // Soil Moisture
-
-          uCount++;
+          for (size_t i = 0; i < sizeGraphArraySize; i++) {
+            if (strArrayGraphData[i] != nullptr)
+              strResponse += (i > 0 ? "," : "") + String(strArrayGraphData[i]);
+          }
         }
         //////////////////////////////////////////////////////////////////////////////////////////
         AsyncWebServerResponse *response = request->beginResponse(200, "text/plain;charset=utf-8", strResponse);
@@ -846,10 +823,7 @@ void setup() {
           data[next+3] Interval Fan State
           data[next+4] Ventilation Fans State
           data[next+5] Graph Data
-            Environment Temperature
-            Environment Humidity
-            VPD
-            Soil Moistures
+            Unix Timestamp|Environment Temperature|Environment Humidity|VPD|Soil Moistures,Unix Timestamp|Environment Temperature|Environment Humidity|VPD|Soil Moistures
         */
       }
     } else {  // Return panel content
@@ -992,28 +966,28 @@ void loop() {
     }
 
     // ================================================== Store Data for Graph Section ================================================== //
-    if (millis() - lStartupTime >= uSoilReadsInterval * 1.5 && (lCurrentMillis - lLastStoreElapsedTime >= 1800000 || sizeof(uArrayGraphData) / sizeof(GraphLine) == 0)) {
+    if (millis() - lStartupTime >= uSoilReadsInterval * 1.5 && (lCurrentMillis - lLastStoreElapsedTime >= 1800000 || sizeof(strArrayGraphData) / sizeof(strArrayGraphData[0]) == 0)) {
       lLastStoreElapsedTime = lCurrentMillis;
 
-      if (bResetNeeded == false && (now / 3600) % 24 != 0)
+      if (bResetNeeded == false && timeInfo->tm_hour != 0)
         bResetNeeded = true;
 
-      if (uGraphDataCount == 48 || ((now / 3600) % 24 == 0 && bResetNeeded)) {
+      if (uGraphDataCount == 48 || (timeInfo->tm_hour == 0 && bResetNeeded)) {
         uGraphDataCount = 0;
         bResetNeeded = false;
 
-        for (uint8_t i = 0; i < sizeof(uArrayGraphData) / sizeof(GraphLine); i++)
-          clearGraphLine(uArrayGraphData[i]);
+        for (uint8_t i = 0; i < sizeof(strArrayGraphData) / sizeof(strArrayGraphData[0]); i++) {
+          if (strArrayGraphData[i] != nullptr)
+            strArrayGraphData[i] = nullptr;
+        }
       }
 
-      uint8_t uIndex = uGraphDataCount * (3 + TOTAL_SOIL_HUMIDITY_SENSORS);
-
-      uArrayGraphData[uIndex] = { now, String(nEnvironmentTemperature) + "°C" };  // Environment Temperature
-      uArrayGraphData[uIndex + 1] = { now, String(nEnvironmentHumidity) + "%" };  // Environment Humidity
-      uArrayGraphData[uIndex + 2] = { now, String(fEnvironmentVPD, 2) + "kPa"};  // VPD
+      String strValues = String(now) + "|" + String(nEnvironmentTemperature) + "°C" + "|" + String(nEnvironmentHumidity) + "%" + "|" + String(fEnvironmentVPD, 2) + "kPa";
 
       for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
-        uArrayGraphData[uIndex + 3 + i] = { now, String(uSoilsHumidity[i]) + "%" };  // Soil Moisture
+       strValues += "|" + String(uSoilsHumidity[i]) + "%";
+
+      strArrayGraphData[uGraphDataCount] = strValues.c_str();
 
       uGraphDataCount++;
     }

@@ -127,8 +127,6 @@
 		</style>
 		<script src=https://cdn.jsdelivr.net/npm/chart.js></script>
 		<script>
-			let nTotalSoils=%TOTALSOILS%;
-
 			function CalcDur(){
 				var start=parseInt(document.getElementById('lightstart').value),stop=parseInt(document.getElementById('lightstop').value),startind='AM',stopind='AM';
 
@@ -149,7 +147,7 @@
 				document.getElementById('lightbrightind').innerText=per>0?per+'%% (Aproximadamente: '+((per/100)*1008).toFixed(0)+'ppfd)':'Apagado';
 				
 				if(send)
-					SendAction('update', 'lightbright');
+					SendAction('update','lightbright');
 			}
 
 			function WateringMode(){
@@ -228,22 +226,13 @@
 						document.getElementById('vpdstate').innerText=val2;
 						document.getElementById('vpdstate').style.color=val;
 
-						for(let i=0;i<data[3];i++)
+						for(i=0;i<data[3];i++)
 							document.getElementById('soil'+i).innerText=data[4+i]+'%%';
 
-						val='';
-						val2='';
-
 						let next=4+parseInt(data[3]);
-						val3=parseInt(data[next]);
+						val2=parseInt(data[next]);
 
-						if(val3>0){
-							val='#72D6EB';
-							val2='Regando...<br>Tiempo Transcurrido: '+val3+' segundos';
-						}
-
-						document.getElementById('wateringstate').innerHTML=val2;
-						document.getElementById('wateringstate').style.color=val;
+						document.getElementById('wateringstate').innerHTML=val2>0?'Regando...<br>Tiempo Transcurrido: '+val2+' segundos':'';
 
 						val=new Date(data[next+1]*1000);
 
@@ -275,18 +264,12 @@
 						val=document.querySelector('.f2');
 						val.style.animationPlayState=data[next+4]=='0'?'running':'paused';
 
-						val=0;
-						val1=data[next+5].split(',');
+						val=data[next+5].split(',');
 
-						while(val<48){
-							for(let i=0;i<3+nTotalSoils;i++){
-								let index=val*(3+nTotalSoils)+i;
-								if(val1[index]!==undefined){
-									val2=val1[index].split('|');
-									chart.data.datasets[i].data[val]={x:(val2[0]-(3*3600))%%86400,y:parseFloat(val2[1]),string:val2[1]};
-								}
-							}
-							val++;
+						for(i=0;i<val.length;i++){
+							val2=val[i].split('|');
+							for(j=1;j<val2.length;j++)
+								chart.data.datasets[j-1].data[i]={x:(val2[0]-(3*3600))%%86400,y:parseFloat(val2[j]),string:val2[j]};
 						}
 
 						chart.update();
@@ -419,7 +402,7 @@
 					{label:'Temperatura Ambiente', borderColor:'#E3792B', pointBackgroundColor:'#E3792B'},
 					{label:'Humedad Ambiente', borderColor:'#87B4BC', pointBackgroundColor:'#87B4BC'},
 					{label:'DPV', borderColor:'#4B7843', pointBackgroundColor:'#4B7843'}
-				%SOILLINES%
+					%SOILLINES%
 			]},
 			options:{
 				plugins:{
