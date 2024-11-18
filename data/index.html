@@ -283,7 +283,7 @@
 								let index=val*(3+nTotalSoils)+i;
 								if(val1[index]!==undefined){
 									val2=val1[index].split('|');
-									chart.data.datasets[i].data[val]={x:(val2[0]-(3*3600))%86400,y:val2[1]};
+									chart.data.datasets[i].data[val]={x:(val2[0]-(3*3600))%%86400,y:parseFloat(val2[1]),string:val2[1]};
 								}
 							}
 							val++;
@@ -426,14 +426,8 @@
 					tooltip:{
 						displayColors:false,
 						callbacks:{
-							title:function(item){return'Hora: '+new Date(item[0].raw.x*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false});
-							},
-							label:function(item){
-								if(item.datasetIndex<3)
-									return item.dataset.label+': '+item.raw.y;
-								else
-									return item.raw.string;
-							}
+							title:function(item){return'Hora: '+new Date(item[0].raw.x*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false});},
+							label:function(item){return item.dataset.label+': '+item.raw.string;}
 						}
 					}
 				},

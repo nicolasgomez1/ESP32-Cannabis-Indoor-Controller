@@ -434,8 +434,8 @@ void setup() {
 
   LOGGER("Loading Settings...", INFO);
 
-  strSSID = Settings.getString("SSID", "TODO");
-  strSSIDPWD = Settings.getString("SSIDPWD", "TODO");
+  strSSID = Settings.getString("SSID", "Milei2023");
+  strSSIDPWD = Settings.getString("SSIDPWD", "vivaperon");
 
   uStartLightTime = Settings.getUChar("StartLightTime", 6);
   uStopLightTime = Settings.getUChar("StopLightTime", 24);
@@ -831,7 +831,7 @@ void setup() {
           uCount++;
         }
         //////////////////////////////////////////////////////////////////////////////////////////
-        AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", strResponse);
+        AsyncWebServerResponse *response = request->beginResponse(200, "text/plain;charset=utf-8", strResponse);
         request->send(response);
         /*
           data[0] Environment Temperature
@@ -943,7 +943,7 @@ void loop() {
 
     // ================================================== Watering Section ================================================== //
     if (digitalRead(RELAY_3_PIN) && (uStartWateringHumidity > 0 || uWateringInterval > 0)) {  // Si el relé de la Bomba de Riego está OFF (HIGH) y el nivel de Humedad requerido para Regar es mayor a 0 o si el Intervalo para Regar es mayor a 0
-      if (millis() - lStartupTime >= uSoilReadsInterval * 2) {  // Esperar al menos el doble de tiempo que se espera para leer los valores de Humedad del suelo, así es 100% seguro que no se inicie el Riego anticipadamente
+      if (millis() - lStartupTime >= uSoilReadsInterval * 1.5) {  // Esperar al menos el doble de tiempo que se espera para leer los valores de Humedad del suelo, así es 100% seguro que no se inicie el Riego anticipadamente
         bool bStartWatering = false;
 
         if (uWateringMode == 0) {
@@ -991,7 +991,7 @@ void loop() {
     }
 
     // ================================================== Store Data for Graph Section ================================================== //
-    if (millis() - lStartupTime >= uSoilReadsInterval * 2 && lCurrentMillis - lLastStoreElapsedTime >= 1800000) { // Do store each hour
+    if (millis() - lStartupTime >= uSoilReadsInterval * 1.5 && (lCurrentMillis - lLastStoreElapsedTime >= 1800000 || sizeof(uArrayGraphData) / sizeof(GraphLine) == 0)) { // Do store each hour
       lLastStoreElapsedTime = lCurrentMillis;
 
       if (uGraphDataCount == 48) {
