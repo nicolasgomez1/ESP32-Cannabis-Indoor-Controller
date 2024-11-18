@@ -109,6 +109,7 @@ unsigned long lGraphDataElapsedStoredTime = 0;
 uint8_t uGraphDataCount = 0;
 GraphLine uArrayGraphData[(3 + TOTAL_SOIL_HUMIDITY_SENSORS) * 48] = {};
 unsigned long lLastStoreElapsedTime = 0;
+bool bResetNeeded = false;
 
 // =============== Parameters from Indoor =============== //
 uint8_t nEnvironmentTemperature = 0;
@@ -434,8 +435,8 @@ void setup() {
 
   LOGGER("Loading Settings...", INFO);
 
-  strSSID = Settings.getString("SSID", "Milei2023");
-  strSSIDPWD = Settings.getString("SSIDPWD", "vivaperon");
+  strSSID = Settings.getString("SSID", "TODO");
+  strSSIDPWD = Settings.getString("SSIDPWD", "TODO");
 
   uStartLightTime = Settings.getUChar("StartLightTime", 6);
   uStopLightTime = Settings.getUChar("StopLightTime", 24);
@@ -991,11 +992,15 @@ void loop() {
     }
 
     // ================================================== Store Data for Graph Section ================================================== //
-    if (millis() - lStartupTime >= uSoilReadsInterval * 1.5 && (lCurrentMillis - lLastStoreElapsedTime >= 1800000 || sizeof(uArrayGraphData) / sizeof(GraphLine) == 0)) { // Do store each hour
+    if (millis() - lStartupTime >= uSoilReadsInterval * 1.5 && (lCurrentMillis - lLastStoreElapsedTime >= 1800000 || sizeof(uArrayGraphData) / sizeof(GraphLine) == 0)) {
       lLastStoreElapsedTime = lCurrentMillis;
 
-      if (uGraphDataCount == 48) {
+      if (bResetNeeded == false && (now / 3600) % 24 != 0)
+        bResetNeeded = true;
+
+      if (uGraphDataCount == 48 || ((now / 3600) % 24 == 0 && bResetNeeded)) {
         uGraphDataCount = 0;
+        bResetNeeded = false;
 
         for (uint8_t i = 0; i < sizeof(uArrayGraphData) / sizeof(GraphLine); i++)
           clearGraphLine(uArrayGraphData[i]);
