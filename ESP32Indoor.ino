@@ -208,6 +208,22 @@ uint8_t GetSoilHumidity(uint8_t nSensorNumber) {
   return constrain(map(uCombinedValues / MAX_SOIL_READS, HW080_MIN, HW080_MAX, 0, 100), 0, 100);
 }
 
+void GetEnvironmentVPDStage(String& strHTMLColor, String& strState) {
+  strHTMLColor = "#FE7F96";
+  strState = "Zona de Peligro";
+
+  if (fEnvironmentVPD >= 0.4 && fEnvironmentVPD <= 0.8) {  // Propagation / Early Veg
+    strHTMLColor = "#6497C9";
+    strState = "Propagacíon/Inicio del Vegetativo";
+  } else if (fEnvironmentVPD > 0.8 && fEnvironmentVPD <= 1.2) {  // Late Veg / Early Flower
+    strHTMLColor = "#7FC794";
+    strState = "Vegetativo/Inicio de Floración";
+  } else if (fEnvironmentVPD > 1.2 && fEnvironmentVPD <= 1.6) {  // Mid / Late Flower
+    strHTMLColor = "#F9AE54";
+    strState = "Floración";
+  }
+}
+
 String HTMLProcessor(const String &var) {
   if (var == "DPM") {
     return String(uDripPerMinute);
@@ -216,20 +232,11 @@ String HTMLProcessor(const String &var) {
   } else if (var == "ENVHUM") {
     return String(nEnvironmentHumidity);
   } else if (var == "VPDSECTION") {
-    String strHTMLColor = "#FE7F96", strCondition = "Zona de Peligro";  // Red (Danger Zone)
+    String strHTMLColor, strState;
 
-    if (fEnvironmentVPD >= 0.4 && fEnvironmentVPD <= 0.8) {  // Propagation / Early Veg
-      strHTMLColor = "#6497C9";
-      strCondition = "Propagacíon/Inicio del Vegetativo";
-    } else if (fEnvironmentVPD > 0.8 && fEnvironmentVPD <= 1.2) {  // Late Veg / Early Flower
-      strHTMLColor = "#7FC794";
-      strCondition = "Vegetativo/Inicio de Floración";
-    } else if (fEnvironmentVPD > 1.2 && fEnvironmentVPD <= 1.6) {  // Mid / Late Flower
-      strHTMLColor = "#F9AE54";
-      strCondition = "Floración";
-    }
+    GetEnvironmentVPDStage(strHTMLColor, strState);
 
-    return "<tr><td>Déficit de Presión de Vapor:</td><td><font id=vpd color=" + strHTMLColor + ">" + String(fEnvironmentVPD, 2) + "</font>kPa</td><td>(<font id=vpdstate color=" + strHTMLColor + ">" + strCondition + "</font>)</td></tr>";
+    return "<tr><td>Déficit de Presión de Vapor:</td><td><font id=vpd color=" + strHTMLColor + ">" + String(fEnvironmentVPD, 2) + "</font>kPa</td><td>(<font id=vpdstate color=" + strHTMLColor + ">" + strState + "</font>)</td></tr>";
   } else if (var == "SOILSECTION") {
     String strReturn;
 
@@ -977,17 +984,23 @@ void loop() {
         bResetNeeded = false;
 
         for (uint8_t i = 0; i < sizeof(strArrayGraphData) / sizeof(strArrayGraphData[0]); i++) {
-          if (strArrayGraphData[i] != nullptr)
+          if (strArrayGraphData[i] != nullptr) {
+            free((void*)strArrayGraphData[i]);
             strArrayGraphData[i] = nullptr;
+          }
         }
       }
 
-      String strValues = String(now) + "|" + String(nEnvironmentTemperature) + "°C" + "|" + String(nEnvironmentHumidity) + "%" + "|" + String(fEnvironmentVPD, 2) + "kPa";
+      String strHTMLColor, strState;
+
+      GetEnvironmentVPDStage(strHTMLColor, strState);
+
+      String strValues = String(now) + "|" + String(nEnvironmentTemperature) + "°C" + "|" + String(nEnvironmentHumidity) + "%" + "|" + String(fEnvironmentVPD, 2) + "kPa (" + strState + ")";
 
       for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
        strValues += "|" + String(uSoilsHumidity[i]) + "%";
 
-      strArrayGraphData[uGraphDataCount] = strValues.c_str();
+      strArrayGraphData[uGraphDataCount] = strdup(strValues.c_str());
 
       uGraphDataCount++;
     }
