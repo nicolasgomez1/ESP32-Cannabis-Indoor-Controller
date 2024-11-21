@@ -213,6 +213,7 @@
 						chart.update();
 
 						let tbody=document.querySelector('#legend tbody');
+						tbody.innerHTML='';
 
 						chart.data.datasets.forEach((dataset,i)=>{
 							let value=dataset.data.map(point=>point.y).filter(val=>!isNaN(val));
@@ -357,7 +358,7 @@
 			setInterval(()=>SendAction('sync'),3000);
 		};
 
-		Chart.defaults.datasets.line.pointRadius=4;
+		Object.assign(Chart.defaults.datasets.line,{borderWidth:2,pointRadius:0});
 		
 		let chart=new Chart(document.getElementById('chart'),{type:'line',
 			data:{

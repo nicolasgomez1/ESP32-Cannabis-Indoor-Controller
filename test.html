@@ -164,7 +164,7 @@
 			data:{
 				datasets:[
 					{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C'},
-					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'%%'},
+					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'&#37;'},
 					{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa'},
 					{label:'Humedad de Maceta 0',borderColor:'#B57165',backgroundColor:'#B57165',symbol:'%%'},
 					{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'%%'}
@@ -205,6 +205,7 @@
 		chart.update();
 
 		let tbody=document.querySelector('#legend tbody');
+		tbody.innerHTML='';
 
 		chart.data.datasets.forEach((dataset,i)=>{
 			let value=dataset.data.map(point=>point.y).filter(val=>!isNaN(val));

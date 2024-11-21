@@ -319,7 +319,7 @@ String HTMLProcessor(const String &var) {
     String strReturn;
 
     for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
-      strReturn += ",{label:'Humedad de Maceta " + String(i) + "',borderColor:'" + strSoilGraphColor[i] + "',backgroundColor:'" + strSoilGraphColor[i] + "',symbol:'%'}"; // NOTE: Como esto es lo ultimo, se puede poner un solo simbolo de %, si no fuera lo ultimo, habría que poner 2
+      strReturn += ",{label:'Humedad de Maceta " + String(i) + "',borderColor:'" + strSoilGraphColor[i] + "',backgroundColor:'" + strSoilGraphColor[i] + "',symbol:'%%'}";
 
     return strReturn;
   }
@@ -422,7 +422,7 @@ void setup() {
 
   uStartLightTime = Settings.getUChar("StartLightTime", 6);
   uStopLightTime = Settings.getUChar("StopLightTime", 24);
-  uLightBrightness = Settings.getUShort("LightBright", S8050_MAX_VALUE);  // 0 = 100% cuz is NPN
+  uLightBrightness = Settings.getUShort("LightBright", S8050_MAX_VALUE);  // 0 = 100% brightness cuz is NPN
 
   uStartFanTemperature = Settings.getUChar("StartFanTemp", 27);
 
@@ -966,7 +966,7 @@ void loop() {
     }
 
     // ================================================== Store Data for Graph Section ================================================== //
-    if (millis() - lStartupTime >= uSoilReadsInterval * 1.5 && (lCurrentMillis - lLastStoreElapsedTime >= 1800000 || sizeof(strArrayGraphData) / sizeof(strArrayGraphData[0]) == 0)) {
+    if (millis() - lStartupTime >= uSoilReadsInterval * 1.5 && lCurrentMillis - lLastStoreElapsedTime >= 1800000) {
       lLastStoreElapsedTime = lCurrentMillis;
 
       if (bResetNeeded == false && timeInfo->tm_hour != 0)
