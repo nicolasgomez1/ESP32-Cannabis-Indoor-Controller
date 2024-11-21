@@ -98,7 +98,7 @@
 			}
 
 			function CalcDrip(){
-				document.getElementById('waterdripind').innerText='(Equivale a: '+(parseInt(document.getElementById('wateringtime').value)*parseInt('%DPM%')/60).toFixed(2)+'cc)';
+				document.getElementById('waterdripind').innerText=`(Equivale a: ${(parseInt(document.getElementById('wateringtime').value)*parseInt('%DPM%')/60).toFixed(2)}cc)`;
 			}
 
 			function CalcVPD(vpd){
@@ -196,11 +196,10 @@
 
 						document.getElementById('reststate').innerHTML=val2;
 
-						val=document.querySelector('.f1');
-						val.style.animationPlayState=data[next+3]=='0'?'running':'paused';
-
-						val=document.querySelector('.f2');
-						val.style.animationPlayState=data[next+4]=='0'?'running':'paused';
+						for(i=1;i<3;i++){
+							val=document.querySelector('.f'+i);
+							val.style.animationPlayState=data[next+2+i]=='0'?'running':'paused';
+						}
 
 						val=data[next+5].split(',');
 
@@ -212,12 +211,17 @@
 
 						chart.update();
 
-						let tbody=document.querySelector('#legend tbody');
-						tbody.innerHTML='';
+						val=document.querySelector('#legend tbody');
+
+						val2={};
+
+						val.querySelectorAll('td.show-line').forEach(td=>{val2[td.getAttribute('data-dataset-index')]=td.classList.contains('hide-line');});
+
+						val.innerHTML='';
 
 						chart.data.datasets.forEach((dataset,i)=>{
 							let value=dataset.data.map(point=>point.y).filter(val=>!isNaN(val));
-						
+
 							if(value.length>0){
 								let row=document.createElement('tr');
 								let symbol=dataset.symbol;
@@ -230,11 +234,12 @@
 								}else{
 									min+=symbol;
 									max+=symbol;
-									avg=avg.toFixed(2)+symbol;
+									avg=avg.toFixed(0)+symbol;
 								}
 
-								row.innerHTML='<td style="color:'+dataset.borderColor+'" class=show-line data-dataset-index='+i+'>'+dataset.label+'</td><td>'+min+'</td><td>'+max+'</td><td>'+avg+'</td>';
-								tbody.appendChild(row);
+								row.innerHTML=`<td style='color:${dataset.borderColor}' class='show-line ${val2[i]?'hide-line':''}' data-dataset-index="${i}">${dataset.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
+
+								val.appendChild(row);
 							}
 						});
 					}

@@ -18,16 +18,16 @@
 #define MAX_SOIL_READS 10  // Max 255, cuz is uint8_t
 #define MAX_ENVIRONMENT_READS 5
 
-#define HW080_MIN 0
+#define HW080_MIN 0     // https://cms.katranji.com/web/content/723081
 #define HW080_MAX 2800  // I'm using 20k resistors, so the max value never go up to 4095
 
 #define TOTAL_SOIL_HUMIDITY_SENSORS 2
 
-#define S8050_FREQUENCY 300
+#define S8050_FREQUENCY 300   // https://www.mouser.com/datasheet/2/149/SS8050-117753.pdf
 #define S8050_RESOLUTION 12
 #define S8050_MAX_VALUE 4095  // cuz is 12 bits of resolution
 
-#define DHT_VCC_PIN 22
+#define DHT_VCC_PIN 22  // https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
 #define DHT_DATA_PIN 16
 
 #define RELAY_0_PIN 14  // Lights

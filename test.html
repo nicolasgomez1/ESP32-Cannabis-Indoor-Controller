@@ -156,8 +156,7 @@
 		<table id=legend><thead><tr><th>Indicador</th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><tbody></tbody></table>
 	</body>
 	<script>
-		//Object.assign(Chart.defaults.datasets.line, { tension: .2, pointRadius: 4 });
-		Object.assign(Chart.defaults.datasets.line,{borderWidth:2,pointRadius:0});
+		Object.assign(Chart.defaults.datasets.line,{borderWidth:2,pointRadius:0});//Object.assign(Chart.defaults.datasets.line,{tension:.2,pointRadius:4});
 
 		let chart=new Chart(document.getElementById('chart'),{
 			type:'line',
@@ -166,8 +165,8 @@
 					{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C'},
 					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'&#37;'},
 					{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa'},
-					{label:'Humedad de Maceta 0',borderColor:'#B57165',backgroundColor:'#B57165',symbol:'%%'},
-					{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'%%'}
+					{label:'Humedad de Maceta 0',borderColor:'#B57165',backgroundColor:'#B57165',symbol:'&#37;'},
+					{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'&#37;'}
 				]
 			},
 			options:{
@@ -183,10 +182,9 @@
 				animation:{duration:0},
 				interaction:{mode:'index',intersect:false},
 				scales:{
-					y:{display:false},//y:{ticks:{color:'#D8DEE9'}},
+					y:{min:-10,max:105,display:false},//y:{ticks:{color:'#D8DEE9'}},
 					x:{type:'linear',min:0,max:86399,
-						ticks:{
-							color:'#D8DEE9',stepSize:1800,
+						ticks:{color:'#D8DEE9',stepSize:1800,
 							callback:value=>new Date(value*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})
 						}
 					}
@@ -204,8 +202,14 @@
 
 		chart.update();
 
-		let tbody=document.querySelector('#legend tbody');
-		tbody.innerHTML='';
+setInterval(() => {
+		val=document.querySelector('#legend tbody');
+
+		val2={};
+
+		val.querySelectorAll('td.show-line').forEach(td=>{val2[td.getAttribute('data-dataset-index')]=td.classList.contains('hide-line');});
+
+		val.innerHTML='';
 
 		chart.data.datasets.forEach((dataset,i)=>{
 			let value=dataset.data.map(point=>point.y).filter(val=>!isNaN(val));
@@ -222,13 +226,15 @@
 				}else{
 					min+=symbol;
 					max+=symbol;
-					avg=avg.toFixed(2)+symbol;
+					avg=avg.toFixed(0)+symbol;
 				}
 
-				row.innerHTML='<td style="color:'+dataset.borderColor+'" class=show-line data-dataset-index='+i+'>'+dataset.label+'</td><td>'+min+'</td><td>'+max+'</td><td>'+avg+'</td>';
-				tbody.appendChild(row);
+				row.innerHTML=`<td style='color:${dataset.borderColor}' class='show-line ${val2[i]?'hide-line':''}' data-dataset-index="${i}">${dataset.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
+
+				val.appendChild(row);
 			}
 		});
+}, 1000);
 
 		document.querySelector('#legend').addEventListener('click',function(e){
 			if(e.target&&e.target.matches('td.show-line')){
