@@ -208,22 +208,6 @@ uint8_t GetSoilHumidity(uint8_t nSensorNumber) {
   return constrain(map(uCombinedValues / MAX_SOIL_READS, HW080_MIN, HW080_MAX, 0, 100), 0, 100);
 }
 
-void GetEnvironmentVPDStage(String& strHTMLColor, String& strState) {
-  strHTMLColor = "#FE7F96";
-  strState = "Zona de Peligro";
-
-  if (fEnvironmentVPD >= 0.4 && fEnvironmentVPD <= 0.8) {  // Propagation / Early Veg
-    strHTMLColor = "#6497C9";
-    strState = "Propagacíon/Inicio del Vegetativo";
-  } else if (fEnvironmentVPD > 0.8 && fEnvironmentVPD <= 1.2) {  // Late Veg / Early Flower
-    strHTMLColor = "#7FC794";
-    strState = "Vegetativo/Inicio de Floración";
-  } else if (fEnvironmentVPD > 1.2 && fEnvironmentVPD <= 1.6) {  // Mid / Late Flower
-    strHTMLColor = "#F9AE54";
-    strState = "Floración";
-  }
-}
-
 String HTMLProcessor(const String &var) {
   if (var == "DPM") {
     return String(uDripPerMinute);
@@ -232,9 +216,18 @@ String HTMLProcessor(const String &var) {
   } else if (var == "ENVHUM") {
     return String(nEnvironmentHumidity);
   } else if (var == "VPDSECTION") {
-    String strHTMLColor, strState;
+    String strHTMLColor = "#FE7F96", strState = "Zona de Peligro";
 
-    GetEnvironmentVPDStage(strHTMLColor, strState);
+    if (fEnvironmentVPD >= 0.4 && fEnvironmentVPD <= 0.8) {  // Propagation / Early Veg
+      strHTMLColor = "#6497C9";
+      strState = "Propagacíon/Inicio del Vegetativo";
+    } else if (fEnvironmentVPD > 0.8 && fEnvironmentVPD <= 1.2) {  // Late Veg / Early Flower
+      strHTMLColor = "#7FC794";
+      strState = "Vegetativo/Inicio de Floración";
+    } else if (fEnvironmentVPD > 1.2 && fEnvironmentVPD <= 1.6) {  // Mid / Late Flower
+      strHTMLColor = "#F9AE54";
+      strState = "Floración";
+    }
 
     return "<tr><td>Déficit de Presión de Vapor:</td><td><font id=vpd color=" + strHTMLColor + ">" + String(fEnvironmentVPD, 2) + "</font>kPa</td><td>(<font id=vpdstate color=" + strHTMLColor + ">" + strState + "</font>)</td></tr>";
   } else if (var == "SOILSECTION") {
@@ -326,7 +319,7 @@ String HTMLProcessor(const String &var) {
     String strReturn;
 
     for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
-      strReturn += ",{label:'Humedad de Maceta " + String(i) + "',borderColor:'" + strSoilGraphColor[i] + "',pointBackgroundColor:'" + strSoilGraphColor[i] + "'}";
+      strReturn += ",{label:'Humedad de Maceta " + String(i) + "',borderColor:'" + strSoilGraphColor[i] + "',backgroundColor:'" + strSoilGraphColor[i] + "',symbol:'%'}"; // NOTE: Como esto es lo ultimo, se puede poner un solo simbolo de %, si no fuera lo ultimo, habría que poner 2
 
     return strReturn;
   }
@@ -652,7 +645,7 @@ void setup() {
 
             Settings.putUShort("WateringTime", uWateringTime);
 
-            strReturn += "\r\nSe actualizó el Tiempo de Riego.";
+            strReturn += "\r\nSe actualizó el Duración de Riego.";
           }
         }
 
@@ -830,7 +823,7 @@ void setup() {
           data[next+3] Interval Fan State
           data[next+4] Ventilation Fans State
           data[next+5] Graph Data
-            Unix Timestamp|Environment Temperature|Environment Humidity|VPD|Soil Moistures,Unix Timestamp|Environment Temperature|Environment Humidity|VPD|Soil Moistures
+            Unix Timestamp|Environment Temperature|Environment Humidity|VPD|Soil Moistures,etc
         */
       }
     } else {  // Return panel content
@@ -991,14 +984,10 @@ void loop() {
         }
       }
 
-      String strHTMLColor, strState;
-
-      GetEnvironmentVPDStage(strHTMLColor, strState);
-
-      String strValues = String(now) + "|" + String(nEnvironmentTemperature) + "°C" + "|" + String(nEnvironmentHumidity) + "%" + "|" + String(fEnvironmentVPD, 2) + "kPa (" + strState + ")";
+      String strValues = String(now) + "|" + String(nEnvironmentTemperature) + "|" + String(nEnvironmentHumidity) + "|" + String(fEnvironmentVPD, 2);
 
       for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
-       strValues += "|" + String(uSoilsHumidity[i]) + "%";
+       strValues += "|" + String(uSoilsHumidity[i]);
 
       strArrayGraphData[uGraphDataCount] = strdup(strValues.c_str());
 

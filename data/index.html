@@ -4,11 +4,7 @@
 		<meta charset=utf-8>
 		<title>ESP32 Indoor</title>
 		<style>
-			div{
-				height:2;
-				margin:5px;
-				background-color:#22262A
-			}
+			div{height:2;margin:5px;background-color:#22262A}
 
 			button{
 				background-color:#36A9AE;
@@ -22,108 +18,43 @@
 				text-align:center
 			}
 
-			button:active{
-				box-shadow:rgb(0 0 0/.15)0 2px 4px inset,rgb(0 0 0/.4)0 1px 1px
-			}
+			button:active{box-shadow:rgb(0 0 0/.15)0 2px 4px inset,rgb(0 0 0/.4)0 1px 1px}
 
-			input{
-				cursor:pointer;
-				background-color:#FFF;
-				border:1px solid#2A8387;
-				border-radius:4px;
-				color:#22262A;
-				padding:4;
-				outline:none;
-				width:50
-			}
+			input{cursor:pointer;background-color:#FFF;border:1px solid#2A8387;border-radius:4px;color:#22262A;padding:4;outline:none;width:50}
 
-			input:focus{
-				border-color:red
-			}
+			input:focus{border-color:red}
 
-			.slider{
-				appearance:none;
-				width:200;
-				height:14;
-				background:#2A8387;
-				border-radius:10px
-			}
+			.slider{appearance:none;width:200;height:14;background:#2A8387;border-radius:10px}
 
-			.slider::-webkit-slider-thumb{
-				appearance:none;
-				width:40;
-				height:20;
-				border-radius:8px;
-				background-color:#36A9AE
-			}
+			.slider::-webkit-slider-thumb{appearance:none;width:40;height:20;border-radius:8px;background-color:#36A9AE}
 
-			.fan{
-				animation:fan paused linear infinite 1s
-			}
+			.fan{animation:fan paused linear infinite 1s}
 
-			@keyframes fan{
-				100%%{
-					transform:rotate(360deg)
-				}
-			}
+			@keyframes fan{100%%{transform:rotate(360deg)}}
 
-			.checkbox{
-				visibility:hidden;
-				display:none
-			}
+			.checkbox{visibility:hidden;display:none}
 
-			.toggle{
-				border:1px solid transparent;
-				position:relative;
-				display:block;
-				width:51;
-				height:20;
-				cursor:pointer
-			}
+			.toggle{border:1px solid transparent;position:relative;display:block;width:51;height:20;cursor:pointer}
 
-			.toggle:before{
-				content:'';
-				position:relative;
-				top:3;
-				width:50;
-				height:14;
-				display:block;
-				background:#2A8387;
-				border-radius:8px
-			}
+			.toggle:before{content:'';position:relative;top:3;width:50;height:14;display:block;background:#2A8387;border-radius:8px}
 
-			.toggle:focus{
-				border:1px solid red;
-				border-radius:8px
-			}
+			.toggle:focus{border:1px solid red;border-radius:8px}
 
-			.toggle span{
-				position:absolute;
-				top:0;
-				left:0;
-				width:20;
-				height:20;
-				display:block;
-				background:#36A9AE;
-				border-radius:10px;
-				transition:all .2s ease
-			}
+			.toggle span{position:absolute;top:0;left:0;width:20;height:20;display:block;background:#36A9AE;border-radius:10px;transition:all .2s ease}
 
-			.toggle span:before{
-				display:block;
-				width:56;
-				height:56
-			}
+			.toggle span:before{display:block;width:56;height:56}
 
-			#wateringmode:checked+.toggle span{
-				transform:translateX(30px);
-				transition:all 0.2s cubic-bezier(.8,.4,.3,1.25)
-			}
+			#wateringmode:checked+.toggle span{transform:translateX(30px);transition:all 0.2s cubic-bezier(.8,.4,.3,1.25)}
 
-			#chart{
-				width:100%%;
-				max-height:300px
-			}
+			#chart{width:100%%;max-height:300px}
+
+			#legend{border-collapse:collapse;width:100%%}
+
+			#legend th,#legend td{padding:5;border:1px solid #22262A;text-align:left}
+
+			.hide-line{text-decoration:line-through}
+
+			.show-line{cursor:pointer}
 		</style>
 		<script src=https://cdn.jsdelivr.net/npm/chart.js></script>
 		<script>
@@ -151,11 +82,11 @@
 			}
 
 			function WateringMode(){
-				let str='Nivel de Humedad mínimo para Regar:',str2='%%';
+				let str='Nivel de Humedad mínimo para Regar:',s='%%';
 
 				if(document.getElementById('wateringmode').checked){
 					str='Intervalo de Riego:';
-					str2='Horas';
+					s='Horas';
 
 					SendAction('ask','watering','1');
 				}else{
@@ -163,15 +94,33 @@
 				}
 
 				document.getElementById('wateringmodeind').innerText=str;
-				document.getElementById('wateringmodeind2').innerText=str2;
+				document.getElementById('wateringmodeind2').innerText=s;
 			}
 
 			function CalcDrip(){
 				document.getElementById('waterdripind').innerText='(Equivale a: '+(parseInt(document.getElementById('wateringtime').value)*parseInt('%DPM%')/60).toFixed(2)+'cc)';
 			}
 
+			function CalcVPD(vpd){
+				let c='#FE7F96',s='Zona de Peligro';
+
+				if(vpd>=0.4&&vpd<=0.8){
+					c='#6497C9';
+					s='Propagacíon/Inicio del Vegetativo';
+				}else if(vpd>0.8&&vpd<=1.2){
+					c='#7FC794';
+					s='Vegetativo/Inicio de Floración';
+				}else if(vpd>1.2&&vpd<=1.6){
+					c='#F9AE54';
+					s='Floración';
+				}
+
+				return[c,s];
+			}
+
 			function SendAction(action,...args){
 				let currentUrl=new URL(window.location.href);
+
 				currentUrl.searchParams.set('action',action);
 
 				if(action=='ask'){
@@ -203,28 +152,17 @@
 						if(args[0]==null)
 							alert(returns.substring(3));
 					}else if(returns.substring(0,7)=='REFRESH'){
-						let data=returns.substring(7).split(':');
+						let data=returns.substring(7).split(':'),val,val2,val3;
 
 						document.getElementById('temp').innerText=data[0]+'°C';
 						document.getElementById('humi').innerText=data[1]+'%%';
 
-						let val='#FE7F96',val2='Zona de Peligro',val3;
-
-						if(data[2]>=0.4&&data[2]<=0.8){
-							val='#6497C9';
-							val2='Propagacíon/Inicio del Vegetativo';
-						}else if(data[2]>0.8&&data[2]<=1.2){
-							val='#7FC794';
-							val2='Vegetativo/Inicio de Floración';
-						}else if(data[2]>1.2&&data[2]<=1.6){
-							val='#F9AE54';
-							val2='Floración';
-						}
+						val=CalcVPD(data[2]);
 
 						document.getElementById('vpd').innerText=data[2];
-						document.getElementById('vpd').style.color=val;
-						document.getElementById('vpdstate').innerText=val2;
-						document.getElementById('vpdstate').style.color=val;
+						document.getElementById('vpd').style.color=val[0];
+						document.getElementById('vpdstate').innerText=val[1];
+						document.getElementById('vpdstate').style.color=val[0];
 
 						for(i=0;i<data[3];i++)
 							document.getElementById('soil'+i).innerText=data[4+i]+'%%';
@@ -273,6 +211,31 @@
 						}
 
 						chart.update();
+
+						let tbody=document.querySelector('#legend tbody');
+
+						chart.data.datasets.forEach((dataset,i)=>{
+							let value=dataset.data.map(point=>point.y).filter(val=>!isNaN(val));
+						
+							if(value.length>0){
+								let row=document.createElement('tr');
+								let symbol=dataset.symbol;
+								let min=Math.min(...value),max=Math.max(...value),avg=value.reduce((sum,val)=>sum+val,0)/value.length;
+
+								if(i==2){
+									min+=symbol+' ('+CalcVPD(min)[1]+')';
+									max+=symbol+' ('+CalcVPD(max)[1]+')';
+									avg=avg.toFixed(2)+symbol+' ('+CalcVPD(avg.toFixed(2))[1]+')';
+								}else{
+									min+=symbol;
+									max+=symbol;
+									avg=avg.toFixed(2)+symbol;
+								}
+
+								row.innerHTML='<td style="color:'+dataset.borderColor+'" class=show-line data-dataset-index='+i+'>'+dataset.label+'</td><td>'+min+'</td><td>'+max+'</td><td>'+avg+'</td>';
+								tbody.appendChild(row);
+							}
+						});
 					}
 				});
 			}
@@ -382,6 +345,7 @@
 				</tr>
 			</table>
 			<canvas id=chart></canvas>
+			<table id=legend><thead><tr><th>Indicador</th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><tbody></tbody></table>
 		</center>
 	</body>
 	<script>
@@ -393,35 +357,49 @@
 			setInterval(()=>SendAction('sync'),3000);
 		};
 
-		Object.assign(Chart.defaults.datasets.line,{tension:0.2,pointRadius:4});
+		Chart.defaults.datasets.line.pointRadius=4;
 		
 		let chart=new Chart(document.getElementById('chart'),{type:'line',
 			data:{
 				datasets:[
-					{label:'Temperatura Ambiente',borderColor:'#E3792B',pointBackgroundColor:'#E3792B'},
-					{label:'Humedad Ambiente',borderColor:'#87B4BC',pointBackgroundColor:'#87B4BC'},
-					{label:'DPV',borderColor:'#4B7843',pointBackgroundColor:'#4B7843'}
+					{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C'},
+					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'%%'},
+					{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa'}
 					%SOILLINES%
-			]},
+				]
+
+			},
 			options:{
 				plugins:{
+					legend:{display:false},
 					tooltip:{
 						callbacks:{
-							title:function(item){return'Hora: '+new Date(item[0].raw.x*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false});},
-							label:function(item){return item.dataset.label+': '+item.raw.string;}
+							title:item=>`Hora: ${new Date(item[0].raw.x*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})}`,
+							label:(item)=>`${item.dataset.label}: ${item.raw.string+item.dataset.symbol+(item.dataset.symbol=='kPa'?' ('+CalcVPD(item.raw.string)[1]+')':'')}`
 						}
 					}
 				},
 				animation:{duration:0},
-				interaction:{mode:'index'},
+				interaction:{mode:'index',intersect:false},
 				scales:{
-					y:{ticks:{color:'#D8DEE9'}},
+					y:{display:false},
 					x:{type:'linear',min:0,max:86399,
 						ticks:{color:'#D8DEE9',stepSize:1800,
-							callback:function(value){return new Date(value*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false});}
+							callback:value=>new Date(value*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})
 						}
 					}
 				}
+			}
+		});
+
+		document.querySelector('#legend').addEventListener('click',function(e){
+			if(e.target&&e.target.matches('td.show-line')){
+				let dataset=chart.data.datasets[e.target.getAttribute('data-dataset-index')];
+				dataset.hidden=!dataset.hidden;
+				
+				chart.update();
+				
+				e.target.classList.toggle('hide-line',dataset.hidden);
 			}
 		});
 	</script>

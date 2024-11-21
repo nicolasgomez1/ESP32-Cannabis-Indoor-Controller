@@ -1,0 +1,243 @@
+<html>
+	<head>
+		<style>
+			div{
+				height:2;
+				margin:5px;
+				background-color:#22262A
+			}
+
+			button{
+				background-color:#36A9AE;
+				background-image:linear-gradient(#37ADB2,#329CA0);
+				border:1px solid #2A8387;
+				border-radius:4px;
+				color:#FFF;
+				cursor:pointer;
+				font-size:17;
+				padding:6 6 6;
+				text-align:center
+			}
+
+			button:active{box-shadow:rgb(0 0 0/.15)0 2px 4px inset,rgb(0 0 0/.4)0 1px 1px}
+
+			input{
+				cursor:pointer;
+				background-color:#FFF;
+				border:1px solid#2A8387;
+				border-radius:4px;
+				color:#22262A;
+				padding:4;
+				outline:none;
+				width:50
+			}
+
+			input:focus{border-color:red}
+
+			.slider{
+				appearance:none;
+				width:200;
+				height:14;
+				background:#2A8387;
+				border-radius:10px
+			}
+
+			.slider::-webkit-slider-thumb{
+				appearance:none;
+				width:40;
+				height:20;
+				border-radius:8px;
+				background-color:#36A9AE
+			}
+
+			.fan{animation:fan paused linear infinite 1s}
+
+			@keyframes fan{
+				100%%{
+					transform:rotate(360deg)
+				}
+			}
+
+			.checkbox{
+				visibility:hidden;
+				display:none
+			}
+
+			.toggle{
+				border:1px solid transparent;
+				position:relative;
+				display:block;
+				width:51;
+				height:20;
+				cursor:pointer
+			}
+
+			.toggle:before{
+				content:'';
+				position:relative;
+				top:3;
+				width:50;
+				height:14;
+				display:block;
+				background:#2A8387;
+				border-radius:8px
+			}
+
+			.toggle:focus{
+				border:1px solid red;
+				border-radius:8px
+			}
+
+			.toggle span{
+				position:absolute;
+				top:0;
+				left:0;
+				width:20;
+				height:20;
+				display:block;
+				background:#36A9AE;
+				border-radius:10px;
+				transition:all .2s ease
+			}
+
+			.toggle span:before{
+				display:block;
+				width:56;
+				height:56
+			}
+
+			#wateringmode:checked+.toggle span{
+				transform:translateX(30px);
+				transition:all 0.2s cubic-bezier(.8,.4,.3,1.25)
+			}
+
+			#chart{
+				width:100%%;
+				max-height:300px
+			}
+
+			#legend{
+				border-collapse:collapse;
+				width:100%
+			}
+
+			#legend th,#legend td{
+				padding:5;
+				border:1px solid #22262A;
+				text-align:left
+			}
+
+			.hide-line{text-decoration:line-through}
+
+			.show-line{cursor:pointer}
+		</style>
+		<script>
+			function CalcVPD(vpd){
+				let c='#FE7F96',s='Zona de Peligro';
+
+				if(vpd>=0.4&&vpd<=0.8){
+					c='#6497C9';
+					s='Propagacíon/Inicio del Vegetativo';
+				}else if(vpd>0.8&&vpd<=1.2){
+					c='#7FC794';
+					s='Vegetativo/Inicio de Floración';
+				}else if(vpd>1.2&&vpd<=1.6){
+					c='#F9AE54';
+					s='Floración';
+				}
+
+				return[c,s];
+			}
+		</script>
+		<script src=https://cdn.jsdelivr.net/npm/chart.js></script>
+	</head>
+	<body bgcolor=#303841 style='font-family:Arial;color:#D8DEE9'>
+		<canvas id=chart></canvas>
+		<table id=legend><thead><tr><th>Indicador</th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><tbody></tbody></table>
+	</body>
+	<script>
+		//Object.assign(Chart.defaults.datasets.line, { tension: .2, pointRadius: 4 });
+		Object.assign(Chart.defaults.datasets.line,{borderWidth:2,pointRadius:0});
+
+		let chart=new Chart(document.getElementById('chart'),{
+			type:'line',
+			data:{
+				datasets:[
+					{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C'},
+					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'%%'},
+					{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa'},
+					{label:'Humedad de Maceta 0',borderColor:'#B57165',backgroundColor:'#B57165',symbol:'%%'},
+					{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'%%'}
+				]
+			},
+			options:{
+				plugins:{
+					legend:{display:false},//legend:{labels:{color:'#D8DEE9',font:{size:12}}},
+					tooltip:{
+						callbacks:{
+							title:item=>`Hora: ${new Date(item[0].raw.x*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})}`,
+							label:(item)=>`${item.dataset.label}: ${item.raw.string+item.dataset.symbol+(item.dataset.symbol=='kPa'?' ('+CalcVPD(item.raw.string)[1]+')':'')}`
+						}
+					}
+				},
+				animation:{duration:0},
+				interaction:{mode:'index',intersect:false},
+				scales:{
+					y:{display:false},//y:{ticks:{color:'#D8DEE9'}},
+					x:{type:'linear',min:0,max:86399,
+						ticks:{
+							color:'#D8DEE9',stepSize:1800,
+							callback:value=>new Date(value*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})
+						}
+					}
+				}
+			}
+		});
+
+		let val="1731881970|100|61|1.31|46|38,1731883770|5|59|1.38|45|37,1731885570|20|59|1.38|45|37".split(','),val1;
+
+		for(i=0;i<val.length;i++){
+			val1=val[i].split('|');
+			for(j=1;j<val1.length;j++)
+				chart.data.datasets[j-1].data[i]={x:(val1[0]-(3*3600))%86400,y:parseFloat(val1[j]),string:val1[j]};
+		}
+
+		chart.update();
+
+		let tbody=document.querySelector('#legend tbody');
+
+		chart.data.datasets.forEach((dataset,i)=>{
+			let value=dataset.data.map(point=>point.y).filter(val=>!isNaN(val));
+		
+			if(value.length>0){
+				let row=document.createElement('tr');
+				let symbol=dataset.symbol;
+				let min=Math.min(...value),max=Math.max(...value),avg=value.reduce((sum,val)=>sum+val,0)/value.length;
+
+				if(i==2){
+					min+=symbol+' ('+CalcVPD(min)[1]+')';
+					max+=symbol+' ('+CalcVPD(max)[1]+')';
+					avg=avg.toFixed(2)+symbol+' ('+CalcVPD(avg.toFixed(2))[1]+')';
+				}else{
+					min+=symbol;
+					max+=symbol;
+					avg=avg.toFixed(2)+symbol;
+				}
+
+				row.innerHTML='<td style="color:'+dataset.borderColor+'" class=show-line data-dataset-index='+i+'>'+dataset.label+'</td><td>'+min+'</td><td>'+max+'</td><td>'+avg+'</td>';
+				tbody.appendChild(row);
+			}
+		});
+
+		document.querySelector('#legend').addEventListener('click',function(e){
+			if(e.target&&e.target.matches('td.show-line')){
+				let dataset=chart.data.datasets[e.target.getAttribute('data-dataset-index')];
+				dataset.hidden=!dataset.hidden;
+				
+				chart.update();
+				
+				e.target.classList.toggle('hide-line',dataset.hidden);
+			}
+		});
+	</script>
+</html>
