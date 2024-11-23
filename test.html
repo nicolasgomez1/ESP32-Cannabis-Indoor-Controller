@@ -153,20 +153,21 @@
 	</head>
 	<body bgcolor=#303841 style='font-family:Arial;color:#D8DEE9'>
 		<canvas id=chart></canvas>
-		<table id=legend><thead><tr><th>Indicador</th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><tbody></tbody></table>
+		<table id=legend><thead><tr><th>Indicador</th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><td colspan=4>No hay información.</td><tbody></tbody></table>
 	</body>
 	<script>
 		Object.assign(Chart.defaults.datasets.line,{borderWidth:2,pointRadius:0});//Object.assign(Chart.defaults.datasets.line,{tension:.2,pointRadius:4});
+		Chart.defaults.scales={linear:{offset:true,display:false}};
 
 		let chart=new Chart(document.getElementById('chart'),{
 			type:'line',
 			data:{
 				datasets:[
-					{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C'},
-					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'&#37;'},
-					{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa'},
-					{label:'Humedad de Maceta 0',borderColor:'#B57165',backgroundColor:'#B57165',symbol:'&#37;'},
-					{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'&#37;'}
+					{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C',yAxisID:'0'},
+					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'%%',yAxisID:'1'},
+					{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa',yAxisID:'2'},
+					{label:'Humedad de Maceta 0',borderColor:'#B57165',backgroundColor:'#B57165',symbol:'&#37;',yAxisID:'3'},
+					{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'&#37;',yAxisID:'4'}
 				]
 			},
 			options:{
@@ -182,8 +183,8 @@
 				animation:{duration:0},
 				interaction:{mode:'index',intersect:false},
 				scales:{
-					y:{min:-10,max:105,display:false},//y:{ticks:{color:'#D8DEE9'}},
-					x:{type:'linear',min:0,max:86399,
+					//y:{ticks:{color:'#D8DEE9'}},
+					x:{type:'linear',min:0,max:86399,display:true,
 						ticks:{color:'#D8DEE9',stepSize:1800,
 							callback:value=>new Date(value*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})
 						}
@@ -192,7 +193,7 @@
 			}
 		});
 
-		let val="1731881970|100|61|1.31|46|38,1731883770|5|59|1.38|45|37,1731885570|20|59|1.38|45|37".split(','),val1;
+		let val="1732331037|27|67|1.18|66|65,1732332837|26|68|1.08|65|65,1732334637|25|69|0.98|65|65,1732336437|25|67|1.05|64|64,1732338237|25|67|1.05|64|64,1732340037|25|66|1.08|63|63,1732341837|25|66|1.08|62|63,1732343637|25|65|1.11|62|63,1732345437|25|65|1.11|61|63,1732347237|24|65|1.04|61|62,1732349037|24|66|1.01|60|62,1732350837|24|66|1.01|60|62,1732352637|27|61|1.39|58|62,1732354437|28|60|1.51|59|61,1732356237|27|61|1.39|57|61,1732358037|28|62|1.44|55|60,1732359837|27|63|1.32|57|59,1732361637|27|64|1.28|56|59,1732363437|27|64|1.28|54|58,1732365237|27|64|1.28|54|58,1732367037|27|65|1.25|53|56,1732368837|27|65|1.25|54|56,1732370637|27|64|1.28|52|55,1732372437|27|64|1.28|52|54,1732374238|27|62|1.36|54|52,1732376038|27|64|1.28|52|51,1732377838|27|60|1.43|51|49".split(','),val1;
 
 		for(i=0;i<val.length;i++){
 			val1=val[i].split('|');

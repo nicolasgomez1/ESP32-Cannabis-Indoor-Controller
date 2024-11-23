@@ -44,7 +44,7 @@
 
 			.toggle span:before{display:block;width:56;height:56}
 
-			#wateringmode:checked+.toggle span{transform:translateX(30px);transition:all 0.2s cubic-bezier(.8,.4,.3,1.25)}
+			#wateringmode:checked+.toggle span{transform:translateX(30px);transition:all .2s cubic-bezier(.8,.4,.3,1.25)}
 
 			#chart{width:100%%;max-height:300px}
 
@@ -221,9 +221,9 @@
 
 						chart.data.datasets.forEach((dataset,i)=>{
 							let value=dataset.data.map(point=>point.y).filter(val=>!isNaN(val));
+							let row=document.createElement('tr');
 
 							if(value.length>0){
-								let row=document.createElement('tr');
 								let symbol=dataset.symbol;
 								let min=Math.min(...value),max=Math.max(...value),avg=value.reduce((sum,val)=>sum+val,0)/value.length;
 
@@ -237,10 +237,12 @@
 									avg=avg.toFixed(0)+symbol;
 								}
 
-								row.innerHTML=`<td style='color:${dataset.borderColor}' class='show-line ${val2[i]?'hide-line':''}' data-dataset-index="${i}">${dataset.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
-
-								val.appendChild(row);
+								row.innerHTML=`<td style='color:${dataset.borderColor}' class='show-line ${val2[i]?'hide-line':''}' data-dataset-index=${i}>${dataset.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
+							}else{
+								row.innerHTML='<td colspan=4>No hay información.</td>';
 							}
+
+							val.appendChild(row);
 						});
 					}
 				});
@@ -364,13 +366,14 @@
 		};
 
 		Object.assign(Chart.defaults.datasets.line,{borderWidth:2,pointRadius:0});
+		Chart.defaults.scales={linear:{offset:true,display:false}};
 		
 		let chart=new Chart(document.getElementById('chart'),{type:'line',
 			data:{
 				datasets:[
-					{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C'},
-					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'%%'},
-					{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa'}
+					{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C',yAxisID:'0'},
+					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'%%',yAxisID:'1'},
+					{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa',yAxisID:'2'}
 					%SOILLINES%
 				]
 
@@ -388,8 +391,7 @@
 				animation:{duration:0},
 				interaction:{mode:'index',intersect:false},
 				scales:{
-					y:{display:false},
-					x:{type:'linear',min:0,max:86399,
+					x:{type:'linear',min:0,max:86399,display:true,
 						ticks:{color:'#D8DEE9',stepSize:1800,
 							callback:value=>new Date(value*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})
 						}

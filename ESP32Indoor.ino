@@ -319,7 +319,7 @@ String HTMLProcessor(const String &var) {
     String strReturn;
 
     for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
-      strReturn += ",{label:'Humedad de Maceta " + String(i) + "',borderColor:'" + strSoilGraphColor[i] + "',backgroundColor:'" + strSoilGraphColor[i] + "',symbol:'%%'}";
+      strReturn += ",{label:'Humedad de Maceta " + String(i) + "',borderColor:'" + strSoilGraphColor[i] + "',backgroundColor:'" + strSoilGraphColor[i] + "',symbol:'%%',yAxisID:'" + (3 + i) + "'}";
 
     return strReturn;
   }
@@ -1021,8 +1021,8 @@ void loop() {
 
   if (bFansRest) {
     if (lCurrentMillis - lFansRestElapsedTime >= uFansRestDuration * 60000) {  // Si transcurrió el Tiempo de Descanso
-      lFansRestElapsedTime = 0;
       bFansRest = false;
+      lFansRestElapsedTime = 0;
 
       LOGGER("Fans Rest mode completed.", INFO);
     }
