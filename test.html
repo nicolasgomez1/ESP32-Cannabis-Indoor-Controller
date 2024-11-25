@@ -153,18 +153,49 @@
 	</head>
 	<body bgcolor=#303841 style='font-family:Arial;color:#D8DEE9'>
 		<canvas id=chart></canvas>
+		<button id=toggle-text>Mostrar textos</button>
 		<table id=legend><thead><tr><th>Indicador</th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><td colspan=4>No hay información.</td><tbody></tbody></table>
 	</body>
 	<script>
+		let showTextOnLines=false;
+
 		Object.assign(Chart.defaults.datasets.line,{borderWidth:2,pointRadius:0});//Object.assign(Chart.defaults.datasets.line,{tension:.2,pointRadius:4});
 		Chart.defaults.scales={linear:{offset:true,display:false}};
+
+		let textOnLinePlugin={id:'textOnLine',
+			afterDatasetsDraw(chart,args,options){
+				if(!showTextOnLines)
+					return;
+
+				let{ctx,data}=chart;
+
+				data.datasets.forEach((dataset,i)=>{
+					if(dataset.hidden)
+						return;
+
+					let points=chart.getDatasetMeta(i).data;
+
+					points.forEach((point,index)=>{
+						if(index<points.length-1){
+							ctx.save();
+
+							ctx.fillStyle=dataset.borderColor;
+
+							ctx.fillText(dataset.data[index].y,point.x-7,point.y-10);
+
+							ctx.restore();
+						}
+					});
+				});
+			}
+		};
 
 		let chart=new Chart(document.getElementById('chart'),{
 			type:'line',
 			data:{
 				datasets:[
 					{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C',yAxisID:'0'},
-					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'%%',yAxisID:'1'},
+					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'&#37;',yAxisID:'1'},
 					{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa',yAxisID:'2'},
 					{label:'Humedad de Maceta 0',borderColor:'#B57165',backgroundColor:'#B57165',symbol:'&#37;',yAxisID:'3'},
 					{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'&#37;',yAxisID:'4'}
@@ -190,10 +221,10 @@
 						}
 					}
 				}
-			}
+			},plugins:[textOnLinePlugin]
 		});
 
-		let val="1732331037|27|67|1.18|66|65,1732332837|26|68|1.08|65|65,1732334637|25|69|0.98|65|65,1732336437|25|67|1.05|64|64,1732338237|25|67|1.05|64|64,1732340037|25|66|1.08|63|63,1732341837|25|66|1.08|62|63,1732343637|25|65|1.11|62|63,1732345437|25|65|1.11|61|63,1732347237|24|65|1.04|61|62,1732349037|24|66|1.01|60|62,1732350837|24|66|1.01|60|62,1732352637|27|61|1.39|58|62,1732354437|28|60|1.51|59|61,1732356237|27|61|1.39|57|61,1732358037|28|62|1.44|55|60,1732359837|27|63|1.32|57|59,1732361637|27|64|1.28|56|59,1732363437|27|64|1.28|54|58,1732365237|27|64|1.28|54|58,1732367037|27|65|1.25|53|56,1732368837|27|65|1.25|54|56,1732370637|27|64|1.28|52|55,1732372437|27|64|1.28|52|54,1732374238|27|62|1.36|54|52,1732376038|27|64|1.28|52|51,1732377838|27|60|1.43|51|49".split(','),val1;
+		let val="1732331037|27|67|1.18|66|65,1732332837|26|68|1.08|65|65,1732334637|25|69|0.98|65|65,1732336437|25|67|1.05|64|64,1732338237|25|67|1.05|64|64,1732340037|25|66|1.08|63|63,1732341837|25|66|1.08|62|63,1732343637|25|65|1.11|62|63,1732345437|25|65|1.11|61|63,1732347237|24|65|1.04|61|62,1732349037|24|66|1.01|60|62,1732350837|24|66|1.01|60|62,1732352637|27|61|1.39|58|62,1732354437|28|60|1.51|59|61,1732356237|27|61|1.39|57|61,1732358037|28|62|1.44|55|60,1732359837|27|63|1.32|57|59,1732361637|27|64|1.28|56|59,1732363437|27|64|1.28|54|58,1732365237|27|64|1.28|54|58,1732367037|27|65|1.25|53|56,1732368837|27|65|1.25|54|56,1732370637|27|64|1.28|52|55,1732372437|27|64|1.28|52|54,1732374238|27|62|1.36|54|52,1732376038|27|64|1.28|52|51,1732377838|27|60|1.43|51|49,1732379638|28|62|1.44|49|48,1732381438|27|60|1.43|48|46,1732383238|27|60|1.43|48|45,1732385038|28|62|1.44|46|44,1732386838|28|61|1.47|47|43,1732388638|28|60|1.51|45|43,1732390439|28|61|1.47|47|41,1732392239|28|61|1.47|47|40,1732394039|28|61|1.47|44|39,1732395839|29|60|1.60|45|38,1732397639|29|59|1.64|45|36,1732399439|29|60|1.60|43|36,1732401240|29|62|1.52|43|34,1732403040|29|61|1.56|42|34,1732404840|29|61|1.56|41|33,1732406640|29|61|1.56|43|33,1732408440|29|62|1.52|42|32,1732410240|29|62|1.52|42|31,1732412040|30|61|1.66|42|30,1732413840|30|61|1.66|41|29,1732415640|30|61|1.66|41|29".split(','),val1;
 
 		for(i=0;i<val.length;i++){
 			val1=val[i].split('|');
@@ -241,11 +272,19 @@ setInterval(() => {
 			if(e.target&&e.target.matches('td.show-line')){
 				let dataset=chart.data.datasets[e.target.getAttribute('data-dataset-index')];
 				dataset.hidden=!dataset.hidden;
-				
+
 				chart.update();
-				
+
 				e.target.classList.toggle('hide-line',dataset.hidden);
 			}
+		});
+
+		document.getElementById('toggle-text').addEventListener('click',function(){
+			showTextOnLines=!showTextOnLines;
+
+			this.textContent=showTextOnLines?'Ocultar textos':'Mostrar textos';
+
+			chart.update();
 		});
 	</script>
 </html>

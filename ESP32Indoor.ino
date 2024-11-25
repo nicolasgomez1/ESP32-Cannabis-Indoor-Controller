@@ -1,13 +1,15 @@
 #include <WiFi.h>
 #include <time.h>
 #include <ESPmDNS.h>
-#include <LittleFS.h>
 #include <SimpleDHT.h>
 #include <Preferences.h>
 #include <ESPAsyncWebServer.h>
+#include <SPI.h>  // Required for SD ↓
+#include <SD.h> //#include <LittleFS.h>
 
 // ================================================== Definitions ================================================== //
-//#define ENABLE_LOGGER
+//#define ENABLE_SERIAL_LOGGER
+#define ENABLE_SD_LOGGING
 
 #define MAX_WIFI_TRYS 5
 
@@ -27,8 +29,9 @@
 #define S8050_RESOLUTION 12
 #define S8050_MAX_VALUE 4095  // cuz is 12 bits of resolution
 
-#define DHT_VCC_PIN 22  // https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
-#define DHT_DATA_PIN 16
+#define DHT_DATA_PIN 16 // https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
+
+#define SD_CS_PIN 5
 
 #define RELAY_0_PIN 14  // Lights
 #define RELAY_1_PIN 27  // Internal Fan
@@ -105,6 +108,7 @@ uint8_t uGraphDataCount = 0;
 const char* strArrayGraphData[48] = {};
 unsigned long lLastStoreElapsedTime = 0;
 bool bResetNeeded = false;
+bool bSDInit = false;
 
 // =============== Parameters from Indoor =============== //
 uint8_t nEnvironmentTemperature = 0;
@@ -117,37 +121,62 @@ AsyncWebServer AsyncWebServerHandle(WEBSERVER_PORT);
 
 SimpleDHT11 DHT11(DHT_DATA_PIN);
 
-Preferences Settings;
+Preferences pSettings;
 
 // ================================================== Helper Functions ================================================== //
+void WriteToSD(String strFileName, String strText) {
+  if (bSDInit) {
+    time_t now = time(nullptr);
+
+    if (strFileName == "metric_")
+      now -= 86400; // Subtract one Day cuz write data to file only happends after mid night(+)
+
+    struct tm *timeInfo = localtime(&now);
+
+    strFileName += String(timeInfo->tm_year + 1900) + "_" + String(timeInfo->tm_mon + 1) + "_" + String(timeInfo->tm_mday) + ".log";
+
+    File pFile = SD.open(strFileName.c_str(), FILE_APPEND);
+    if (pFile) {
+      pFile.println(strText.c_str());
+      pFile.close();
+    }
+  }
+}
+
 void LOGGER(const char *format, ERR_TYPE nType, ...) {
-#ifdef ENABLE_LOGGER
+#if defined(ENABLE_SD_LOGGING) || defined(ENABLE_SERIAL_LOGGER)
   va_list args;
 
+  char prefix[16];
   char cBuffer[1024];
-
-  va_start(args, nType);
-
-  vsnprintf(cBuffer, sizeof(cBuffer), format, args);
-
-  va_end(args);
 
   switch (nType) {
     case INFO:
-      Serial.print("[INFO] ");
+      snprintf(prefix, sizeof(prefix), "[INFO] ");
       break;
     case WARN:
-      Serial.print("[WARNING] ");
+      snprintf(prefix, sizeof(prefix), "[WARNING] ");
       break;
     case ERROR:
-      Serial.print("[ERROR] ");
+      snprintf(prefix, sizeof(prefix), "[ERROR] ");
       break;
     default:
-      Serial.print("[UNKNOWN] ");
+      snprintf(prefix, sizeof(prefix), "[UNKNOWN] ");
       break;
   }
 
+  va_start(args, nType);
+
+  snprintf(cBuffer, sizeof(cBuffer), "%s", prefix);
+  vsnprintf(cBuffer + strlen(prefix), sizeof(cBuffer) - strlen(prefix), format, args);  //vsnprintf(cBuffer, sizeof(cBuffer), format, args);
+
+  va_end(args);
+
+#if defined(ENABLE_SD_LOGGING)
+  WriteToSD("/logging_", String(cBuffer));
+#elif defined(ENABLE_SERIAL_LOGGER)
   Serial.println(cBuffer);
+#endif
 #else
   return;
 #endif
@@ -378,7 +407,7 @@ void Thread_WifiReconnect(void *parameter) {
 
 // ================================================== Main Functions ================================================== //
 void setup() {
-#ifdef ENABLE_LOGGER
+#ifdef ENABLE_SERIAL_LOGGER
   Serial.begin(9600);
   delay(3000);
 #endif
@@ -387,9 +416,6 @@ void setup() {
   lStartupTime = millis();
 
   LOGGER("Initializing PINS...", INFO);
-
-  pinMode(DHT_VCC_PIN, OUTPUT);
-  digitalWrite(DHT_VCC_PIN, HIGH);
 
   pinMode(RELAY_0_PIN, OUTPUT);
   digitalWrite(RELAY_0_PIN, HIGH);
@@ -411,45 +437,53 @@ void setup() {
   for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
     pinMode(uSoilsHumidityPins[i], INPUT);
 
-  LOGGER("Initializing Settings...", INFO);
-  if (!Settings.begin("Settings", false))
+  if (!pSettings.begin("Settings", false))
     LOGGER("Failed to initialize Settings.", ERROR);
+  
+  LOGGER("Settings System initialized.", INFO);
 
   LOGGER("Loading Settings...", INFO);
 
-  strSSID = Settings.getString("SSID", "TODO");
-  strSSIDPWD = Settings.getString("SSIDPWD", "TODO");
+  strSSID = pSettings.getString("SSID", "TODO");
+  strSSIDPWD = pSettings.getString("SSIDPWD", "TODO");
 
-  uStartLightTime = Settings.getUChar("StartLightTime", 6);
-  uStopLightTime = Settings.getUChar("StopLightTime", 24);
-  uLightBrightness = Settings.getUShort("LightBright", S8050_MAX_VALUE);  // 0 = 100% brightness cuz is NPN
+  uStartLightTime = pSettings.getUChar("StartLightTime", 6);
+  uStopLightTime = pSettings.getUChar("StopLightTime", 24);
+  uLightBrightness = pSettings.getUShort("LightBright", S8050_MAX_VALUE);  // 0 = 100% brightness cuz is NPN
 
-  uStartFanTemperature = Settings.getUChar("StartFanTemp", 27);
+  uStartFanTemperature = pSettings.getUChar("StartFanTemp", 27);
 
-  uStartVentilationTemperature = Settings.getUChar("StartVentTemp", 30);
-  uStartVentilationHumidity = Settings.getUChar("StartVentHumi", 65); // VEG: 60 ~ 70 BLOOM: 40 ~ 50
+  uStartVentilationTemperature = pSettings.getUChar("StartVentTemp", 30);
+  uStartVentilationHumidity = pSettings.getUChar("StartVentHumi", 65); // VEG: 60 ~ 70 BLOOM: 40 ~ 50
 
-  uWateringMode = Settings.getUChar("WateringMode", 0);
-  uWateringInterval = Settings.getULong64("WateringInt", 0);
-  uStartWateringHumidity = Settings.getUChar("StartWtrHum", 0);
-  uWateringTime = Settings.getUShort("WateringTime", 60);
+  uWateringMode = pSettings.getUChar("WateringMode", 0);
+  uWateringInterval = pSettings.getULong64("WateringInt", 0);
+  uStartWateringHumidity = pSettings.getUChar("StartWtrHum", 0);
+  uWateringTime = pSettings.getUShort("WateringTime", 60);
 
-  uFansRestIntervalTime = Settings.getUInt("FanRestIntTime", 60);
-  uFansRestDuration = Settings.getUInt("FanRestDur", 5);
+  uFansRestIntervalTime = pSettings.getUInt("FanRestIntTime", 60);
+  uFansRestDuration = pSettings.getUInt("FanRestDur", 5);
 
-  uSoilReadsInterval = Settings.getUInt("SoilReadsInt", 60000);
+  uSoilReadsInterval = pSettings.getUInt("SoilReadsInt", 60000);
 
-  uTemperatureStopHysteresis = Settings.getUChar("TempHysteresis", 3);
-  uHumidityStopHysteresis = Settings.getUChar("HumHysteresis", 10);
+  uTemperatureStopHysteresis = pSettings.getUChar("TempHysteresis", 3);
+  uHumidityStopHysteresis = pSettings.getUChar("HumHysteresis", 10);
 
-  uDripPerMinute = Settings.getUShort("DripPerMinute", 25);
+  uDripPerMinute = pSettings.getUShort("DripPerMinute", 25);
 
   uEffectiveStartLights = (uStartLightTime == 24) ? 0 : uStartLightTime;  // Si la Hora de encendido definida es 24 convertirla a 0 (Medianoche)
   uEffectiveStopLights = (uStopLightTime == 0) ? 24 : uStopLightTime;     // Si la Hora de apagado definida es 24 convertirla a 0 (Medianoche)
 
-  LOGGER("Initializing File System...", INFO);
-  if (!LittleFS.begin())
-    LOGGER("Failed to initialize File System.", ERROR);
+  bSDInit = SD.begin(SD_CS_PIN);
+  if (!bSDInit)
+    LOGGER("Failed to initialize microSD File System.", ERROR);
+
+  LOGGER("microSD File System initialized.", INFO);
+
+  /*if (!LittleFS.begin())
+    LOGGER("Failed to initialize Little File System.", ERROR);
+
+  LOGGER("Little File System initialized.", INFO);*/
 
   LOGGER("Initializing WiFi...", INFO);
 
@@ -489,7 +523,7 @@ void setup() {
 
   LOGGER("Setting up WebServer Paths & Commands...", INFO);
 
-  AsyncWebServerHandle.serveStatic("/fan.webp", LittleFS, "/fan.webp").setCacheControl("max-age=86400");
+  AsyncWebServerHandle.serveStatic("/fan.webp", SD/*LittleFS*/, "/fan.webp").setCacheControl("max-age=86400");
 
   AsyncWebServerHandle.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     IPAddress clientIP = request->client()->getRemoteAddress();
@@ -524,7 +558,7 @@ void setup() {
             uStartLightTime = uNewValue;
             uEffectiveStartLights = (uStartLightTime == 24) ? 0 : uStartLightTime;  // Si la Hora de encendido definida es 24 convertirla a 0 (Medianoche)
 
-            Settings.putUChar("StartLightTime", uStartLightTime);
+            pSettings.putUChar("StartLightTime", uStartLightTime);
 
             strReturn += "\r\nSe actualizó la Hora de Encendido de Luz.";
           }
@@ -538,7 +572,7 @@ void setup() {
             uStopLightTime = uNewValue;
             uEffectiveStopLights = (uStopLightTime == 0) ? 24 : uStopLightTime;  // Si la Hora de apagado definida es 24 convertirla a 0 (Medianoche)
 
-            Settings.putUChar("StopLightTime", uStopLightTime);
+            pSettings.putUChar("StopLightTime", uStopLightTime);
 
             strReturn += "\r\nSe actualizó la Hora de Apagado de Luz.";
           }
@@ -553,7 +587,7 @@ void setup() {
 
             ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - uLightBrightness);
 
-            Settings.putUShort("LightBright", uLightBrightness);
+            pSettings.putUShort("LightBright", uLightBrightness);
 
             strReturn += "\r\nSe actualizó la Intensidad de Luz.";
           }
@@ -566,7 +600,7 @@ void setup() {
           if (uNewValue != uStartFanTemperature) {
             uStartFanTemperature = uNewValue;
 
-            Settings.putUChar("StartFanTemp", uStartFanTemperature);
+            pSettings.putUChar("StartFanTemp", uStartFanTemperature);
 
             strReturn += "\r\nSe actualizó la Temperatura de Encendido del Ventilador Interno.";
           }
@@ -579,7 +613,7 @@ void setup() {
           if (uNewValue != uStartVentilationTemperature) {
             uStartVentilationTemperature = uNewValue;
 
-            Settings.putUChar("StartVentTemp", uStartVentilationTemperature);
+            pSettings.putUChar("StartVentTemp", uStartVentilationTemperature);
 
             strReturn += "\r\nSe actualizó la Temperatura de Encendido de Recirculación.";
           }
@@ -592,7 +626,7 @@ void setup() {
           if (uNewValue != uStartVentilationHumidity) {
             uStartVentilationHumidity = uNewValue;
 
-            Settings.putUChar("StartVentHumi", uStartVentilationHumidity);
+            pSettings.putUChar("StartVentHumi", uStartVentilationHumidity);
 
             strReturn += "\r\nSe actualizó la Humedad de Encendido de la Recirculación.";
           }
@@ -605,7 +639,7 @@ void setup() {
           if (uNewValue != uWateringMode) {
             uWateringMode = uNewValue;
 
-            Settings.putUChar("WateringMode", uWateringMode);
+            pSettings.putUChar("WateringMode", uWateringMode);
 
             strReturn += "\r\nSe actualizó el Método de Riego.";
           }
@@ -619,7 +653,7 @@ void setup() {
             if (uNewValue != uStartWateringHumidity) {
               uStartWateringHumidity = uNewValue;
 
-              Settings.putUChar("StartWtrHum", uStartWateringHumidity);
+              pSettings.putUChar("StartWtrHum", uStartWateringHumidity);
 
               strReturn += "\r\nSe actualizó el Nivel de Humedad mínimo para Regar.";
             }
@@ -629,7 +663,7 @@ void setup() {
             if (uNewValue != uWateringInterval) {
               uWateringInterval = uNewValue;
 
-              Settings.putUChar("WateringInt", uWateringInterval);
+              pSettings.putUChar("WateringInt", uWateringInterval);
 
               strReturn += "\r\nSe actualizó el Intervalo de Riego.";
             }
@@ -643,7 +677,7 @@ void setup() {
           if (uNewValue != uWateringTime) {
             uWateringTime = uNewValue;
 
-            Settings.putUShort("WateringTime", uWateringTime);
+            pSettings.putUShort("WateringTime", uWateringTime);
 
             strReturn += "\r\nSe actualizó el Duración de Riego.";
           }
@@ -656,7 +690,7 @@ void setup() {
           if (uNewValue != uFansRestIntervalTime) {
             uFansRestIntervalTime = uNewValue;
 
-            Settings.putUInt("FanRestIntTime", uFansRestIntervalTime);
+            pSettings.putUInt("FanRestIntTime", uFansRestIntervalTime);
 
             strReturn += "\r\nSe actualizó el Intervalo de Reposo de Ventiladores.";
           }
@@ -669,7 +703,7 @@ void setup() {
           if (uNewValue != uFansRestDuration) {
             uFansRestDuration = uNewValue;
 
-            Settings.putUInt("FanRestDur", uFansRestDuration);
+            pSettings.putUInt("FanRestDur", uFansRestDuration);
 
             strReturn += "\r\nSe actualizó la Duración de Reposo de Ventiladores.";
           }
@@ -682,7 +716,7 @@ void setup() {
           if (uNewValue != uSoilReadsInterval) {
             uSoilReadsInterval = uNewValue;
 
-            Settings.putUInt("SoilReadsInt", uSoilReadsInterval);
+            pSettings.putUInt("SoilReadsInt", uSoilReadsInterval);
 
             strReturn += "\r\nSe actualizó el Intervalo de Lectura de Humedad del Suelo.";
           }
@@ -695,7 +729,7 @@ void setup() {
           if (uNewValue != uTemperatureStopHysteresis) {
             uTemperatureStopHysteresis = uNewValue;
 
-            Settings.putUChar("TempHysteresis", uTemperatureStopHysteresis);
+            pSettings.putUChar("TempHysteresis", uTemperatureStopHysteresis);
 
             strReturn += "\r\nSe actualizó la Histéresis de Apagado por Temperatura.";
           }
@@ -708,7 +742,7 @@ void setup() {
           if (uNewValue != uHumidityStopHysteresis) {
             uHumidityStopHysteresis = uNewValue;
 
-            Settings.putUChar("HumHysteresis", uHumidityStopHysteresis);
+            pSettings.putUChar("HumHysteresis", uHumidityStopHysteresis);
 
             strReturn += "\r\nSe actualizó la Histéresis de Apagado por Humedad.";
           }
@@ -721,7 +755,7 @@ void setup() {
           if (uNewValue != uDripPerMinute) {
             uDripPerMinute = uNewValue;
 
-            Settings.putUShort("DripPerMinute", uDripPerMinute);
+            pSettings.putUShort("DripPerMinute", uDripPerMinute);
 
             strReturn += "\r\nSe actualizó el valor de Tasa de Goteo por Minuto.";
           }
@@ -754,13 +788,13 @@ void setup() {
           if (request->hasArg("ssid") && request->arg("ssid") != strSSID) {
             strSSID = request->arg("ssid");
 
-            Settings.putString("SSID", strSSID);
+            pSettings.putString("SSID", strSSID);
           }
 
           if (request->hasArg("ssidpwd") && request->arg("ssidpwd") != strSSIDPWD) {
             strSSIDPWD = request->arg("ssidpwd");
 
-            Settings.putString("SSIDPWD", strSSIDPWD);
+            pSettings.putString("SSIDPWD", strSSIDPWD);
           }
 
           if (eTaskGetState(taskhandleWiFiReconnect) == eRunning)
@@ -827,7 +861,7 @@ void setup() {
         */
       }
     } else {  // Return panel content
-      AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/index.html", "text/html", false, HTMLProcessor);
+      AsyncWebServerResponse *response = request->beginResponse(SD/*LittleFS*/, "/index.html", "text/html", false, HTMLProcessor);
       request->send(response);
     }
   });
@@ -838,7 +872,7 @@ void setup() {
 }
 
 void loop() {
-/*#ifdef ENABLE_LOGGER
+/*#ifdef ENABLE_SERIAL_LOGGER
   LOGGER("Free HEAP: %d", INFO, ESP.getFreeHeap());
 #endif*/
   unsigned long lCurrentMillis = millis();
@@ -972,12 +1006,14 @@ void loop() {
       if (bResetNeeded == false && timeInfo->tm_hour != 0)
         bResetNeeded = true;
 
-      if (uGraphDataCount == 48 || (timeInfo->tm_hour == 0 && bResetNeeded)) {
+      if (uGraphDataCount == 48 || (timeInfo->tm_hour == 0 && bResetNeeded)) {  // Send array Data to file and Clear array.
         uGraphDataCount = 0;
         bResetNeeded = false;
 
         for (uint8_t i = 0; i < sizeof(strArrayGraphData) / sizeof(strArrayGraphData[0]); i++) {
           if (strArrayGraphData[i] != nullptr) {
+            WriteToSD("/metric_", String(strArrayGraphData[i]));
+
             free((void*)strArrayGraphData[i]);
             strArrayGraphData[i] = nullptr;
           }
