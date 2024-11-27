@@ -264,8 +264,12 @@
 
 						document.getElementById('currenttime').innerText=String(val.getHours()).padStart(2,'0')+':'+String(val.getMinutes()).padStart(2,'0')+':'+String(val.getSeconds()).padStart(2,'0');
 
+						document.getElementById('lightbright').value=parseInt(data[next+2]);
+
+						CalcBright();
+
 						val2='';
-						val3=parseInt(data[next+2]);
+						val3=parseInt(data[next+3]);
 
 						if(val3>0){
 							val2='En Reposo...<br>Tiempo Restante: ';
@@ -285,9 +289,9 @@
 						document.getElementById('reststate').innerHTML=val2;
 
 						for(i=1;i<3;i++)
-							document.querySelector('.f'+i).style.animationPlayState=data[next+2+i]=='0'?'running':'paused';
+							document.querySelector('.f'+i).style.animationPlayState=data[next+3+i]=='0'?'running':'paused';
 
-						val=data[next+5].split(',');
+						val=data[next+6].split(',');
 
 						for(i=0;i<val.length;i++){
 							val2=val[i].split('|');
@@ -324,7 +328,7 @@
 									avg=avg.toFixed(0)+symbol;
 								}
 
-								row.innerHTML=`<td style='color:${dataset.borderColor}' class='show-line ${val2[i]?'hide-line':''}' data-dataset-index=${i}>${dataset.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
+								row.innerHTML=`<td style=color:${dataset.borderColor} class='show-line ${val2[i]?'hide-line':''}' data-dataset-index=${i}>${dataset.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
 							}else{
 								row.innerHTML='<td colspan=4>No hay información.</td>';
 							}
@@ -336,7 +340,7 @@
 			}
 		</script>
 	</head>
-	<body bgcolor=#303841 style='font-family:Arial;color:#D8DEE9'>
+	<body bgcolor=#303841 style=font-family:Arial;color:#D8DEE9>
 		<center>
 			<table border=0>
 				<th align=left>Parametros</th>
@@ -432,11 +436,11 @@
 				</tr>
 				<tr>
 					<td>SSID WiFi:</td>
-					<td><input id=ssid style='width:99'value='%SSID%'></td>
+					<td><input id=ssid style=width:99 value='%SSID%'></td>
 				</tr>
 				<tr>
 					<td>Contraseña WiFi:</td>
-					<td><input id=ssidpwd style='width:99'value='%SSIDPWD%'></td>
+					<td><input id=ssidpwd style=width:99 value='%SSIDPWD%'></td>
 				</tr>
 			</table>
 			<canvas id=chart></canvas>
@@ -459,7 +463,7 @@
 		let showTextOnLines=false;
 
 		let textOnLinePlugin={id:'textOnLine',
-			afterDatasetsDraw(chart,args,options){
+			afterDatasetsDraw(chart){
 				if(!showTextOnLines)
 					return;
 
@@ -472,15 +476,13 @@
 					let points=chart.getDatasetMeta(i).data;
 
 					points.forEach((point,index)=>{
-						if(index<points.length-1){
-							ctx.save();
+						ctx.save();
 
-							ctx.fillStyle=dataset.borderColor;
+						ctx.fillStyle=dataset.borderColor;
 
-							ctx.fillText(dataset.data[index].y,point.x-7,point.y-10);
+						ctx.fillText(dataset.data[index].y,point.x-7,point.y-10);
 
-							ctx.restore();
-						}
+						ctx.restore();
 					});
 				});
 			}

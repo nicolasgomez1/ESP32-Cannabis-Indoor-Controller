@@ -152,9 +152,11 @@
 		<script src=https://cdn.jsdelivr.net/npm/chart.js></script>
 	</head>
 	<body bgcolor=#303841 style='font-family:Arial;color:#D8DEE9'>
-		<canvas id=chart></canvas>
-		<button id=toggle-text>Mostrar textos</button>
-		<table id=legend><thead><tr><th>Indicador</th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><td colspan=4>No hay información.</td><tbody></tbody></table>
+		<center>
+			<canvas id=chart></canvas>
+			<button id=toggle-text>Mostrar textos</button>
+			<table id=legend><thead><tr><th>Indicador</th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><td colspan=4>No hay información.</td><tbody></tbody></table>
+		</center>
 	</body>
 	<script>
 		let showTextOnLines=false;
@@ -163,7 +165,7 @@
 		Chart.defaults.scales={linear:{offset:true,display:false}};
 
 		let textOnLinePlugin={id:'textOnLine',
-			afterDatasetsDraw(chart,args,options){
+			afterDatasetsDraw(chart){
 				if(!showTextOnLines)
 					return;
 
@@ -176,15 +178,13 @@
 					let points=chart.getDatasetMeta(i).data;
 
 					points.forEach((point,index)=>{
-						if(index<points.length-1){
-							ctx.save();
+						ctx.save();
 
-							ctx.fillStyle=dataset.borderColor;
+						ctx.fillStyle=dataset.borderColor;
 
-							ctx.fillText(dataset.data[index].y,point.x-7,point.y-10);
+						ctx.fillText(dataset.data[index].y,point.x-7,point.y-10);
 
-							ctx.restore();
-						}
+						ctx.restore();
 					});
 				});
 			}

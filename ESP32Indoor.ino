@@ -1,15 +1,15 @@
+#include <SD.h>
+#include <SPI.h>
 #include <WiFi.h>
 #include <time.h>
 #include <ESPmDNS.h>
 #include <SimpleDHT.h>
 #include <Preferences.h>
 #include <ESPAsyncWebServer.h>
-#include <SPI.h>  // Required for SD ↓
-#include <SD.h> //#include <LittleFS.h>
 
 // ================================================== Definitions ================================================== //
 //#define ENABLE_SERIAL_LOGGER
-#define ENABLE_SD_LOGGING
+//#define ENABLE_SD_LOGGING
 
 #define MAX_WIFI_TRYS 5
 
@@ -125,6 +125,8 @@ Preferences pSettings;
 
 // ================================================== Helper Functions ================================================== //
 void WriteToSD(String strFileName, String strText) {
+  ConnectSD();
+
   if (bSDInit) {
     time_t now = time(nullptr);
 
@@ -147,7 +149,7 @@ void LOGGER(const char *format, ERR_TYPE nType, ...) {
 #if defined(ENABLE_SD_LOGGING) || defined(ENABLE_SERIAL_LOGGER)
   va_list args;
 
-  char prefix[16];
+  char prefix[11];
   char cBuffer[1024];
 
   switch (nType) {
@@ -168,7 +170,7 @@ void LOGGER(const char *format, ERR_TYPE nType, ...) {
   va_start(args, nType);
 
   snprintf(cBuffer, sizeof(cBuffer), "%s", prefix);
-  vsnprintf(cBuffer + strlen(prefix), sizeof(cBuffer) - strlen(prefix), format, args);  //vsnprintf(cBuffer, sizeof(cBuffer), format, args);
+  vsnprintf(cBuffer + strlen(prefix), sizeof(cBuffer) - strlen(prefix), format, args);
 
   va_end(args);
 
@@ -266,7 +268,7 @@ String HTMLProcessor(const String &var) {
       strReturn += "<tr><td>Humedad de Maceta " + String(i) + ":</td><td><p id=soil" + String(i) + ">" + String(uSoilsHumidity[i]) + "&#37;</p></td>";
 
       if (i == 0)
-        strReturn += "<td rowspan=" + String(TOTAL_SOIL_HUMIDITY_SENSORS) + " id=wateringstate style='color:#72D6EB'>" + (uWateringElapsedTime > 0 ? "Regando...<br>Tiempo Transcurrido: " + String(uWateringElapsedTime) + " segundos" : "") + "</td>";
+        strReturn += "<td rowspan=" + String(TOTAL_SOIL_HUMIDITY_SENSORS) + " id=wateringstate style=color:#72D6EB>" + (uWateringElapsedTime > 0 ? "Regando...<br>Tiempo Transcurrido: " + String(uWateringElapsedTime) + " segundos" : "") + "</td>";
 
       strReturn += "</tr>";
     }
@@ -356,6 +358,15 @@ String HTMLProcessor(const String &var) {
   return String();
 }
 
+void ConnectSD() {
+  bSDInit = SD.begin(SD_CS_PIN);
+
+  if (!bSDInit)
+    LOGGER("Failed to initialize microSD File System.", ERROR);
+
+  LOGGER("microSD File System initialized.", INFO);
+}
+
 void GetDateTime() {
   LOGGER("Getting Datetime...", INFO);
 
@@ -439,7 +450,7 @@ void setup() {
 
   if (!pSettings.begin("Settings", false))
     LOGGER("Failed to initialize Settings.", ERROR);
-  
+
   LOGGER("Settings System initialized.", INFO);
 
   LOGGER("Loading Settings...", INFO);
@@ -474,16 +485,7 @@ void setup() {
   uEffectiveStartLights = (uStartLightTime == 24) ? 0 : uStartLightTime;  // Si la Hora de encendido definida es 24 convertirla a 0 (Medianoche)
   uEffectiveStopLights = (uStopLightTime == 0) ? 24 : uStopLightTime;     // Si la Hora de apagado definida es 24 convertirla a 0 (Medianoche)
 
-  bSDInit = SD.begin(SD_CS_PIN);
-  if (!bSDInit)
-    LOGGER("Failed to initialize microSD File System.", ERROR);
-
-  LOGGER("microSD File System initialized.", INFO);
-
-  /*if (!LittleFS.begin())
-    LOGGER("Failed to initialize Little File System.", ERROR);
-
-  LOGGER("Little File System initialized.", INFO);*/
+  ConnectSD();
 
   LOGGER("Initializing WiFi...", INFO);
 
@@ -523,7 +525,7 @@ void setup() {
 
   LOGGER("Setting up WebServer Paths & Commands...", INFO);
 
-  AsyncWebServerHandle.serveStatic("/fan.webp", SD/*LittleFS*/, "/fan.webp").setCacheControl("max-age=86400");
+  AsyncWebServerHandle.serveStatic("/fan.webp", SD, "/fan.webp").setCacheControl("max-age=86400");
 
   AsyncWebServerHandle.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     IPAddress clientIP = request->client()->getRemoteAddress();
@@ -819,6 +821,9 @@ void setup() {
 
         strResponse += ":" + String(now);
 
+        // ================================================== Light Brightness slider position Section ================================================== //
+        strResponse += ":" + String(uLightBrightness < 401 ? 0 : uLightBrightness);
+
         // ================================================== Fans Rest State Section ================================================== //
         strResponse += ":";
 
@@ -826,8 +831,10 @@ void setup() {
           strResponse += String((uFansRestDuration * 60000) - (millis() - lFansRestElapsedTime));
         else
           strResponse += "0";
+
         // Internal Fan
         strResponse += ":" + String(digitalRead(RELAY_1_PIN));  // HIGHT=1 A.K.A paused
+        
         // Ventilation
         strResponse += ":" + String(digitalRead(RELAY_2_PIN));  // HIGHT=1 A.K.A paused
 
@@ -850,18 +857,27 @@ void setup() {
           data[1] Environment Humidity
           data[2] VPD
           data[3] Number of Soil Sensors
-          data[4+data[3]] Soil sensors values
+          data[4+i] Soil sensors values
           data[next] Current Watering elapses Time (If is 0, is not watering)
           data[next+1] Current Time (unixtimestamp)
-          data[next+2] Fans Rest Time remaining Indicator
-          data[next+3] Interval Fan State
-          data[next+4] Ventilation Fans State
-          data[next+5] Graph Data
+          data[next+2] Light Brightness slider position
+          data[next+3] Fans Rest Time remaining Indicator
+          data[next+4] Interval Fan State
+          data[next+5] Ventilation Fans State
+          data[next+6] Graph Data
             Unix Timestamp|Environment Temperature|Environment Humidity|VPD|Soil Moistures,etc
         */
       }
     } else {  // Return panel content
-      AsyncWebServerResponse *response = request->beginResponse(SD/*LittleFS*/, "/index.html", "text/html", false, HTMLProcessor);
+      ConnectSD();
+
+      AsyncWebServerResponse *response;
+
+      if (bSDInit)
+        response = request->beginResponse(SD, "/index.html", "text/html", false, HTMLProcessor);
+      else
+        response = request->beginResponse(500, "text/plain", "No hay una microSD conectada.");
+
       request->send(response);
     }
   });
