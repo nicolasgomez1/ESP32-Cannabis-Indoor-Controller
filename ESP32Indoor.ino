@@ -1,5 +1,4 @@
-#include <SD.h>
-#include <SPI.h>
+#include <SD.h> // https://docs.arduino.cc/libraries/sd/#SD%20class
 #include <WiFi.h>
 #include <time.h>
 #include <ESPmDNS.h>
@@ -128,14 +127,12 @@ void WriteToSD(String strFileName, String strText) {
   ConnectSD();
 
   if (bSDInit) {
-    time_t now = time(nullptr);
+    if (strFileName == "logging_") {
+      time_t now = time(nullptr);
+      struct tm *timeInfo = localtime(&now);
 
-    if (strFileName == "metric_")
-      now -= 86400; // Subtract one Day cuz write data to file only happends after mid night(+)
-
-    struct tm *timeInfo = localtime(&now);
-
-    strFileName += String(timeInfo->tm_year + 1900) + "_" + String(timeInfo->tm_mon + 1) + "_" + String(timeInfo->tm_mday) + ".log";
+      strFileName += String(timeInfo->tm_year + 1900) + "_" + String(timeInfo->tm_mon + 1) + "_" + String(timeInfo->tm_mday) + ".log";
+    }
 
     File pFile = SD.open(strFileName.c_str(), FILE_APPEND);
     if (pFile) {
@@ -149,28 +146,28 @@ void LOGGER(const char *format, ERR_TYPE nType, ...) {
 #if defined(ENABLE_SD_LOGGING) || defined(ENABLE_SERIAL_LOGGER)
   va_list args;
 
-  char prefix[11];
+  char cPrefix[11];
   char cBuffer[1024];
 
   switch (nType) {
     case INFO:
-      snprintf(prefix, sizeof(prefix), "[INFO] ");
+      snprintf(cPrefix, sizeof(cPrefix), "[INFO] ");
       break;
     case WARN:
-      snprintf(prefix, sizeof(prefix), "[WARNING] ");
+      snprintf(cPrefix, sizeof(cPrefix), "[WARNING] ");
       break;
     case ERROR:
-      snprintf(prefix, sizeof(prefix), "[ERROR] ");
+      snprintf(cPrefix, sizeof(cPrefix), "[ERROR] ");
       break;
     default:
-      snprintf(prefix, sizeof(prefix), "[UNKNOWN] ");
+      snprintf(cPrefix, sizeof(cPrefix), "[UNKNOWN] ");
       break;
   }
 
   va_start(args, nType);
 
-  snprintf(cBuffer, sizeof(cBuffer), "%s", prefix);
-  vsnprintf(cBuffer + strlen(prefix), sizeof(cBuffer) - strlen(prefix), format, args);
+  snprintf(cBuffer, sizeof(cBuffer), "%s", cPrefix);
+  vsnprintf(cBuffer + strlen(cPrefix), sizeof(cBuffer) - strlen(cPrefix), format, args);
 
   va_end(args);
 
@@ -359,10 +356,12 @@ String HTMLProcessor(const String &var) {
 }
 
 void ConnectSD() {
+  SD.end();
+
   bSDInit = SD.begin(SD_CS_PIN);
 
   if (!bSDInit)
-    LOGGER("Failed to initialize microSD File System.", ERROR);
+    LOGGER("Failed to initialize SD Card File System.", ERROR);
 
   LOGGER("microSD File System initialized.", INFO);
 }
@@ -486,6 +485,51 @@ void setup() {
   uEffectiveStopLights = (uStopLightTime == 0) ? 24 : uStopLightTime;     // Si la Hora de apagado definida es 24 convertirla a 0 (Medianoche)
 
   ConnectSD();
+
+  if (bSDInit) {
+    // TODO: Cargar los datos de la grafica desde la ultima linea?
+
+    if (SD.exists("/metrics.log")) {
+      File pFile = SD.open("/metrics.log", FILE_READ);
+      if (pFile) {
+        size_t sizeFile = pFile.size();
+        String strCurrentLine = "";
+        uint8_t uLineCount = 0;
+        size_t sizeChunk = 1535;
+        size_t sizeReadStartPos = (sizeFile > sizeChunk) ? sizeFile - sizeChunk : 0;
+
+        while (sizeReadStartPos > 0 && uLineCount < 5) {
+          pFile.seek(sizeReadStartPos);
+
+          uint8_t uBuffer[sizeChunk]; // uint8_t instead of char cuz is unsigned... ¿no >.<?
+
+          pFile.read(uBuffer, sizeChunk);
+
+          for (int i = sizeChunk - 1; i >= 0; i--) {
+              char c = uBuffer[i];
+
+              strCurrentLine = c + strCurrentLine;
+
+              if (c == '\n' || (sizeReadStartPos == 0 && i == 0)) {
+                  if (!strCurrentLine.isEmpty()) {
+                      strArrayGraphData[uGraphDataCount] = strdup(strCurrentLine.c_str());
+                      
+                      uGraphDataCount++;
+                      strCurrentLine = "";
+                      uLineCount++;
+                  }
+              }
+          }
+          
+          sizeReadStartPos -= sizeChunk;
+          if (sizeReadStartPos == 0)
+            sizeReadStartPos = 0;
+        }
+
+        pFile.close();
+      }
+    }
+  }
 
   LOGGER("Initializing WiFi...", INFO);
 
@@ -802,7 +846,7 @@ void setup() {
           if (eTaskGetState(taskhandleWiFiReconnect) == eRunning)
             vTaskSuspend(taskhandleWiFiReconnect);
         }
-      } else if (request->arg("action") == "sync") {
+      } else if (request->arg("action") == "sync") {  // Request for data to refresh the panel
         // ================================================== Environment Section ================================================== //
         String strResponse = "REFRESH";
         strResponse += String(nEnvironmentTemperature) + ":" + String(nEnvironmentHumidity) + ":" + String(fEnvironmentVPD, 2);
@@ -834,7 +878,7 @@ void setup() {
 
         // Internal Fan
         strResponse += ":" + String(digitalRead(RELAY_1_PIN));  // HIGHT=1 A.K.A paused
-        
+
         // Ventilation
         strResponse += ":" + String(digitalRead(RELAY_2_PIN));  // HIGHT=1 A.K.A paused
 
@@ -876,7 +920,7 @@ void setup() {
       if (bSDInit)
         response = request->beginResponse(SD, "/index.html", "text/html", false, HTMLProcessor);
       else
-        response = request->beginResponse(500, "text/plain", "No hay una microSD conectada.");
+        response = request->beginResponse(500, "text/plain", "No hay una Tarjeta SD conectada.");
 
       request->send(response);
     }
@@ -1028,8 +1072,6 @@ void loop() {
 
         for (uint8_t i = 0; i < sizeof(strArrayGraphData) / sizeof(strArrayGraphData[0]); i++) {
           if (strArrayGraphData[i] != nullptr) {
-            WriteToSD("/metric_", String(strArrayGraphData[i]));
-
             free((void*)strArrayGraphData[i]);
             strArrayGraphData[i] = nullptr;
           }
@@ -1040,6 +1082,8 @@ void loop() {
 
       for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
        strValues += "|" + String(uSoilsHumidity[i]);
+
+      WriteToSD("/metrics", strValues);
 
       strArrayGraphData[uGraphDataCount] = strdup(strValues.c_str());
 

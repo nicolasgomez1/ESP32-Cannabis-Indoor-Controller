@@ -311,12 +311,12 @@
 						val.innerHTML='';
 
 						chart.data.datasets.forEach((dataset,i)=>{
-							let value=dataset.data.map(point=>point.y).filter(val=>!isNaN(val));
+							let val3=dataset.data.map(point=>point.y).filter(val=>!isNaN(val));
 							let row=document.createElement('tr');
 
-							if(value.length>0){
+							if(val3.length>0){
 								let symbol=dataset.symbol;
-								let min=Math.min(...value),max=Math.max(...value),avg=value.reduce((sum,val)=>sum+val,0)/value.length;
+								val3=Math.min(...val3),max=Math.max(...val3),avg=val3.reduce((sum,val)=>sum+val,0)/val3.length;
 
 								if(i==2){
 									min+=symbol+' ('+CalcVPD(min)[1]+')';
@@ -480,7 +480,12 @@
 
 						ctx.fillStyle=dataset.borderColor;
 
-						ctx.fillText(dataset.data[index].y,point.x-7,point.y-10);
+						let y=point.y-5;
+
+						if(y<=8)
+							y+=20
+
+						ctx.fillText(dataset.data[index].y,point.x-7,y);
 
 						ctx.restore();
 					});

@@ -182,7 +182,12 @@
 
 						ctx.fillStyle=dataset.borderColor;
 
-						ctx.fillText(dataset.data[index].y,point.x-7,point.y-10);
+						let y=point.y-5;
+
+						if(y<=8)
+							y+=20;
+
+						ctx.fillText(dataset.data[index].y,point.x-7,y);
 
 						ctx.restore();
 					});
