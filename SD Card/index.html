@@ -166,7 +166,7 @@
 				document.getElementById('lightbrightind').innerText=per>0?per+'%% (Aproximadamente: '+((per/100)*1008).toFixed(0)+'ppfd)':'Apagado';
 				
 				if(send)
-					SendAction('update','lightbright');
+					SendAction('update','lightbright',document.getElementById('lightbright').value);
 			}
 
 			function WateringMode(){
@@ -211,11 +211,9 @@
 
 				currentUrl.searchParams.set('action',action);
 
-				if(action=='ask'){
+				if(args[0]!=null){
 					currentUrl.searchParams.set(args[0],args[1]);
-				}else if(action=='update'&&args[0]!=null){
-					currentUrl.searchParams.set(args[0],document.getElementById(args[0]).value);
-				}else if(action=='update'&&args[0]==null){
+				}else if(args[0]==null){
 					let inputIds=['lightstart','lightstop','lightbright','intfansta','venttempstart','venthumstart','wathum','wateringmode','wateringtime','restinterval','restdur','soilreadinterval','temphys','humhys','dripperminute','ssid','ssidpwd'];
 
 					inputIds.forEach(id=>{
@@ -347,6 +345,7 @@
 				<tr>
 					<td>Hora Actual:</td>
 					<td id=currenttime>%CURRENTTIME%</td>
+					<td><button onclick=SendAction('update','settime',Math.floor(Date.now()/1000))>Sincronizar</button></td>
 				</tr>
 				<tr>
 					<td>Temperatura Ambiente:</td>

@@ -7,14 +7,14 @@
 #include <ESPAsyncWebServer.h>
 
 // ================================================== Definitions ================================================== //
-//#define ENABLE_SERIAL_LOGGER
+//#define ENABLE_SERIAL_LOGGER  // Use this when debugging
 //#define ENABLE_SD_LOGGING
 
 #define MAX_WIFI_TRYS 5
 
 #define DNS_ADDRESS "indoor"  // DNS_ADDRESS.local
 
-#define WEBSERVER_PORT 80 // Default IP for web server when are running Access Point mode is 192.168.0.4.1
+#define WEBSERVER_PORT 80 // Default IP for web server when are running Access Point mode is 192.168.4.1
 
 #define MAX_SOIL_READS 10  // Max 255, cuz is uint8_t
 #define MAX_ENVIRONMENT_READS 5
@@ -123,8 +123,8 @@ SimpleDHT11 DHT11(DHT_DATA_PIN);
 Preferences pSettings;
 
 // ================================================== Helper Functions ================================================== //
-void WriteToSD(String strFileName, String strText) {
-  ConnectSD();
+void WriteToSD(String strFileName, String strText, bool bAppend) {
+  ConnectSD(false);
 
   if (bSDInit) {
     if (strFileName == "logging_") {
@@ -134,7 +134,7 @@ void WriteToSD(String strFileName, String strText) {
       strFileName += String(timeInfo->tm_year + 1900) + "_" + String(timeInfo->tm_mon + 1) + "_" + String(timeInfo->tm_mday) + ".log";
     }
 
-    File pFile = SD.open(strFileName.c_str(), FILE_APPEND);
+    File pFile = SD.open(strFileName.c_str(), (bAppend ? FILE_APPEND : FILE_WRITE));
     if (pFile) {
       pFile.println(strText.c_str());
       pFile.close();
@@ -172,7 +172,7 @@ void LOGGER(const char *format, ERR_TYPE nType, ...) {
   va_end(args);
 
 #if defined(ENABLE_SD_LOGGING)
-  WriteToSD("/logging_", String(cBuffer));
+  WriteToSD("/logging_", String(cBuffer), true);
 #elif defined(ENABLE_SERIAL_LOGGER)
   Serial.println(cBuffer);
 #endif
@@ -355,15 +355,16 @@ String HTMLProcessor(const String &var) {
   return String();
 }
 
-void ConnectSD() {
+void ConnectSD(bool bShowLog) {
   SD.end();
 
   bSDInit = SD.begin(SD_CS_PIN);
 
   if (!bSDInit)
     LOGGER("Failed to initialize SD Card File System.", ERROR);
-
-  LOGGER("microSD File System initialized.", INFO);
+  
+  if (bShowLog)
+    LOGGER("microSD File System initialized.", INFO);
 }
 
 void GetDateTime() {
@@ -373,10 +374,23 @@ void GetDateTime() {
 
   time_t now = time(nullptr);
 
-  while (now < 8 * 3600 * 2) {
-    delay(1000);
+  if (now == 0 && bSDInit) {
+    if (SD.exists("/time")) {
+      File pFile = SD.open("/time", FILE_READ);
+      if (pFile) {
+        LOGGER("Getting Datetime from SD Card...", INFO);
+        
+        struct timeval tv;
+        tv.tv_sec = pFile.parseInt();
+        tv.tv_usec = 0;
 
-    now = time(nullptr);
+        settimeofday(&tv, nullptr);
+
+        now = tv.tv_sec;
+
+        pFile.close();
+      }
+    }
   }
 
   if (struct tm *timeInfo = localtime(&now))
@@ -392,7 +406,9 @@ void Thread_WifiReconnect(void *parameter) {
 
   vTaskDelay(100 / portTICK_PERIOD_MS);  // Delay to stabilize AP
 
-  WiFi.softAP("ESP32_Indoor");
+  WiFi.softAP("ESP32_Indoor");  // Start Access Point, while try to connect to wifi
+
+  GetDateTime();
 
   vTaskDelay(500 / portTICK_PERIOD_MS);  // Delay to stabilize AP
 
@@ -484,11 +500,9 @@ void setup() {
   uEffectiveStartLights = (uStartLightTime == 24) ? 0 : uStartLightTime;  // Si la Hora de encendido definida es 24 convertirla a 0 (Medianoche)
   uEffectiveStopLights = (uStopLightTime == 0) ? 24 : uStopLightTime;     // Si la Hora de apagado definida es 24 convertirla a 0 (Medianoche)
 
-  ConnectSD();
+  ConnectSD(true);
 
-  if (bSDInit) {
-    // TODO: Cargar los datos de la grafica desde la ultima linea?
-
+  /*if (bSDInit) {
     if (SD.exists("/metrics.log")) {
       File pFile = SD.open("/metrics.log", FILE_READ);
       if (pFile) {
@@ -512,6 +526,9 @@ void setup() {
 
               if (c == '\n' || (sizeReadStartPos == 0 && i == 0)) {
                   if (!strCurrentLine.isEmpty()) {
+                      // TODO: Acá debería verificar si el primer valor antes del primer |, es un unixtimestamp y si corresponde con la fecha actual
+                        // UPDATE: En realidad tengo que obtener el ultimo unixtimestamp, y parar cuando ya no concuerde
+                          // UPDATE 2: bueno, en realidad eso no me asegura que sean datos de la fecha, puede cargar toda la info de la fecha anterior.
                       strArrayGraphData[uGraphDataCount] = strdup(strCurrentLine.c_str());
                       
                       uGraphDataCount++;
@@ -529,7 +546,7 @@ void setup() {
         pFile.close();
       }
     }
-  }
+  }*/
 
   LOGGER("Initializing WiFi...", INFO);
 
@@ -543,13 +560,12 @@ void setup() {
     delay(1000);  // Wait 1 second before try again
   }
 
-  if (WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED)
     LOGGER("Connected to WiFi SSID: %s PASSWORD: %s. IP: %s.", INFO, strSSID, strSSIDPWD, WiFi.localIP().toString().c_str());
-
-    GetDateTime();
-  } else {  // Create an Access Point to reconfigure the SSID & PASSWORD
+  else // Create an Access Point to reconfigure the SSID & PASSWORD
     LOGGER("Max WiFi reconnect attempts reached.", ERROR);
-  }
+
+  GetDateTime();
 
   LOGGER("Initializing WiFi reconnect task thread...", INFO);
   xTaskCreatePinnedToCore(Thread_WifiReconnect, "WiFi Reconnect Task", 4096, NULL, 1, &taskhandleWiFiReconnect, 0);
@@ -827,8 +843,17 @@ void setup() {
           request->send(200, "text/plain", "MSG" + strReturn);
         }
 
+        // =============== Current DateTime =============== //
+        if (request->hasArg("settime")) {
+          struct timeval tv;
+          tv.tv_sec = request->arg("settime").toInt();
+          tv.tv_usec = 0;
+
+          settimeofday(&tv, nullptr);
+        }
+
         if (bWiFiChanges) {
-          WiFi.disconnect();
+          WiFi.disconnect(true);
           WiFi.softAPdisconnect(true);
 
           if (request->hasArg("ssid") && request->arg("ssid") != strSSID) {
@@ -913,7 +938,7 @@ void setup() {
         */
       }
     } else {  // Return panel content
-      ConnectSD();
+      ConnectSD(false);
 
       AsyncWebServerResponse *response;
 
@@ -940,10 +965,15 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED && eTaskGetState(taskhandleWiFiReconnect) != eRunning)
     vTaskResume(taskhandleWiFiReconnect);
 
+  // TODO: Cada 1 minuto verificar si el datetime esta sincronizado con el datetimeonline. Para esto tengo que agregar otra funcion que se ejecuta en el otro hilo, ¿O eso causaría una interferencia?
+
   if (lCurrentMillis - lPreviousMillis >= 1000) {  // Each second
     lPreviousMillis = lCurrentMillis;
     time_t now = time(nullptr);
     struct tm *timeInfo = localtime(&now);
+
+    if (bSDInit)
+      WriteToSD("/time", String((uint32_t)now), false);
 
     GetEnvironmentParameters(nEnvironmentTemperature, nEnvironmentHumidity, fEnvironmentVPD);  // Get environment params to store in global vals
 
@@ -1083,7 +1113,7 @@ void loop() {
       for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++)
        strValues += "|" + String(uSoilsHumidity[i]);
 
-      WriteToSD("/metrics", strValues);
+      WriteToSD("/metrics.log", strValues, true);
 
       strArrayGraphData[uGraphDataCount] = strdup(strValues.c_str());
 
