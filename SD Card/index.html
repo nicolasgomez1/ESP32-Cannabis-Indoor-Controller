@@ -382,9 +382,6 @@
 					<td><input id=wateringtime value='%WATERINGTIME%'oninput=CalcDrip()>Segundos</td>
 					<td id=waterdripind></td>
 				</tr>
-				<tr>
-					<td colspan=3 align=center><div></div><button onclick=SendAction('update')>Actualizar Configuración</button></td>
-				</tr>
 				<th align=left colspan=3><div></div>Configuración Interna</th>
 				<tr>
 					<td>Intervalo de Reposo de Ventiladores:</td>
@@ -418,6 +415,9 @@
 				<tr>
 					<td>Contraseña WiFi:</td>
 					<td><input id=ssidpwd style=width:99 value='%SSIDPWD%'></td>
+				</tr>
+				<tr>
+					<td colspan=3 align=center><div></div><button onclick=SendAction('update')>Actualizar Configuración</button></td>
 				</tr>
 			</table>
 			<canvas id=chart></canvas>

@@ -197,7 +197,7 @@ void GetEnvironmentParameters(uint8_t &nTemperature, uint8_t &nHumidity, float &
 
       delay(100);
     }
-  } while (nError != SimpleDHTErrSuccess && uReadTrysCount < MAX_ENVIRONMENT_READS);  // Repeat while it fails and not reach max trys // Repetir hasta que la lectura sea exitosa y no se alcance el máximo de intentos de lectura
+  } while (nError != SimpleDHTErrSuccess && uReadTrysCount < MAX_ENVIRONMENT_READS);  // Repeat while it fails and not reach max trys
 
   if (nError == SimpleDHTErrSuccess) {
     nTemperature = (uint8_t)bTemperature;
@@ -359,9 +359,9 @@ String HTMLProcessor(const String &var) {
 }
 
 void ConnectSD(bool bShowSuccessLog) {
-  if (bSDInit && SD.begin(SD_CS_PIN)) {
+  if (bSDInit && SD.exists("/time")) {
     if (bShowSuccessLog)
-      LOGGER("microSD File System already initialized.", INFO);
+      LOGGER("SD Card File System already initialized.", INFO);
 
     return;
   }
@@ -372,16 +372,16 @@ void ConnectSD(bool bShowSuccessLog) {
 
   if (!bSDInit)
     LOGGER("Failed to initialize SD Card File System.", ERROR);
-  
+
   if (bShowSuccessLog)
-    LOGGER("microSD File System initialized.", INFO);
+    LOGGER("SD Card File System initialized.", INFO);
 }
 
 bool CheckInternetConnection() {
   const char* cIP = "pool.ntp.org";
 
   LOGGER("Pinging to: %s...", INFO, String(cIP));
-  
+
   if (Ping.ping(cIP, 1)) {
     bConnectedToInternet = true;
   } else {
@@ -535,49 +535,47 @@ void setup() {
 
   ConnectSD(true);
 
-  /*if (bSDInit) {
-    if (SD.exists("/metrics.log")) {
-      File pFile = SD.open("/metrics.log", FILE_READ);
-      if (pFile) {
-        size_t sizeFile = pFile.size();
-        String strCurrentLine = "";
-        uint8_t uLineCount = 0;
-        size_t sizeChunk = 1535;
-        size_t sizeReadStartPos = (sizeFile > sizeChunk) ? sizeFile - sizeChunk : 0;
+  /*if (bSDInit && SD.exists("/metrics.log")) {
+    File pFile = SD.open("/metrics.log", FILE_READ);
+    if (pFile) {
+      size_t sizeFile = pFile.size();
+      String strCurrentLine = "";
+      uint8_t uLineCount = 0;
+      size_t sizeChunk = 1535;
+      size_t sizeReadStartPos = (sizeFile > sizeChunk) ? sizeFile - sizeChunk : 0;
 
-        while (sizeReadStartPos > 0 && uLineCount < 5) {
-          pFile.seek(sizeReadStartPos);
+      while (sizeReadStartPos > 0 && uLineCount < 5) {
+        pFile.seek(sizeReadStartPos);
 
-          uint8_t uBuffer[sizeChunk]; // uint8_t instead of char cuz is unsigned... ¿no >.<?
+        uint8_t uBuffer[sizeChunk]; // uint8_t instead of char cuz is unsigned... ¿no >.<?
 
-          pFile.read(uBuffer, sizeChunk);
+        pFile.read(uBuffer, sizeChunk);
 
-          for (int i = sizeChunk - 1; i >= 0; i--) {
-              char c = uBuffer[i];
+        for (int i = sizeChunk - 1; i >= 0; i--) {
+            char c = uBuffer[i];
 
-              strCurrentLine = c + strCurrentLine;
+            strCurrentLine = c + strCurrentLine;
 
-              if (c == '\n' || (sizeReadStartPos == 0 && i == 0)) {
-                  if (!strCurrentLine.isEmpty()) {
-                      // TODO: Acá debería verificar si el primer valor antes del primer |, es un unixtimestamp y si corresponde con la fecha actual
-                        // UPDATE: En realidad tengo que obtener el ultimo unixtimestamp, y parar cuando ya no concuerde
-                          // UPDATE 2: bueno, en realidad eso no me asegura que sean datos de la fecha, puede cargar toda la info de la fecha anterior.
-                      strArrayGraphData[uGraphDataCount] = strdup(strCurrentLine.c_str());
-                      
-                      uGraphDataCount++;
-                      strCurrentLine = "";
-                      uLineCount++;
-                  }
-              }
-          }
-          
-          sizeReadStartPos -= sizeChunk;
-          if (sizeReadStartPos == 0)
-            sizeReadStartPos = 0;
+            if (c == '\n' || (sizeReadStartPos == 0 && i == 0)) {
+                if (!strCurrentLine.isEmpty()) {
+                    // TODO: Acá debería verificar si el primer valor antes del primer |, es un unixtimestamp y si corresponde con la fecha actual
+                      // UPDATE: En realidad tengo que obtener el ultimo unixtimestamp, y parar cuando ya no concuerde
+                        // UPDATE 2: bueno, en realidad eso no me asegura que sean datos de la fecha, puede cargar toda la info de la fecha anterior.
+                    strArrayGraphData[uGraphDataCount] = strdup(strCurrentLine.c_str());
+                    
+                    uGraphDataCount++;
+                    strCurrentLine = "";
+                    uLineCount++;
+                }
+            }
         }
-
-        pFile.close();
+        
+        sizeReadStartPos -= sizeChunk;
+        if (sizeReadStartPos == 0)
+          sizeReadStartPos = 0;
       }
+
+      pFile.close();
     }
   }*/
 
@@ -616,7 +614,7 @@ void setup() {
   LOGGER("Setting up Light Brightness...", INFO);
   ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - (uLightBrightness < 401 ? 0 : uLightBrightness));
 
-  LOGGER("Setting up WebServer Paths & Commands...", INFO);
+  LOGGER("Setting up Web Server Paths & Commands...", INFO);
 
   const char* strFiles[2] = {
     "fan.webp",
@@ -998,7 +996,7 @@ void setup() {
 
   AsyncWebServerHandle.begin();
 
-  LOGGER("WebServer Started at Port: %d.", INFO, WEBSERVER_PORT);
+  LOGGER("Web Server Started at Port: %d.", INFO, WEBSERVER_PORT);
 }
 
 void loop() {
@@ -1015,7 +1013,7 @@ void loop() {
     if (WiFi.status() != WL_CONNECTED && eTaskGetState(taskhandleWiFiReconnect) != eRunning)
       vTaskResume(taskhandleWiFiReconnect);
 
-    if (lCurrentMillis - lEachMinuteMillis >= 1000) {
+    if (lCurrentMillis - lEachMinuteMillis >= 60000) {
       lEachMinuteMillis = lCurrentMillis;
 
       if (!bConnectedToInternet)  // If have no Internet Connection
@@ -1187,25 +1185,26 @@ void loop() {
 
       uGraphDataCount++;
     }
-  }
 
-  if (lCurrentMillis - lFansRestIntervalTime >= uFansRestIntervalTime * 60000) {  // Si transcurrió el Tiempo de Intervalo entre Descanso y Descanso
-    lFansRestIntervalTime = lCurrentMillis;
-    lFansRestElapsedTime = lCurrentMillis;
-    bFansRest = true;
+    // ================================================== Fans Rest Time Section ================================================== //
+    if (lCurrentMillis - lFansRestIntervalTime >= uFansRestIntervalTime * 60000) {  // Si transcurrió el Tiempo de Intervalo entre Descanso y Descanso
+      lFansRestIntervalTime = lCurrentMillis;
+      lFansRestElapsedTime = lCurrentMillis;
+      bFansRest = true;
 
-    digitalWrite(RELAY_1_PIN, HIGH);  // Internal Fan
-    digitalWrite(RELAY_2_PIN, HIGH);  // Ventilation
+      digitalWrite(RELAY_1_PIN, HIGH);  // Internal Fan
+      digitalWrite(RELAY_2_PIN, HIGH);  // Ventilation
 
-    LOGGER("Fans Rest mode started.", INFO);
-  }
+      LOGGER("Fans Rest mode started.", INFO);
+    }
 
-  if (bFansRest) {
-    if (lCurrentMillis - lFansRestElapsedTime >= uFansRestDuration * 60000) {  // Si transcurrió el Tiempo de Descanso
-      bFansRest = false;
-      lFansRestElapsedTime = 0;
+    if (bFansRest) {
+      if (lCurrentMillis - lFansRestElapsedTime >= uFansRestDuration * 60000) {  // Si transcurrió el Tiempo de Descanso
+        bFansRest = false;
+        lFansRestElapsedTime = 0;
 
-      LOGGER("Fans Rest mode completed.", INFO);
+        LOGGER("Fans Rest mode completed.", INFO);
+      }
     }
   }
 }
