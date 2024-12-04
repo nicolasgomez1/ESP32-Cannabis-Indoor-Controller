@@ -2,6 +2,8 @@
 	<head>
 		<meta name=viewport content='width=device-width,initial-scale=1.0'>
 		<meta charset=utf-8>
+		<link rel=icon href=data:,>
+		<link rel='shortcut icon' href=data:,>
 		<title>ESP32 Indoor</title>
 		<style>
 			div{
@@ -22,9 +24,7 @@
 				text-align:center
 			}
 
-			button:active{
-				box-shadow:rgb(0 0 0/.15)0 2px 4px inset,rgb(0 0 0/.4)0 1px 1px
-			}
+			button:active{box-shadow:rgb(0 0 0/.15)0 2px 4px inset,rgb(0 0 0/.4)0 1px 1px}
 
 			input{
 				cursor:pointer;
@@ -37,9 +37,7 @@
 				width:50
 			}
 
-			input:focus{
-				border-color:red
-			}
+			input:focus{border-color:red}
 
 			.slider{
 				appearance:none;
@@ -57,20 +55,11 @@
 				background-color:#36A9AE
 			}
 
-			.fan{
-				animation:fan paused linear infinite 1s
-			}
+			.fan{animation:fan paused linear infinite 1s}
 
-			@keyframes fan{
-				100%%{
-					transform:rotate(360deg)
-				}
-			}
+			@keyframes fan{100%%{transform:rotate(360deg)}}
 
-			.checkbox{
-				visibility:hidden;
-				display:none
-			}
+			.checkbox{visibility:hidden;display:none}
 
 			.toggle{
 				border:1px solid transparent;
@@ -120,15 +109,9 @@
 				transition:all .2s cubic-bezier(.8,.4,.3,1.25)
 			}
 
-			#chart{
-				width:100%%;
-				max-height:300px
-			}
+			#chart{width:100%%;max-height:300px}
 
-			#legend{
-				border-collapse:collapse;
-				width:100%%
-			}
+			#legend{border-collapse:collapse;width:100%%}
 
 			#legend th,#legend td{
 				padding:5;
@@ -136,15 +119,10 @@
 				text-align:left
 			}
 
-			.hide-line{
-				text-decoration:line-through
-			}
-
-			.show-line{
-				cursor:pointer
-			}
+			.hide-line{text-decoration:line-through}
+			.show-line{cursor:pointer}
 		</style>
-		<script src=https://cdn.jsdelivr.net/npm/chart.js></script>
+		<script src=chart.js></script>
 		<script>
 			function CalcDur(){
 				var start=parseInt(document.getElementById('lightstart').value),stop=parseInt(document.getElementById('lightstop').value),startind='AM',stopind='AM';
@@ -162,9 +140,9 @@
 
 			function CalcBright(send){
 				let per=Math.round((parseInt(document.getElementById('lightbright').value)/%MAXBRIGHT%)*100);
-				
+
 				document.getElementById('lightbrightind').innerText=per>0?per+'%% (Aproximadamente: '+((per/100)*1008).toFixed(0)+'ppfd)':'Apagado';
-				
+
 				if(send)
 					SendAction('update','lightbright',document.getElementById('lightbright').value);
 			}
@@ -218,7 +196,7 @@
 
 					inputIds.forEach(id=>{
 						let value=document.getElementById(id).value;
-						
+
 						if(id=='wateringmode'){
 							value=0;
 
@@ -314,7 +292,7 @@
 
 							if(val3.length>0){
 								let symbol=dataset.symbol;
-								val3=Math.min(...val3),max=Math.max(...val3),avg=val3.reduce((sum,val)=>sum+val,0)/val3.length;
+								min=Math.min(...val3),max=Math.max(...val3),avg=val3.reduce((sum,val)=>sum+val,0)/val3.length;
 
 								if(i==2){
 									min+=symbol+' ('+CalcVPD(min)[1]+')';

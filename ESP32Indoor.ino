@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include <ESPmDNS.h>
+#include <ESPping.h>
 #include <SimpleDHT.h>
 #include <Preferences.h>
 #include <ESPAsyncWebServer.h>
@@ -92,7 +93,8 @@ unsigned long lStartupTime = 0;
 unsigned long lEnvironmentElapsedReadTime = 0;
 unsigned long lSoilHumidityElapsedReadTime = 0;
 unsigned long lWateringIntervalElapsedTime = 0;
-unsigned long lPreviousMillis = 0;
+unsigned long lEachSecondMillis = 0;
+unsigned long lEachMinuteMillis = 0;
 uint16_t uWateringElapsedTime = 0;
 bool bVentilationByTemperature = false;
 bool bVentilationByHumidity = false;
@@ -108,6 +110,7 @@ const char* strArrayGraphData[48] = {};
 unsigned long lLastStoreElapsedTime = 0;
 bool bResetNeeded = false;
 bool bSDInit = false;
+bool bConnectedToInternet = false;
 
 // =============== Parameters from Indoor =============== //
 uint8_t nEnvironmentTemperature = 0;
@@ -355,7 +358,14 @@ String HTMLProcessor(const String &var) {
   return String();
 }
 
-void ConnectSD(bool bShowLog) {
+void ConnectSD(bool bShowSuccessLog) {
+  if (bSDInit && SD.begin(SD_CS_PIN)) {
+    if (bShowSuccessLog)
+      LOGGER("microSD File System already initialized.", INFO);
+
+    return;
+  }
+
   SD.end();
 
   bSDInit = SD.begin(SD_CS_PIN);
@@ -363,23 +373,46 @@ void ConnectSD(bool bShowLog) {
   if (!bSDInit)
     LOGGER("Failed to initialize SD Card File System.", ERROR);
   
-  if (bShowLog)
+  if (bShowSuccessLog)
     LOGGER("microSD File System initialized.", INFO);
 }
 
-void GetDateTime() {
-  LOGGER("Getting Datetime...", INFO);
+bool CheckInternetConnection() {
+  const char* cIP = "pool.ntp.org";
 
-  configTime(-3 * 3600, 0, "pool.ntp.org");
+  LOGGER("Pinging to: %s...", INFO, String(cIP));
+  
+  if (Ping.ping(cIP, 1)) {
+    bConnectedToInternet = true;
+  } else {
+    LOGGER("Ping to: %s failed.", ERROR, String(cIP));
 
-  time_t now = time(nullptr);
+    bConnectedToInternet = false;
+  }
+
+  return bConnectedToInternet;
+}
+
+void GetDateTime(bool bDoPing) {
+  time_t now = 0;
+
+  if (bDoPing)
+    CheckInternetConnection();
+
+  if (bConnectedToInternet) {
+    LOGGER("Getting Datetime from NTP Server...", INFO);
+
+    configTime(-3 * 3600, 0, "pool.ntp.org");
+
+    now = time(nullptr);
+  }
 
   if (now == 0 && bSDInit) {
     if (SD.exists("/time")) {
       File pFile = SD.open("/time", FILE_READ);
       if (pFile) {
         LOGGER("Getting Datetime from SD Card...", INFO);
-        
+
         struct timeval tv;
         tv.tv_sec = pFile.parseInt();
         tv.tv_usec = 0;
@@ -408,7 +441,7 @@ void Thread_WifiReconnect(void *parameter) {
 
   WiFi.softAP("ESP32_Indoor");  // Start Access Point, while try to connect to wifi
 
-  GetDateTime();
+  GetDateTime(false);
 
   vTaskDelay(500 / portTICK_PERIOD_MS);  // Delay to stabilize AP
 
@@ -426,7 +459,7 @@ void Thread_WifiReconnect(void *parameter) {
 
   LOGGER("Access Point disconnected.", INFO);
 
-  GetDateTime();
+  GetDateTime(true);
 
   vTaskSuspend(taskhandleWiFiReconnect);  // Suspends the task until needed again
 }
@@ -565,7 +598,7 @@ void setup() {
   else // Create an Access Point to reconfigure the SSID & PASSWORD
     LOGGER("Max WiFi reconnect attempts reached.", ERROR);
 
-  GetDateTime();
+  GetDateTime(true);
 
   LOGGER("Initializing WiFi reconnect task thread...", INFO);
   xTaskCreatePinnedToCore(Thread_WifiReconnect, "WiFi Reconnect Task", 4096, NULL, 1, &taskhandleWiFiReconnect, 0);
@@ -585,9 +618,21 @@ void setup() {
 
   LOGGER("Setting up WebServer Paths & Commands...", INFO);
 
-  AsyncWebServerHandle.serveStatic("/fan.webp", SD, "/fan.webp").setCacheControl("max-age=86400");
+  const char* strFiles[2] = {
+    "fan.webp",
+    "chart.js" // Add more files to server by web server here
+  };
+
+  for (uint8_t i = 0; i < sizeof(strFiles) / sizeof(strFiles[0]); i++)
+    AsyncWebServerHandle.serveStatic(("/" + String(strFiles[i])).c_str(), SD, ("/" + String(strFiles[i])).c_str()).setCacheControl("max-age=86400");
 
   AsyncWebServerHandle.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (request->url() == "/favicon.ico") {
+      request->send(204); // No Content
+
+      return;
+    }
+
     IPAddress clientIP = request->client()->getRemoteAddress();
 
     LOGGER("HTTP Request IP From: %d.%d.%d.%d.", INFO, clientIP[0], clientIP[1], clientIP[2], clientIP[3]);
@@ -962,20 +1007,43 @@ void loop() {
 #endif*/
   unsigned long lCurrentMillis = millis();
 
-  if (WiFi.status() != WL_CONNECTED && eTaskGetState(taskhandleWiFiReconnect) != eRunning)
-    vTaskResume(taskhandleWiFiReconnect);
-
-  // TODO: Cada 1 minuto verificar si el datetime esta sincronizado con el datetimeonline. Para esto tengo que agregar otra funcion que se ejecuta en el otro hilo, ¿O eso causaría una interferencia?
-
-  if (lCurrentMillis - lPreviousMillis >= 1000) {  // Each second
-    lPreviousMillis = lCurrentMillis;
+  if (lCurrentMillis - lEachSecondMillis >= 1000) {
+    lEachSecondMillis = lCurrentMillis;
     time_t now = time(nullptr);
     struct tm *timeInfo = localtime(&now);
+
+    if (WiFi.status() != WL_CONNECTED && eTaskGetState(taskhandleWiFiReconnect) != eRunning)
+      vTaskResume(taskhandleWiFiReconnect);
+
+    if (lCurrentMillis - lEachMinuteMillis >= 1000) {
+      lEachMinuteMillis = lCurrentMillis;
+
+      if (!bConnectedToInternet)  // If have no Internet Connection
+        if (CheckInternetConnection()) {  // Do Ping to NTP Server
+          LOGGER("Resynchronizing Datetime...", INFO);
+          
+          GetDateTime(false);  // Re-sync Datetime
+        }
+    }
 
     if (bSDInit)
       WriteToSD("/time", String((uint32_t)now), false);
 
+    // ================================================== Environment Section ================================================== //
     GetEnvironmentParameters(nEnvironmentTemperature, nEnvironmentHumidity, fEnvironmentVPD);  // Get environment params to store in global vals
+
+    // ================================================== Soil Section ================================================== //
+    if (lCurrentMillis - lSoilHumidityElapsedReadTime >= uSoilReadsInterval) {
+      lSoilHumidityElapsedReadTime = lCurrentMillis;
+
+      LOGGER("Environment Temperature: %d°C Humidity: %d%% VPD: %.2fkPa.", INFO, nEnvironmentTemperature, nEnvironmentHumidity, fEnvironmentVPD);
+
+      for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++) {
+        uSoilsHumidity[i] = GetSoilHumidity(i);
+
+        LOGGER("Soil Sensor %d Humidity: %d%%.", INFO, i, uSoilsHumidity[i]);
+      }
+    }
 
     // ================================================== Light Section ================================================== //
     // If current time in between Start Stop range
@@ -1118,19 +1186,6 @@ void loop() {
       strArrayGraphData[uGraphDataCount] = strdup(strValues.c_str());
 
       uGraphDataCount++;
-    }
-  }
-
-  if (lCurrentMillis - lSoilHumidityElapsedReadTime >= uSoilReadsInterval) {
-    lSoilHumidityElapsedReadTime = lCurrentMillis;
-
-    LOGGER("Environment Temperature: %d°C Humidity: %d%% VPD: %.2fkPa.", INFO, nEnvironmentTemperature, nEnvironmentHumidity, fEnvironmentVPD);
-
-    // ================================================== Soil Section ================================================== //
-    for (uint8_t i = 0; i < TOTAL_SOIL_HUMIDITY_SENSORS; i++) {
-      uSoilsHumidity[i] = GetSoilHumidity(i);
-
-      LOGGER("Soil Sensor %d Humidity: %d%%.", INFO, i, uSoilsHumidity[i]);
     }
   }
 
