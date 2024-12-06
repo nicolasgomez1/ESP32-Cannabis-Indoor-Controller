@@ -359,13 +359,6 @@ String HTMLProcessor(const String &var) {
 }
 
 void ConnectSD(bool bShowSuccessLog) {
-  if (bSDInit && SD.exists("/time")) {
-    if (bShowSuccessLog)
-      LOGGER("SD Card File System already initialized.", INFO);
-
-    return;
-  }
-
   SD.end();
 
   bSDInit = SD.begin(SD_CS_PIN);
@@ -616,21 +609,18 @@ void setup() {
 
   LOGGER("Setting up Web Server Paths & Commands...", INFO);
 
-  const char* strFiles[2] = {
+  const char* strFiles[] = {
     "fan.webp",
     "chart.js" // Add more files to server by web server here
   };
 
-  for (uint8_t i = 0; i < sizeof(strFiles) / sizeof(strFiles[0]); i++)
-    AsyncWebServerHandle.serveStatic(("/" + String(strFiles[i])).c_str(), SD, ("/" + String(strFiles[i])).c_str()).setCacheControl("max-age=86400");
+  for (uint8_t i = 0; i < sizeof(strFiles) / sizeof(strFiles[0]); i++) {
+    String path = "/" + String(strFiles[i]);
+
+    AsyncWebServerHandle.serveStatic(path.c_str(), SD, path.c_str()).setCacheControl("max-age=86400");
+  }
 
   AsyncWebServerHandle.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (request->url() == "/favicon.ico") {
-      request->send(204); // No Content
-
-      return;
-    }
-
     IPAddress clientIP = request->client()->getRemoteAddress();
 
     LOGGER("HTTP Request IP From: %d.%d.%d.%d.", INFO, clientIP[0], clientIP[1], clientIP[2], clientIP[3]);
@@ -963,6 +953,7 @@ void setup() {
         }
         //////////////////////////////////////////////////////////////////////////////////////////
         AsyncWebServerResponse *response = request->beginResponse(200, "text/plain;charset=utf-8", strResponse);
+
         request->send(response);
         /*
           data[0] Environment Temperature

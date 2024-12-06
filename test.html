@@ -15,8 +15,7 @@
 				color:#FFF;
 				cursor:pointer;
 				font-size:17;
-				padding:6 6 6;
-				text-align:center
+				padding:6 6 6
 			}
 
 			button:active{box-shadow:rgb(0 0 0/.15)0 2px 4px inset,rgb(0 0 0/.4)0 1px 1px}
@@ -113,12 +112,15 @@
 
 			#chart{
 				width:100%%;
-				max-height:300px
+				max-height:300px;
+				background:rgba(32,32,32,.1);
+				border:1px solid #22262A
 			}
 
 			#legend{
 				border-collapse:collapse;
-				width:100%
+				width:100%;
+				background:rgba(32,32,32,.1)
 			}
 
 			#legend th,#legend td{
@@ -149,7 +151,7 @@
 				return[c,s];
 			}
 		</script>
-		<script src="SD Card/chart.js"></script>
+		<script src=https://cdn.jsdelivr.net/npm/chart.js></script>
 	</head>
 	<body bgcolor=#303841 style='font-family:Arial;color:#D8DEE9'>
 		<center>
@@ -161,7 +163,7 @@
 	<script>
 		let showTextOnLines=false;
 
-		Object.assign(Chart.defaults.datasets.line,{borderWidth:2,pointRadius:0});//Object.assign(Chart.defaults.datasets.line,{tension:.2,pointRadius:4});
+		Object.assign(Chart.defaults.datasets.line,{borderWidth:1.1,pointRadius:0});//Object.assign(Chart.defaults.datasets.line,{tension:.2,pointRadius:4});
 		Chart.defaults.scales={linear:{offset:true,display:false}};
 
 		let textOnLinePlugin={id:'textOnLine',
@@ -220,8 +222,8 @@
 				interaction:{mode:'index',intersect:false},
 				scales:{
 					//y:{ticks:{color:'#D8DEE9'}},
-					x:{type:'linear',min:0,max:86399,display:true,
-						ticks:{color:'#D8DEE9',stepSize:1800,
+					x:{type:'linear',min:0,max:86399,//display:true,
+						ticks:{stepSize:1800,display:false,//color:'#D8DEE9'
 							callback:value=>new Date(value*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})
 						}
 					}
