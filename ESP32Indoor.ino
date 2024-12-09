@@ -359,15 +359,19 @@ String HTMLProcessor(const String &var) {
 }
 
 void ConnectSD(bool bShowSuccessLog) {
-  SD.end();
+  if (!SD.open("/")) {
+    SD.end();
 
-  bSDInit = SD.begin(SD_CS_PIN);
+    bSDInit = SD.begin(SD_CS_PIN);
 
-  if (!bSDInit)
-    LOGGER("Failed to initialize SD Card File System.", ERROR);
+    if (!bSDInit)
+      LOGGER("Failed to initialize SD Card File System.", ERROR);
 
-  if (bShowSuccessLog)
-    LOGGER("SD Card File System initialized.", INFO);
+    if (bShowSuccessLog)
+      LOGGER("SD Card File System initialized.", INFO);
+  } else {  // Just in case
+    bSDInit = true;
+  }
 }
 
 bool CheckInternetConnection() {
@@ -1150,10 +1154,10 @@ void loop() {
     if (millis() - lStartupTime >= uSoilReadsInterval * 1.5 && lCurrentMillis - lLastStoreElapsedTime >= 1800000) {
       lLastStoreElapsedTime = lCurrentMillis;
 
-      if (bResetNeeded == false && timeInfo->tm_hour != 0)
+      if (bResetNeeded == false && timeInfo->tm_hour != 0)  // Time to clear the array
         bResetNeeded = true;
 
-      if (uGraphDataCount == 48 || (timeInfo->tm_hour == 0 && bResetNeeded)) {  // Send array Data to file and Clear array.
+      if (uGraphDataCount == 48 || (timeInfo->tm_hour == 0 && bResetNeeded)) {
         uGraphDataCount = 0;
         bResetNeeded = false;
 

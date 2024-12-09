@@ -1,136 +1,26 @@
 <html>
 	<head>
 		<style>
-			div{
-				height:2;
-				margin:5px;
-				background-color:#22262A
-			}
-
-			button{
-				background-color:#36A9AE;
-				background-image:linear-gradient(#37ADB2,#329CA0);
-				border:1px solid #2A8387;
-				border-radius:4px;
-				color:#FFF;
-				cursor:pointer;
-				font-size:17;
-				padding:6 6 6
-			}
-
+			div{height:2;margin:5px;background-color:#22262A}
+			button{background-color:#36A9AE;border:1px solid #2A8387;border-radius:4px;color:#FFF;cursor:pointer;font-size:17;padding:6 6 6}
 			button:active{box-shadow:rgb(0 0 0/.15)0 2px 4px inset,rgb(0 0 0/.4)0 1px 1px}
-
-			input{
-				cursor:pointer;
-				background-color:#FFF;
-				border:1px solid#2A8387;
-				border-radius:4px;
-				color:#22262A;
-				padding:4;
-				outline:none;
-				width:50
-			}
-
+			input{cursor:pointer;background-color:#FFF;border:1px solid#2A8387;border-radius:4px;color:#22262A;padding:4;outline:none;width:50}
 			input:focus{border-color:red}
-
-			.slider{
-				appearance:none;
-				width:200;
-				height:14;
-				background:#2A8387;
-				border-radius:10px
-			}
-
-			.slider::-webkit-slider-thumb{
-				appearance:none;
-				width:40;
-				height:20;
-				border-radius:8px;
-				background-color:#36A9AE
-			}
-
+			.slider{appearance:none;width:200;height:14;background:#2A8387;border-radius:10px}
+			.slider::-webkit-slider-thumb{appearance:none;width:40;height:20;border-radius:8px;background-color:#36A9AE}
 			.fan{animation:fan paused linear infinite 1s}
-
-			@keyframes fan{
-				100%%{
-					transform:rotate(360deg)
-				}
-			}
-
-			.checkbox{
-				visibility:hidden;
-				display:none
-			}
-
-			.toggle{
-				border:1px solid transparent;
-				position:relative;
-				display:block;
-				width:51;
-				height:20;
-				cursor:pointer
-			}
-
-			.toggle:before{
-				content:'';
-				position:relative;
-				top:3;
-				width:50;
-				height:14;
-				display:block;
-				background:#2A8387;
-				border-radius:8px
-			}
-
-			.toggle:focus{
-				border:1px solid red;
-				border-radius:8px
-			}
-
-			.toggle span{
-				position:absolute;
-				top:0;
-				left:0;
-				width:20;
-				height:20;
-				display:block;
-				background:#36A9AE;
-				border-radius:10px;
-				transition:all .2s ease
-			}
-
-			.toggle span:before{
-				display:block;
-				width:56;
-				height:56
-			}
-
-			#wateringmode:checked+.toggle span{
-				transform:translateX(30px);
-				transition:all 0.2s cubic-bezier(.8,.4,.3,1.25)
-			}
-
-			#chart{
-				width:100%%;
-				max-height:300px;
-				background:rgba(32,32,32,.1);
-				border:1px solid #22262A
-			}
-
-			#legend{
-				border-collapse:collapse;
-				width:100%;
-				background:rgba(32,32,32,.1)
-			}
-
-			#legend th,#legend td{
-				padding:5;
-				border:1px solid #22262A;
-				text-align:left
-			}
-
+			@keyframes fan{100%{transform:rotate(360deg)}}
+			.checkbox{visibility:hidden;display:none}
+			.toggle{border:1px solid transparent;position:relative;display:block;width:51;height:20;cursor:pointer}
+			.toggle:before{content:'';position:relative;top:3;width:50;height:14;display:block;background:#2A8387;border-radius:8px}
+			.toggle:focus{border:1px solid red;border-radius:8px}
+			.toggle span{position:absolute;top:0;left:0;width:20;height:20;display:block;background:#36A9AE;border-radius:10px;transition:all .2s ease}
+			.toggle span:before{display:block;width:56;height:56}
+			#wateringmode:checked+.toggle span{transform:translateX(30px);transition:all .2s cubic-bezier(.8,.4,.3,1.25)}
+			#chart{width:100%;max-height:300px;background:rgba(32,32,32,.1)}
+			#legend{border-collapse:collapse;width:100%;background:rgba(32,32,32,.1)}
+			#legend th,#legend td{padding:5;border:1px solid #22262A;text-align:left}
 			.hide-line{text-decoration:line-through}
-
 			.show-line{cursor:pointer}
 		</style>
 		<script>
@@ -151,12 +41,12 @@
 				return[c,s];
 			}
 		</script>
-		<script src=https://cdn.jsdelivr.net/npm/chart.js></script>
+		<script src='SD Card/chart.js'></script>
 	</head>
 	<body bgcolor=#303841 style='font-family:Arial;color:#D8DEE9'>
 		<center>
 			<canvas id=chart></canvas>
-			<button id=toggle-text>Mostrar textos</button>
+			<br><button id=toggle-text>Mostrar textos</button><br><br>
 			<table id=legend><thead><tr><th>Indicador</th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><td colspan=4>No hay información.</td><tbody></tbody></table>
 		</center>
 	</body>
@@ -166,7 +56,7 @@
 		Object.assign(Chart.defaults.datasets.line,{borderWidth:1.1,pointRadius:0});//Object.assign(Chart.defaults.datasets.line,{tension:.2,pointRadius:4});
 		Chart.defaults.scales={linear:{offset:true,display:false}};
 
-		let textOnLinePlugin={id:'textOnLine',
+		let textOnLine={id:'textOnLine',
 			afterDatasetsDraw(chart){
 				if(!showTextOnLines)
 					return;
@@ -196,7 +86,7 @@
 				});
 			}
 		};
-
+		let border={id:'border',beforeDraw(chart,args,options){let{ctx,chartArea:{left,top,width,height}}=chart;ctx.save();ctx.strokeStyle=options.borderColor;ctx.lineWidth=options.borderWidth;ctx.setLineDash(options.borderDash||[]);ctx.lineDashOffset=options.borderDashOffset;ctx.strokeRect(left,top,width,height);ctx.restore();}};
 		let chart=new Chart(document.getElementById('chart'),{
 			type:'line',
 			data:{
@@ -216,27 +106,25 @@
 							title:item=>`Hora: ${new Date(item[0].raw.x*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})}`,
 							label:(item)=>`${item.dataset.label}: ${item.raw.string+item.dataset.symbol+(item.dataset.symbol=='kPa'?' ('+CalcVPD(item.raw.string)[1]+')':'')}`
 						}
-					}
+					},border:{borderColor:'#22262A'}
 				},
 				animation:{duration:0},
 				interaction:{mode:'index',intersect:false},
 				scales:{
 					//y:{ticks:{color:'#D8DEE9'}},
-					x:{type:'linear',min:0,max:86399,//display:true,
-						ticks:{stepSize:1800,display:false,//color:'#D8DEE9'
-							callback:value=>new Date(value*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})
-						}
+					x:{type:'linear',min:0,max:86399,
+						ticks:{stepSize:1800,display:false,callback:value=>new Date(value*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})}
 					}
 				}
-			},plugins:[textOnLinePlugin]
+			},plugins:[textOnLine,border]
 		});
 
-		let val="1732331037|27|67|1.18|66|65,1732332837|26|68|1.08|65|65,1732334637|25|69|0.98|65|65,1732336437|25|67|1.05|64|64,1732338237|25|67|1.05|64|64,1732340037|25|66|1.08|63|63,1732341837|25|66|1.08|62|63,1732343637|25|65|1.11|62|63,1732345437|25|65|1.11|61|63,1732347237|24|65|1.04|61|62,1732349037|24|66|1.01|60|62,1732350837|24|66|1.01|60|62,1732352637|27|61|1.39|58|62,1732354437|28|60|1.51|59|61,1732356237|27|61|1.39|57|61,1732358037|28|62|1.44|55|60,1732359837|27|63|1.32|57|59,1732361637|27|64|1.28|56|59,1732363437|27|64|1.28|54|58,1732365237|27|64|1.28|54|58,1732367037|27|65|1.25|53|56,1732368837|27|65|1.25|54|56,1732370637|27|64|1.28|52|55,1732372437|27|64|1.28|52|54,1732374238|27|62|1.36|54|52,1732376038|27|64|1.28|52|51,1732377838|27|60|1.43|51|49,1732379638|28|62|1.44|49|48,1732381438|27|60|1.43|48|46,1732383238|27|60|1.43|48|45,1732385038|28|62|1.44|46|44,1732386838|28|61|1.47|47|43,1732388638|28|60|1.51|45|43,1732390439|28|61|1.47|47|41,1732392239|28|61|1.47|47|40,1732394039|28|61|1.47|44|39,1732395839|29|60|1.60|45|38,1732397639|29|59|1.64|45|36,1732399439|29|60|1.60|43|36,1732401240|29|62|1.52|43|34,1732403040|29|61|1.56|42|34,1732404840|29|61|1.56|41|33,1732406640|29|61|1.56|43|33,1732408440|29|62|1.52|42|32,1732410240|29|62|1.52|42|31,1732412040|30|61|1.66|42|30,1732413840|30|61|1.66|41|29,1732415640|30|61|1.66|41|29".split(','),val1;
+		let val="1732331037|27|67|1.18|66|65,1732332837|26|68|1.08|65|65,1732334637|25|69|0.98|65|65,1732336437|25|67|1.05|64|64,1732338237|25|67|1.05|64|64,1732340037|25|66|1.08|63|63,1732341837|25|66|1.08|62|63,1732343637|25|65|1.11|62|63,1732345437|25|65|1.11|61|63,1732347237|24|65|1.04|61|62,1732349037|24|66|1.01|60|62,1732350837|24|66|1.01|60|62,1732352637|27|61|1.39|58|62,1732354437|28|60|1.51|59|61,1732356237|27|61|1.39|57|61,1732358037|28|62|1.44|55|60,1732359837|27|63|1.32|57|59,1732361637|27|64|1.28|56|59,1732363437|27|64|1.28|54|58,1732365237|27|64|1.28|54|58,1732367037|27|65|1.25|53|56,1732368837|27|65|1.25|54|56,1732370637|27|64|1.28|52|55,1732372437|27|64|1.28|52|54,1732374238|27|62|1.36|54|52,1732376038|27|64|1.28|52|51,1732377838|27|60|1.43|51|49,1732379638|28|62|1.44|49|48,1732381438|27|60|1.43|48|46,1732383238|27|60|1.43|48|45,1732385038|28|62|1.44|46|44,1732386838|28|61|1.47|47|43,1732388638|28|60|1.51|45|43,1732390439|28|61|1.47|47|41,1732392239|28|61|1.47|47|40,1732394039|28|61|1.47|44|39,1732395839|29|60|1.60|45|38,1732397639|29|59|1.64|45|36,1732399439|29|60|1.60|43|36,1732401240|29|62|1.52|43|34,1732403040|29|61|1.56|42|34,1732404840|29|61|1.56|41|33,1732406640|29|61|1.56|43|33,1732408440|29|62|1.52|42|32,1732410240|29|62|1.52|42|31,1732412040|30|61|1.66|42|30,1732413840|30|61|1.66|41|29,1732415640|30|61|1.66|41|29, 1733628131|23|61|1.10|16|19,1733629932|22|63|0.98|17|19,1733631732|22|63|0.98|17|19,1733633532|22|63|0.98|18|18,1733635333|22|63|0.98|18|18,1733637133|21|63|0.92|18|17,1733638933|21|64|0.89|18|17,1733640734|21|60|0.99|18|17,1733642534|21|63|0.92|18|16,1733644334|20|59|0.96|19|16,1733646135|20|63|0.86|18|16,1733647935|20|54|1.07|17|15,1733649735|26|40|2.02|16|15,1733651536|26|40|2.02|14|15,1733653336|26|39|2.05|13|14,1733655136|26|39|2.05|14|13,1733656937|26|38|2.08|12|13,1733658737|25|40|1.90|10|13,1733660537|25|39|1.93|8|13,1733662337|25|38|1.96|11|11,1733664138|26|39|2.05|10|11,1733665938|26|38|2.08|9|11,1733667738|26|37|2.12|8|12,1733669539|26|39|2.05|8|11,1733671339|26|43|1.92|69|38,1733673139|26|40|2.02|64|37,1733674940|26|43|1.92|59|38,1733676740|26|43|1.92|57|38,1733678540|26|42|1.95|55|38,1733680341|26|39|2.05|54|37,1733682141|26|42|1.95|53|37,1733683941|27|45|1.96|54|37,1733685741|27|46|1.93|51|38,1733687542|27|46|1.93|51|37,1733689342|27|46|1.93|52|37,1733691142|27|45|1.96|49|37,1733692943|27|46|1.93|49|37,1733694743|27|47|1.89|48|37,1733696543|27|47|1.89|49|37,1733698344|27|48|1.85|47|38,1733700144|27|48|1.85|47|37,1733701944|27|48|1.85|47|36,1733703744|27|50|1.78|46|36,1733705545|27|49|1.82|47|36,1733707345|27|47|1.89|44|31,1733709145|28|48|1.97|43|35,1733710946|28|48|1.97|44|35,1733712746|28|63|1.40|53|35".split(','),val2;
 
 		for(i=0;i<val.length;i++){
-			val1=val[i].split('|');
-			for(j=1;j<val1.length;j++)
-				chart.data.datasets[j-1].data[i]={x:(val1[0]-(3*3600))%86400,y:parseFloat(val1[j]),string:val1[j]};
+			val2=val[i].split('|');
+			for(j=1;j<val2.length;j++)
+				chart.data.datasets[j-1].data[i]={x:(val2[0]-(3*3600))%86400,y:parseFloat(val2[j]),string:val2[j]};
 		}
 
 		chart.update();
