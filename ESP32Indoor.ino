@@ -104,13 +104,11 @@ bool bFansRest = false;
 uint8_t uEffectiveStartLights = 0;
 uint8_t uEffectiveStopLights = 0;
 TaskHandle_t taskhandleWiFiReconnect;
-unsigned long lGraphDataElapsedStoredTime = 0;
-uint8_t uGraphDataCount = 0;
-const char* strArrayGraphData[48] = {};
 unsigned long lLastStoreElapsedTime = 0;
-bool bResetNeeded = false;
 bool bSDInit = false;
 bool bConnectedToInternet = false;
+size_t sizeLastReadFile = 0;
+const char* strArrayGraphData[48] = {};
 
 // =============== Parameters from Indoor =============== //
 uint8_t nEnvironmentTemperature = 0;
@@ -532,50 +530,6 @@ void setup() {
 
   ConnectSD(true);
 
-  /*if (bSDInit && SD.exists("/metrics.log")) {
-    File pFile = SD.open("/metrics.log", FILE_READ);
-    if (pFile) {
-      size_t sizeFile = pFile.size();
-      String strCurrentLine = "";
-      uint8_t uLineCount = 0;
-      size_t sizeChunk = 1535;
-      size_t sizeReadStartPos = (sizeFile > sizeChunk) ? sizeFile - sizeChunk : 0;
-
-      while (sizeReadStartPos > 0 && uLineCount < 5) {
-        pFile.seek(sizeReadStartPos);
-
-        uint8_t uBuffer[sizeChunk]; // uint8_t instead of char cuz is unsigned... ¿no >.<?
-
-        pFile.read(uBuffer, sizeChunk);
-
-        for (int i = sizeChunk - 1; i >= 0; i--) {
-            char c = uBuffer[i];
-
-            strCurrentLine = c + strCurrentLine;
-
-            if (c == '\n' || (sizeReadStartPos == 0 && i == 0)) {
-                if (!strCurrentLine.isEmpty()) {
-                    // TODO: Acá debería verificar si el primer valor antes del primer |, es un unixtimestamp y si corresponde con la fecha actual
-                      // UPDATE: En realidad tengo que obtener el ultimo unixtimestamp, y parar cuando ya no concuerde
-                        // UPDATE 2: bueno, en realidad eso no me asegura que sean datos de la fecha, puede cargar toda la info de la fecha anterior.
-                    strArrayGraphData[uGraphDataCount] = strdup(strCurrentLine.c_str());
-                    
-                    uGraphDataCount++;
-                    strCurrentLine = "";
-                    uLineCount++;
-                }
-            }
-        }
-        
-        sizeReadStartPos -= sizeChunk;
-        if (sizeReadStartPos == 0)
-          sizeReadStartPos = 0;
-      }
-
-      pFile.close();
-    }
-  }*/
-
   LOGGER("Initializing WiFi...", INFO);
 
   WiFi.begin(strSSID, strSSIDPWD);
@@ -945,14 +899,76 @@ void setup() {
         strResponse += ":" + String(digitalRead(RELAY_2_PIN));  // HIGHT=1 A.K.A paused
 
         // ================================================== Graph Section ================================================== //
+        ConnectSD(false);
+
+        if (bSDInit) {
+          File pFile = SD.open("/metrics.log", FILE_READ);
+          if (pFile) {
+            size_t sizeFile = pFile.size();
+
+            if (sizeFile > sizeLastReadFile) {
+              sizeLastReadFile = sizeFile;
+              uint64_t uPos = sizeFile;
+              uint8_t uReadedLines = 0;
+              char cBuffer[64];
+              String strLine;
+
+              while (uPos > 0 && uReadedLines < 24) { // TODO: Increase it to 48
+                uPos--;
+
+                pFile.seek(uPos);
+
+                char c = pFile.read();
+                if (c == '\n') {
+                  pFile.seek(uPos + 1);
+
+                  uint8_t uBytesRead = pFile.readBytesUntil('\n', cBuffer, 63);
+                  cBuffer[uBytesRead] = '\0';
+
+                  if (uBytesRead > 0) {
+                    strLine = String(cBuffer);
+                    strLine.trim();
+
+                    if (strArrayGraphData[uReadedLines] != nullptr)
+                      free((void*)strArrayGraphData[uReadedLines]);
+
+                    strArrayGraphData[uReadedLines] = strdup(strLine.c_str());
+
+                    uReadedLines++;
+                  }
+                }
+              }
+
+              if (uPos == 0 && uReadedLines < 24) { // TODO: Increase it to 48
+                pFile.seek(0);
+
+                uint8_t uBytesRead = pFile.readBytesUntil('\n', cBuffer, 63);
+                cBuffer[uBytesRead] = '\0';
+
+                if (uBytesRead > 0) {
+                  strLine = String(cBuffer);
+                  strLine.trim();
+
+                  if (strArrayGraphData[uReadedLines] != nullptr)
+                    free((void*)strArrayGraphData[uReadedLines]);
+
+                  strArrayGraphData[uReadedLines] = strdup(strLine.c_str());
+                }
+              }
+            }
+
+            pFile.close();
+          }
+        }
+
         size_t sizeGraphArraySize = sizeof(strArrayGraphData) / sizeof(strArrayGraphData[0]);
 
         if (sizeGraphArraySize > 0 && strArrayGraphData[0] != nullptr) {
           strResponse += ":";
 
-          for (size_t i = 0; i < sizeGraphArraySize; i++) {
+          for (int i = sizeGraphArraySize - 1; i >= 0; i--) {
             if (strArrayGraphData[i] != nullptr)
-              strResponse += (i > 0 ? "," : "") + String(strArrayGraphData[i]);
+              strResponse += String(strArrayGraphData[i]) + ",";
           }
         }
         //////////////////////////////////////////////////////////////////////////////////////////
@@ -1151,23 +1167,8 @@ void loop() {
     }
 
     // ================================================== Store Data for Graph Section ================================================== //
-    if (millis() - lStartupTime >= uSoilReadsInterval * 1.5 && lCurrentMillis - lLastStoreElapsedTime >= 1800000) {
+    if (millis() - lStartupTime >= uSoilReadsInterval + 60000 /*+1 Minute*/ && lCurrentMillis - lLastStoreElapsedTime >= 3600000) {
       lLastStoreElapsedTime = lCurrentMillis;
-
-      if (bResetNeeded == false && timeInfo->tm_hour != 0)  // Time to clear the array
-        bResetNeeded = true;
-
-      if (uGraphDataCount == 48 || (timeInfo->tm_hour == 0 && bResetNeeded)) {
-        uGraphDataCount = 0;
-        bResetNeeded = false;
-
-        for (uint8_t i = 0; i < sizeof(strArrayGraphData) / sizeof(strArrayGraphData[0]); i++) {
-          if (strArrayGraphData[i] != nullptr) {
-            free((void*)strArrayGraphData[i]);
-            strArrayGraphData[i] = nullptr;
-          }
-        }
-      }
 
       String strValues = String(now) + "|" + String(nEnvironmentTemperature) + "|" + String(nEnvironmentHumidity) + "|" + String(fEnvironmentVPD, 2);
 
@@ -1175,10 +1176,6 @@ void loop() {
        strValues += "|" + String(uSoilsHumidity[i]);
 
       WriteToSD("/metrics.log", strValues, true);
-
-      strArrayGraphData[uGraphDataCount] = strdup(strValues.c_str());
-
-      uGraphDataCount++;
     }
 
     // ================================================== Fans Rest Time Section ================================================== //
