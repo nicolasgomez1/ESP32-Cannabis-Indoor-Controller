@@ -110,7 +110,7 @@
 
 						currentUrl.searchParams.set(id,value);
 					});
-				} else {
+				}else if(args[0]!=null&&args[0]!='all'){
 					currentUrl.searchParams.set(args[0],args[1]);
 				}
 
@@ -359,7 +359,7 @@
 				},
 				animation:{duration:0},
 				interaction:{mode:'index',intersect:false},
-				scales:{x:{type:'linear',ticks:{stepSize:200,display:false}}}
+				scales:{x:{type:'linear',ticks:{stepSize:1000,display:false}}}
 			},plugins:[textOnLine,border]
 		});
 

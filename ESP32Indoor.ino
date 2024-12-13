@@ -901,7 +901,7 @@ void setup() {
         // ================================================== Graph Section ================================================== //
         ConnectSD(false);
 
-        if (bSDInit) {
+        /*if (bSDInit) {  // V1
           File pFile = SD.open("/metrics.log", FILE_READ);
           if (pFile) {
             size_t sizeFile = pFile.size();
@@ -959,6 +959,64 @@ void setup() {
 
             pFile.close();
           }
+        }*/
+
+        if (bSDInit) { // V2 stolen code
+          File pFile = SD.open("/metrics.log", FILE_READ);
+          if (pFile) {
+            size_t sizeFile = pFile.size();
+
+            if (sizeFile > sizeLastReadFile) {
+              sizeLastReadFile = sizeFile;
+              const size_t sizeBlock = 512;
+              const uint8_t uLinesToRead = 48;
+              char cChunkBuffer[sizeBlock];
+              int64_t nPos = sizeFile - sizeBlock;
+              uint8_t uReadedLines = 0;
+
+              while (nPos >= 0 && uReadedLines < uLinesToRead) {
+                pFile.seek(nPos);
+                
+                size_t bytesRead = pFile.read((uint8_t*)cChunkBuffer, (nPos < sizeBlock) ? nPos + 1 : sizeBlock);
+                if (bytesRead == 0)
+                  break;
+
+                for (int i = bytesRead - 1; i >= 0; i--) {
+                  if (cChunkBuffer[i] == '\n' || (nPos == 0 && i == 0)) {
+                    pFile.seek(nPos + i + 1);
+
+                    char cBuffer[64];
+                    uint8_t uBytesRead = pFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1);
+                    cBuffer[uBytesRead] = '\0';
+
+                    if (uBytesRead > 0) {
+                      while (cBuffer[uBytesRead - 1] == '\r' || cBuffer[uBytesRead - 1] == ' ')
+                        cBuffer[--uBytesRead] = '\0';
+
+                      if (strArrayGraphData[uReadedLines] != nullptr)
+                        free((void*)strArrayGraphData[uReadedLines]);
+
+                      strArrayGraphData[uReadedLines] = strdup(cBuffer);
+
+                      uReadedLines++;
+                    }
+
+                    if (uReadedLines >= uLinesToRead)
+                      break;
+                  }
+                }
+
+                if (uReadedLines >= uLinesToRead || nPos == 0)
+                  break;
+
+                nPos -= sizeBlock;
+                if (nPos < 0)
+                  nPos = 0;
+              }
+            }
+
+            pFile.close();
+          }
         }
 
         size_t sizeGraphArraySize = sizeof(strArrayGraphData) / sizeof(strArrayGraphData[0]);
@@ -967,8 +1025,12 @@ void setup() {
           strResponse += ":";
 
           for (int i = sizeGraphArraySize - 1; i >= 0; i--) {
-            if (strArrayGraphData[i] != nullptr)
-              strResponse += String(strArrayGraphData[i]) + ",";
+            if (strArrayGraphData[i] != nullptr) {
+              if (i < sizeGraphArraySize - 1)
+                strResponse += ",";
+
+              strResponse += String(strArrayGraphData[i]);
+            }
           }
         }
         //////////////////////////////////////////////////////////////////////////////////////////
