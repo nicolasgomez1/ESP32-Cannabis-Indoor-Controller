@@ -901,66 +901,6 @@ void setup() {
         // ================================================== Graph Section ================================================== //
         ConnectSD(false);
 
-        /*if (bSDInit) {  // V1
-          File pFile = SD.open("/metrics.log", FILE_READ);
-          if (pFile) {
-            size_t sizeFile = pFile.size();
-
-            if (sizeFile > sizeLastReadFile) {
-              sizeLastReadFile = sizeFile;
-              uint64_t uPos = sizeFile;
-              uint8_t uReadedLines = 0;
-              char cBuffer[64];
-              String strLine;
-
-              while (uPos > 0 && uReadedLines < 24) { // TODO: Increase it to 48
-                uPos--;
-
-                pFile.seek(uPos);
-
-                char c = pFile.read();
-                if (c == '\n') {
-                  pFile.seek(uPos + 1);
-
-                  uint8_t uBytesRead = pFile.readBytesUntil('\n', cBuffer, 63);
-                  cBuffer[uBytesRead] = '\0';
-
-                  if (uBytesRead > 0) {
-                    strLine = String(cBuffer);
-                    strLine.trim();
-
-                    if (strArrayGraphData[uReadedLines] != nullptr)
-                      free((void*)strArrayGraphData[uReadedLines]);
-
-                    strArrayGraphData[uReadedLines] = strdup(strLine.c_str());
-
-                    uReadedLines++;
-                  }
-                }
-              }
-
-              if (uPos == 0 && uReadedLines < 24) { // TODO: Increase it to 48
-                pFile.seek(0);
-
-                uint8_t uBytesRead = pFile.readBytesUntil('\n', cBuffer, 63);
-                cBuffer[uBytesRead] = '\0';
-
-                if (uBytesRead > 0) {
-                  strLine = String(cBuffer);
-                  strLine.trim();
-
-                  if (strArrayGraphData[uReadedLines] != nullptr)
-                    free((void*)strArrayGraphData[uReadedLines]);
-
-                  strArrayGraphData[uReadedLines] = strdup(strLine.c_str());
-                }
-              }
-            }
-
-            pFile.close();
-          }
-        }*/
-
         if (bSDInit) { // V2 stolen code
           File pFile = SD.open("/metrics.log", FILE_READ);
           if (pFile) {
@@ -976,7 +916,7 @@ void setup() {
 
               while (nPos >= 0 && uReadedLines < uLinesToRead) {
                 pFile.seek(nPos);
-                
+
                 size_t bytesRead = pFile.read((uint8_t*)cChunkBuffer, (nPos < sizeBlock) ? nPos + 1 : sizeBlock);
                 if (bytesRead == 0)
                   break;
