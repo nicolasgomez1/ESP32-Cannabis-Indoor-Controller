@@ -414,7 +414,12 @@ void GetDateTime(bool bDoPing) {
 
         settimeofday(&tv, nullptr);
 
-        now = tv.tv_sec;
+        configTime(-3 * 3600, 0, nullptr, nullptr);
+
+        time_t now = time(nullptr);
+        struct tm timeinfo;
+
+        localtime_r(&now, &timeinfo);
 
         pFile.close();
       }
@@ -841,6 +846,13 @@ void setup() {
           tv.tv_usec = 0;
 
           settimeofday(&tv, nullptr);
+
+          configTime(-3 * 3600, 0, nullptr, nullptr);
+
+          time_t now = time(nullptr);
+          struct tm timeinfo;
+
+          localtime_r(&now, &timeinfo);
         }
 
         if (bWiFiChanges) {
