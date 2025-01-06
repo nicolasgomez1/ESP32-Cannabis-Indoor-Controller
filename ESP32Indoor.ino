@@ -94,7 +94,7 @@ unsigned long lEnvironmentElapsedReadTime = 0;
 unsigned long lSoilHumidityElapsedReadTime = 0;
 unsigned long lWateringIntervalElapsedTime = 0;
 unsigned long lEachSecondMillis = 0;
-unsigned long lEachMinuteMillis = 0;
+//unsigned long lEachMinuteMillis = 0;
 uint16_t uWateringElapsedTime = 0;
 bool bVentilationByTemperature = false;
 bool bVentilationByHumidity = false;
@@ -106,7 +106,7 @@ uint8_t uEffectiveStopLights = 0;
 TaskHandle_t taskhandleWiFiReconnect;
 unsigned long lLastStoreElapsedTime = 0;
 bool bSDInit = false;
-bool bConnectedToInternet = false;
+//bool bConnectedToInternet = false;
 size_t sizeLastReadFile = 0;
 const char* strArrayGraphData[48] = {};
 
@@ -372,7 +372,7 @@ void ConnectSD(bool bShowSuccessLog) {
   }
 }
 
-bool CheckInternetConnection() {
+/*bool CheckInternetConnection() {
   const char* cIP = "pool.ntp.org";
 
   LOGGER("Pinging to: %s...", INFO, String(cIP));
@@ -386,12 +386,12 @@ bool CheckInternetConnection() {
   }
 
   return bConnectedToInternet;
-}
+}*/
 
 void GetDateTime(bool bDoPing) {
   time_t now = 0;
 
-  if (bDoPing)
+  /*if (bDoPing)
     CheckInternetConnection();
 
   if (bConnectedToInternet) {
@@ -400,7 +400,7 @@ void GetDateTime(bool bDoPing) {
     configTime(-3 * 3600, 0, "pool.ntp.org");
 
     now = time(nullptr);
-  }
+  }*/
 
   if (now == 0 && bSDInit) {
     if (SD.exists("/time")) {
@@ -441,7 +441,7 @@ void Thread_WifiReconnect(void *parameter) {
 
   WiFi.softAP("ESP32_Indoor");  // Start Access Point, while try to connect to wifi
 
-  GetDateTime(false);
+  //GetDateTime(false);
 
   vTaskDelay(500 / portTICK_PERIOD_MS);  // Delay to stabilize AP
 
@@ -459,7 +459,7 @@ void Thread_WifiReconnect(void *parameter) {
 
   LOGGER("Access Point disconnected.", INFO);
 
-  GetDateTime(true);
+  //GetDateTime(true);
 
   vTaskSuspend(taskhandleWiFiReconnect);  // Suspends the task until needed again
 }
@@ -1038,7 +1038,7 @@ void loop() {
     if (WiFi.status() != WL_CONNECTED && eTaskGetState(taskhandleWiFiReconnect) != eRunning)
       vTaskResume(taskhandleWiFiReconnect);
 
-    if (lCurrentMillis - lEachMinuteMillis >= 60000) {
+    /*if (lCurrentMillis - lEachMinuteMillis >= 60000) {
       lEachMinuteMillis = lCurrentMillis;
 
       if (!bConnectedToInternet)  // If have no Internet Connection
@@ -1047,7 +1047,7 @@ void loop() {
           
           GetDateTime(false);  // Re-sync Datetime
         }
-    }
+    }*/
 
     if (bSDInit)
       WriteToSD("/time", String((uint32_t)now), false);
