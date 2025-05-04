@@ -21,6 +21,7 @@
 /* TODO:
   1) Perfiles para growing, flowering y drying                                                            DONE!
   2) Curva de riego, que riegue primero x cantidad, pasado x tiempo riegue x*Multiplicador o lo que sea
+  3) Ver que onda el sistema de reconeccion...                                                            DONE!
 */
 struct RelayPin {
   const char* Name; // Channel name
@@ -46,11 +47,12 @@ struct Settings {
 // NOTES:
 // Default IP for AP mode is: 192.168.4.1
 // If Environment Humidity or Temperature Reads 0, the fans never gonna start.
+// The check to turn on the Water Pump will not be made until g_nSoilReadsInterval * 1.5 has elapsed since the Controller has been started.
 
 // Definitions
 #define ENABLE_SERIAL_LOGGER  // Use this when debugging
 //#define ENABLE_SD_LOGGING   // Use this to save logs to SD Card
-#define ENABLE_AP_ALWAYS      // Use this to enable always the Access Point. Else it just enable when have no internet connection
+//#define ENABLE_AP_ALWAYS      // Use this to enable always the Access Point. Else it just enable when have no internet connection
 
 #define MAX_PROFILES 3  // 0 Vegetative (Filename: veg), 1 Flowering (Filename: flo), 2 Drying (Filename: dry)
 
@@ -164,7 +166,7 @@ void GetEnvironmentParameters(uint8_t &nTemperature, uint8_t &nHumidity, float &
     if ((nError = pDHT11.read(&bTemperature, &bHumidity, NULL)) != SimpleDHTErrSuccess) { // Get Environment Temperature and Humidity
       nReadTrysCount++;
 
-      LOGGER("Read DHT11 failed, Error=%d, Duration=%d.", ERROR, SimpleDHTErrCode(nError), SimpleDHTErrDuration(nError));
+      //LOGGER("Read DHT11 failed, Error=%d, Duration=%d.", ERROR, SimpleDHTErrCode(nError), SimpleDHTErrDuration(nError));
 
       delay(100);
     }
@@ -329,40 +331,47 @@ void LOGGER(const char *format, ERR_TYPE nType, ...) {
 // If AP was started, it is stopped after a successful connection.
 // Finally, suspends the task until it is explicitly resumed again.
 void Thread_WifiReconnect(void *parameter) {
+  for (;;) {
 #if !defined(ENABLE_AP_ALWAYS)
-  LOGGER("Starting Access Point (SSID: " + String(ACCESSPOINT_NAME) + ") mode for reconfiguration...", INFO);
+    if (!(WiFi.getMode() & WIFI_AP)) {
+      LOGGER("Starting Access Point (SSID: %s) mode for reconfiguration...", INFO, ACCESSPOINT_NAME);
 
-  WiFi.mode(WIFI_AP_STA); // Set dual mode, Access Point & Station
+      WiFi.mode(WIFI_AP_STA); // Set dual mode, Access Point & Station
 
-  vTaskDelay(100 / portTICK_PERIOD_MS); // Delay to stabilize AP
+      vTaskDelay(100 / portTICK_PERIOD_MS); // Delay to stabilize AP
 
-  WiFi.softAP(ACCESSPOINT_NAME); // Start Access Point, while try to connect to Wifi
+      WiFi.softAP(ACCESSPOINT_NAME); // Start Access Point, while try to connect to Wifi
+    }
+#else
+    WiFi.mode(WIFI_STA);
 #endif
 
-  LOGGER("Trying to reconnect Wifi...", INFO);
+    LOGGER("Trying to reconnect Wifi...", INFO);
 
-  WiFi.begin(g_cSSID, g_cSSIDPWD);
+    WiFi.begin(g_cSSID, g_cSSIDPWD);
 
-  uint8_t nConnectTrysCount = 0;
+    uint8_t nConnectTrysCount = 0;
 
-  while (WiFi.status() != WL_CONNECTED && nConnectTrysCount < WIFI_MAX_RETRYS) {
-    nConnectTrysCount++;
-    vTaskDelay(1000 / portTICK_PERIOD_MS);  // Wait 1 second before trying again
-  }
+    while (WiFi.status() != WL_CONNECTED && nConnectTrysCount < WIFI_MAX_RETRYS) {
+      nConnectTrysCount++;
+      vTaskDelay(1000 / portTICK_PERIOD_MS);  // Wait 1 second before trying again
+    }
 
-  if (WiFi.status() == WL_CONNECTED) {
-    LOGGER("Connected to Wifi SSID: %s PASSWORD: %s. IP: %s.", INFO, g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
+    if (WiFi.status() == WL_CONNECTED) {
+      LOGGER("Connected to Wifi SSID: %s PASSWORD: %s. IP: %s.", INFO, g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
 
 #if !defined(ENABLE_AP_ALWAYS)
-    WiFi.softAPdisconnect(true);
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_STA);
 
-    LOGGER("Access Point disconnected.", INFO);
+      LOGGER("Access Point disconnected.", INFO);
 #endif
-  } else {
-    LOGGER("Max Wifi reconnect attempts reached.", ERROR);
-  }
+    } else {
+      LOGGER("Max Wifi reconnect attempts reached.", ERROR);
+    }
 
-  vTaskSuspend(pWiFiReconnect); // Suspends the task until needed again
+    vTaskSuspend(NULL); // Suspends the task until needed again
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -983,14 +992,14 @@ void setup() {
         bool bWiFiChanges = false;
 
         if (request->hasArg("ssid") && strcmp(request->arg("ssid").c_str(), g_cSSID) != 0) {
-          strncpy(g_cSSID, request->arg("ssid").c_str(), sizeof(g_cSSID) - 1);
+          strncpy(g_cSSID, request->arg("ssid").c_str(), sizeof(g_cSSID) - 1);  // TODO: Capaz esto lo tengo que poner antes de guardar los datos, por que no estoy recibiendo nada cuando cambio el SSID o la contraseña
           bWiFiChanges = true;
 
           strReturn += "\r\nSe actualizó el SSID de Wifi.";
         }
 
         if (request->hasArg("ssidpwd") && strcmp(request->arg("ssidpwd").c_str(), g_cSSIDPWD) != 0) {
-          strncpy(g_cSSIDPWD, request->arg("ssidpwd").c_str(), sizeof(g_cSSIDPWD) - 1);
+          strncpy(g_cSSIDPWD, request->arg("ssidpwd").c_str(), sizeof(g_cSSIDPWD) - 1); // TODO: Capaz esto lo tengo que poner antes de guardar los datos, por que no estoy recibiendo nada cuando cambio el SSID o la contraseña
           bWiFiChanges = true;
 
           strReturn += "\r\nSe actualizó la Contraseña de Wifi.";
