@@ -50,23 +50,31 @@
 				document.getElementById('lightbrightind').innerText=per>0?per+'%% (Aproximadamente: '+((per/100)*1008).toFixed(0)+'ppfd)':'Apagado';
 
 				if(send)
-					SendAction('update','lightbright',document.getElementById('lightbright').value);
+					SendAction('update','lightbright',document.getElementById('profilesel').value+'|'+document.getElementById('lightbright').value);
 			}
 
 			function WateringMode(){
-				let str='Nivel de Humedad mínimo para Regar:',s='%%';
+				let str='Nivel de Humedad mínimo para Regar:',s='%%',val=document.getElementById('profilesel').value;
 
 				if(document.getElementById('wateringmode').checked){
 					str='Intervalo de Riego:';
 					s='Horas';
 
-					SendAction('ask','watering','1');
+					SendAction('sync','watering','1|'+val);
 				}else{
-					SendAction('ask','watering','0');
+					SendAction('sync','watering','0|'+val);
 				}
 
 				document.getElementById('wateringmodeind').innerText=str;
 				document.getElementById('wateringmodeind2').innerText=s;
+			}
+
+			function ProfileSelector(){
+				let val=parseInt(document.getElementById('profilesel').value);
+
+				document.getElementById('profileind').innerText=val==0?'Vegetativo':val==1?'Floración':'Secado';
+
+				SendAction('sync','profilesel',val);
 			}
 
 			function CalcDrip(){
@@ -96,28 +104,37 @@
 				currentUrl.searchParams.set('action',action);
 
 				if(args[0]=='all'){
-					let inputIds=['lightstart','lightstop','lightbright','intfansta','venttempstart','venthumstart','wathum','wateringmode','wateringtime','restinterval','restdur','soilreadinterval','temphys','humhys','dripperminute','ssid','ssidpwd'];
+					let elementIds=['profilesel','lightstart','lightstop','lightbright','intfansta','venttempstart','venthumstart','wathum','wateringmode','wateringtime','restinterval','restdur','soilreadinterval','temphys','humhys','dripperminute','ssid','ssidpwd'];
 
-					inputIds.forEach(id=>{
-						let value=document.getElementById(id).value;
+					elementIds.forEach(id=>{
+						let val=document.getElementById(id).value;
 
-						if(id=='wateringmode'){
-							value=0;
+						if(id=='wateringmode')
+							val=document.getElementById(id).checked?1:0;
 
-							if(document.getElementById(id).checked)
-								value=1;
-						}
-
-						currentUrl.searchParams.set(id,value);
+						currentUrl.searchParams.set(id,val);
 					});
 				}else if(args[0]!=null&&args[0]!='all'){
 					currentUrl.searchParams.set(args[0],args[1]);
 				}
 
 				fetch(currentUrl).then(response=>response.text()).then(returns=>{
-					if(returns.substring(0,3)=='UPD'){
-						let data=returns.substring(3).split(':');
-						document.getElementById(data[0]).value=data[1];
+					if(returns.substring(0,4)=='SYNC'){
+						let data=returns.substring(4).split(':');
+
+						for(i=0;i<data.length;i+= 2){
+							let e=data[i],v=data[i+1];
+
+							if(e!==undefined&&v!==undefined){
+								if(e=="wateringmode")
+									document.getElementById(e).checked=(v==0?false:true);
+								else
+									document.getElementById(e).value=v;
+							}
+						}
+
+						CalcDur();
+						CalcBright();
 					}else if(returns.substring(0,3)=='MSG'){
 						if(args[0]!=null&&args[0]!='lightbright')
 							alert(returns.substring(3));
@@ -235,6 +252,10 @@
 				<tr><td>Humedad Ambiente:</td><td><p id=humi>%ENVHUM%&#37;</p></td></tr>
 				%VPDSECTION%
 				%SOILSECTION%
+				<tr>
+					<td>Selector de Perfil:</td>
+					<td colspan=2><input type=range class=slider id=profilesel min=0 max=2 step=1 value='%PROFILE%'oninput=ProfileSelector()><span id=profileind></span></td>
+				</tr>
 				<th align=left colspan=3><div></div>Luz</th>
 				<tr>
 					<td>Hora de Encendido:</td>
@@ -255,7 +276,7 @@
 				<tr><td>Humedad ambiente de Encendido:</td><td><input id=venthumstart value='%HUMSTARTVENT%'>%%</td></tr>
 				<th align=left colspan=3><div></div>Riego</th>
 				<tr>
-					<td>Método de Riego:</td>
+					<td>Criterio de Riego:</td>
 					<td>
 						<input type=checkbox class=checkbox id=wateringmode oninput=WateringMode() %WATERINGMODE%>
 						<label tabindex=0 for=wateringmode class=toggle><span></span></label>
@@ -271,7 +292,7 @@
 					<td><input id=wateringtime value='%WATERINGTIME%'oninput=CalcDrip()>Segundos</td>
 					<td id=waterdripind></td>
 				</tr>
-				<th align=left colspan=3><div></div>Configuración Interna</th>
+				<th align=left colspan=3><div></div>Configuración Interna (Estos valores no cambian según el Perfil)</th>
 				<tr><td>Intervalo de Reposo de Ventiladores:</td><td><input id=restinterval value='%RESTINTERVAL%'>Minutos</td></tr>
 				<tr><td>Duración de Reposo de Ventiladores:</td><td><input id=restdur value='%RESTDUR%'>Minutos</td></tr>
 				<tr>
@@ -293,11 +314,12 @@
 	</body>
 	<script>
 		window.onload=function(){
+			ProfileSelector();
 			CalcDur();
 			CalcBright();
 			WateringMode();
 			CalcDrip();
-			setInterval(()=>SendAction('sync'),3000);
+			setInterval(()=>SendAction('refresh','profile',document.getElementById('profilesel').value),3000);
 		};
 
 		Object.assign(Chart.defaults.datasets.line,{borderWidth:1.1,pointRadius:0});
