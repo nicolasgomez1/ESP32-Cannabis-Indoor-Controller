@@ -54,7 +54,7 @@ struct Settings {
 // If Light Start & Stop Times Is 0, the light never gonna start.
 
 // Definitions
-#define ENABLE_SERIAL_LOGGER  // Use this when debugging
+//#define ENABLE_SERIAL_LOGGER  // Use this when debugging
 //#define ENABLE_SD_LOGGING   // Use this to save logs to SD Card
 //#define ENABLE_AP_ALWAYS      // Use this to enable always the Access Point. Else it just enable when have no internet connection
 
@@ -661,7 +661,6 @@ void setup() {
   }
 
   ledcAttach(S8050_PWM_PIN, S8050_FREQUENCY, S8050_RESOLUTION);
-  ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - (g_pSettings[g_nCurrentProfile].LightBrightness < 401 ? 0 : g_pSettings[g_nCurrentProfile].LightBrightness));  // WARNING: Hardcode offset
   LOGGER("Light Brightness Pin Done!", INFO);
 
   pinMode(HW080_VCC_PIN, OUTPUT);
@@ -719,6 +718,8 @@ void setup() {
       pSettingsFile.close();
       ///////////////////////////////////////////////////
       ProfilesLoader();  // LOAD PROFILES VALUES
+
+      ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - (g_pSettings[g_nCurrentProfile].LightBrightness < 401 ? 0 : g_pSettings[g_nCurrentProfile].LightBrightness));  // WARNING: Hardcode offset
     } else {
       LOGGER("Failed to open Settings file.", ERROR);
     }
