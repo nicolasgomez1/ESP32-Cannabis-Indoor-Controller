@@ -147,7 +147,8 @@ uint8_t g_nEffectiveStopLights = 0;
 int8_t g_nLastResetDay = -1;
 bool g_bWateredHour[24] = { false };
 unsigned long g_ulWateringDuration = 0;
-unsigned long g_ulTestWateringPump = 0;
+bool g_bTestPump = false;
+unsigned long g_ulTestWateringPumpStartTime = 0;
 uint8_t g_nEnvironmentTemperature = 0;
 uint8_t g_nEnvironmentHumidity = 0;
 float g_fEnvironmentVPD = 0.0f;
@@ -892,12 +893,12 @@ void setup() {
       } else if (request->arg("action") == "testpump") {
         String strReturn = "La bomba no se puede probar en este momento.";
 
-        if (digitalRead(GetPinByName("Water Pump"))) {
-          g_ulTestWateringPump = millis(); // This is for Turn On the Pump for 60 seconds, to measure the Pump Flow and obtain the CC value per Minute
+        if (g_ulTestWateringPumpStartTime == 0 && g_ulWateringDuration <= 0) {
+          g_bTestPump = true;
 
           digitalWrite(GetPinByName("Water Pump"), PIN_ON);
 
-          strReturn = "La bomba se encenderá durante 60 segundos. Para que puedas medir la cantidad de líquido que mueve.";
+          strReturn = "La bomba estará encendida durante los próximos 60 segundos.";
 
           LOGGER("Watering Pump Flow test started.", INFO);
         }
@@ -1270,24 +1271,13 @@ void setup() {
 
 void loop() {
   static unsigned long ulLastSecondTick = 0;  // General
-  static unsigned long g_ulLastStoreElapsedTime = 0;  // To Save Environment values to show in Graph
+  static unsigned long ulLastStoreElapsedTime = 0;  // To Save Environment values to show in Graph
   unsigned long ulCurrentMillis = millis(); 
-  time_t timeNow = time(nullptr);
-  struct tm *timeInfo = localtime(&timeNow);
-
-  // ================================================== Watering Section ================================================== //
-  if (timeInfo->tm_hour == 0 && timeInfo->tm_mday != g_nLastResetDay) {
-    g_nLastResetDay = timeInfo->tm_mday;
-
-    for (uint8_t i = 0; i < 24; ++i)
-      g_bWateredHour[i] = false;
-
-    g_pSettings[g_nCurrentProfile].CurrentWateringDay++;
-    WriteProfile(g_nCurrentProfile);
-  }
 
   if ((ulCurrentMillis - ulLastSecondTick) >= 1000) { // Check if 1 second has passed since the last tick to perform once-per-second tasks
     ulLastSecondTick = ulCurrentMillis;
+    time_t timeNow = time(nullptr);
+    struct tm *timeInfo = localtime(&timeNow);
     // ================================================== Wifi Section ================================================== //
     if (ulCurrentMillis >= (g_ulStartUpTime + (WIFI_CHECK_INTERVAL * WIFI_MAX_RETRYS)) && eTaskGetState(pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED) // If is not connected to Wifi and is not currently running a reconnect trask, start it
       vTaskResume(pWiFiReconnect);
@@ -1305,6 +1295,16 @@ void loop() {
         LOGGER("Lights Started.", INFO);
       }
       ///////////////////////////////////////////////////
+      if (timeInfo->tm_hour == 0 && timeInfo->tm_mday != g_nLastResetDay) {
+        g_nLastResetDay = timeInfo->tm_mday;
+
+        for (uint8_t i = 0; i < 24; ++i)
+          g_bWateredHour[i] = false;
+
+        g_pSettings[g_nCurrentProfile].CurrentWateringDay++;
+        WriteProfile(g_nCurrentProfile);
+      }
+
       if (g_ulWateringDuration > 0) {
         g_ulWateringDuration--; // Decrease -1 by each second pass
 
@@ -1337,7 +1337,7 @@ void loop() {
         for (uint8_t i = 0; i < nTotalPulses; i++) {
           uint8_t nHour = (nStartWaterHour + i) % 24;
 
-          if (nHour < timeInfo->tm_hour)  // If nHour is lower than Current Hour mark it like Watered
+          if (nHour <= timeInfo->tm_hour)// NOTE: Here I have a dilemma. Can I mark the previous hours as watered, or even the previous hours and the current hour. If I mark only the previous hours and not the current one, it could happen that the current hour's watering is completed, then the power goes out immediately, and when the controller is restarted, it starts watering again. This would accumulate two waterings in close proximity, potentially producing an excess of irrigation solution.
             g_bWateredHour[nHour] = true;
 
           if (!g_bWateredHour[timeInfo->tm_hour] && nHour == timeInfo->tm_hour) {
@@ -1358,6 +1358,8 @@ void loop() {
 
           strIrrigationHours += " " + String(nHourLabel) + (nHour >= 12 ? "PM" : "AM");
         }
+
+        g_bWateredHour[timeInfo->tm_hour] = true;
 
         LOGGER("Total Irrigation Pulses: %d | CC Per Pulse: %.1f | Pulse Duration: %.1f seconds | Pulse Hours:%s", INFO, nTotalPulses, fCCPerPulse, fPulseTime, strIrrigationHours.c_str());
       }
@@ -1438,8 +1440,8 @@ void loop() {
       }
     }
     // ================================================== Store Data for Graph Section ================================================== //
-    if ((ulCurrentMillis - g_ulLastStoreElapsedTime) >= GRAPH_MARKS_INTERVAL) {
-      g_ulLastStoreElapsedTime = ulCurrentMillis;
+    if ((ulCurrentMillis - ulLastStoreElapsedTime) >= GRAPH_MARKS_INTERVAL) {
+      ulLastStoreElapsedTime = ulCurrentMillis;
 
       String strValues = String(timeNow) + "|" + String(g_nEnvironmentTemperature) + "|" + String(g_nEnvironmentHumidity) + "|" + String(g_fEnvironmentVPD, 2);
 
@@ -1452,14 +1454,19 @@ void loop() {
       WriteToSD("/metrics.log", strValues, true);
     }
     // ================================================== Watering Pump Flow Test Section ================================================== //
-    if (g_ulTestWateringPump > 0 && (ulCurrentMillis - g_ulTestWateringPump) >= 60000) { // Check if has been pass 60 seconds. If is, turn off the pump
+    if (g_bTestPump) {
+      g_ulTestWateringPumpStartTime = ulCurrentMillis;
+      g_bTestPump = false;
+    }
+
+    if (g_ulTestWateringPumpStartTime > 0 && (ulCurrentMillis - g_ulTestWateringPumpStartTime) >= 60000) { // Check if has been pass 60 seconds. If is, turn off the pump
       if (!digitalRead(GetPinByName("Water Pump"))) {
         digitalWrite(GetPinByName("Water Pump"), PIN_OFF);
 
         LOGGER("Watering Pump Flow test Finished.", INFO);
       }
 
-      g_ulTestWateringPump = 0;
+      g_ulTestWateringPumpStartTime = 0;
     }
   }
 }

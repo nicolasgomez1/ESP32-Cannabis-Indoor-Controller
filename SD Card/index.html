@@ -140,7 +140,7 @@
 						CalcDur();
 						CalcBright();
 					}else if(returns.substring(0,3)=='MSG'){
-						if(args[0]!=null&&args[0]!='lightbright')
+						if(args[0]!='lightbright')
 							alert(returns.substring(3));
 					}else if(returns.substring(0,7)=='REFRESH'){
 						let data=returns.substring(7).split(':');
