@@ -1,8 +1,13 @@
 <html>
 	<head>
+		<meta name=viewport content=width=device-width,initial-scale=1.0>
+		<meta charset=utf-8>
+		<link rel=icon href=data:,>
+		<link rel='shortcut icon' href=data:,>
+		<title>ESP32 Indoor</title>
 		<style>
-			div{height:2;margin:5px;background-color:#22262A}
-			button{background-color:#36A9AE;border:1px solid #2A8387;border-radius:4px;color:#FFF;cursor:pointer;font-size:17;padding:6 6 6}
+			div{height:2;margin:5;background-color:#22262A}
+			button{background-color:#36A9AE;border:1px solid#2A8387;border-radius:4px;color:#FFF;cursor:pointer;font-size:17;padding:6 6 6}
 			button:active{box-shadow:rgb(0 0 0/.15)0 2px 4px inset,rgb(0 0 0/.4)0 1px 1px}
 			input{cursor:pointer;background-color:#FFF;border:1px solid#2A8387;border-radius:4px;color:#22262A;padding:4;outline:none;width:50}
 			input:focus{border-color:red}
@@ -17,9 +22,9 @@
 			.toggle span{position:absolute;top:0;left:0;width:20;height:20;display:block;background:#36A9AE;border-radius:10px;transition:all .2s ease}
 			.toggle span:before{display:block;width:56;height:56}
 			#wateringmode:checked+.toggle span{transform:translateX(30px);transition:all .2s cubic-bezier(.8,.4,.3,1.25)}
-			#chart{width:100%;max-height:300px;background:rgba(32,32,32,.1)}
+			#chart,#chart2{width:100%;max-height:300px;background:rgba(32,32,32,.1);box-shadow:0 0 0 1px#22262A}
 			#legend{border-collapse:collapse;width:100%;background:rgba(32,32,32,.1)}
-			#legend th,#legend td{padding:5;border:1px solid #22262A;text-align:left}
+			#legend th,#legend td{padding:5;border:1px solid#22262A;text-align:left}
 			.hide-line{text-decoration:line-through}
 			.show-line{cursor:pointer}
 		</style>
@@ -40,6 +45,34 @@
 
 				return[c,s];
 			}
+
+			function CalcDur(){
+				let start=parseInt(document.getElementById('lightstart').value),stop=parseInt(document.getElementById('lightstop').value);
+
+				document.getElementById('lightdur').innerText='Light Time: '+(stop-start+24)%24;
+			}
+
+			function CalcIrrigation(cc){
+				let lightstart=parseInt(document.getElementById('lightstart').value),lightstop=parseInt(document.getElementById('lightstop').value),dpm=parseFloat(document.getElementById('dripperminute').value);
+				let effstart=lightstart==0?24:lightstart,effstop=lightstop==0?24:lightstop;
+				let irrstart=(effstart+2)%24;
+				let avai=(effstop-2+24)%24-irrstart;
+
+				if(avai<0)
+					avai+=24;
+
+				let ccpp=avai>0?cc/avai:0;
+
+				let hours=[];
+				for(i=0;i<avai;i++){
+					let hour=(irrstart+i)%24;
+					let hourLabel=(hour%12===0?12:hour%12)+(hour>=12?'PM':'AM');
+
+					hours.push(hourLabel);
+				}
+
+				return[avai,ccpp,dpm>0?(ccpp/dpm)*60:0,hours];
+			}
 		</script>
 		<script src='SD Card/chart.js'></script>
 	</head>
@@ -47,13 +80,16 @@
 		<center>
 			<canvas id=chart></canvas>
 			<br><button id=toggle-text>Mostrar textos</button><br><br>
-			<table id=legend><thead><tr><th>Indicador</th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><td colspan=4>No hay información.</td><tbody></tbody></table>
+			<table id=legend><thead><tr><th>Indicador</th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><td colspan=4>No hay información.</td><tbody></tbody></table><br>
+			<table style='width:100%;border-collapse:collapse'><tr><td>Start Lights<input id=lightstart value=10 oninput=CalcDur()></td><td>Stop Lights<input id=lightstop value=4 oninput=CalcDur()></td><td id=lightdur></td><td>Drip Per Minute<input id=dripperminute value=200>cc</td></tr><tr><td colspan=4><canvas id=chart2></canvas></td></tr></table>
 		</center>
 	</body>
 	<script>
+		CalcDur();
+
 		let showTextOnLines=false;
 
-		Object.assign(Chart.defaults.datasets.line,{borderWidth:1.1,pointRadius:0});//Object.assign(Chart.defaults.datasets.line,{tension:.2,pointRadius:4});
+		Object.assign(Chart.defaults.datasets.line,{borderWidth:1.1,pointRadius:0/*,tension:.2*/});
 		Chart.defaults.scales={linear:{offset:true,display:false}};
 
 		let textOnLine={id:'textOnLine',
@@ -67,35 +103,29 @@
 					if(dataset.hidden)
 						return;
 
-					let points=chart.getDatasetMeta(i).data;
-
-					points.forEach((point,index)=>{
+					chart.getDatasetMeta(i).data.forEach((point,index)=>{
 						ctx.save();
 
 						ctx.fillStyle=dataset.borderColor;
-
-						let y=point.y-5;
-
-						if(y<=8)
-							y+=20;
-
-						ctx.fillText(dataset.data[index].y,point.x-7,y);
-
+						ctx.shadowColor='black';
+						ctx.shadowOffsetX=1;
+						ctx.shadowOffsetY=1;
+						ctx.fillText(dataset.data[index].y+dataset.symbol,point.x-7,point.y-3);
 						ctx.restore();
 					});
 				});
 			}
 		};
-		let border={id:'border',beforeDraw(chart,args,options){let{ctx,chartArea:{left,top,width,height}}=chart;ctx.save();ctx.strokeStyle=options.borderColor;ctx.lineWidth=options.borderWidth;ctx.setLineDash(options.borderDash||[]);ctx.lineDashOffset=options.borderDashOffset;ctx.strokeRect(left,top,width,height);ctx.restore();}};
+		
 		let chart=new Chart(document.getElementById('chart'),{
 			type:'line',
 			data:{
 				datasets:[
 					{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C',yAxisID:'0'},
-					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'&#37;',yAxisID:'1'},
+					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'%',yAxisID:'1'},
 					{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa',yAxisID:'2'},
-					{label:'Humedad de Maceta 0',borderColor:'#B57165',backgroundColor:'#B57165',symbol:'&#37;',yAxisID:'3'},
-					{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'&#37;',yAxisID:'4'}
+					{label:'Humedad de Maceta 0',borderColor:'#B57165',backgroundColor:'#B57165',symbol:'%',yAxisID:'3'},
+					{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'%',yAxisID:'4'}
 				]
 			},
 			options:{
@@ -104,10 +134,10 @@
 					tooltip:{
 						callbacks:{
 							//title:item=>`Hora: ${new Date(item[0].raw.x*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})}`,
-							title:item=>{let date=new Date(item[0].raw.x*1000);return`Fecha: ${date.toLocaleDateString("es-AR")} ${date.toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})}`;},
+							title:item=>{let date=new Date(item[0].raw.x*1000);return`Fecha: ${date.toLocaleDateString('es-AR')} ${date.toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})}`;},
 							label:(item)=>`${item.dataset.label}: ${item.raw.string+item.dataset.symbol+(item.dataset.symbol=='kPa'?' ('+CalcVPD(item.raw.string)[1]+')':'')}`
 						}
-					},border:{borderColor:'#22262A'}
+					}
 				},
 				animation:{duration:0},
 				interaction:{mode:'index',intersect:false},
@@ -116,21 +146,18 @@
 					//x:{type:'linear',min:0,max:86399,ticks:{stepSize:1800,display:false}}
 					x:{type:'linear',ticks:{stepSize:1000,display:false}}
 				}
-			},plugins:[textOnLine,border]
+			},plugins:[textOnLine]
 		});
-
 		let val="1733851913|28|57|1.63|76|54,1733855514|29|55|1.80|69|43,1733859114|29|52|1.92|64|46,1733862715|29|50|2.00|56|48,1733866315|30|49|2.17|55|43,1733869916|30|52|2.04|54|42,1733873517|30|54|1.95|53|43,1733877117|30|62|1.61|52|45,1733880717|30|53|2.00|52|42,1733884318|30|53|2.00|50|41,1733887918|26|61|1.31|51|41,1733891519|26|61|1.31|50|41,1733895120|26|61|1.31|49|40,1733898720|25|60|1.27|48|40,1733902321|25|60|1.27|48|42,1733905921|25|60|1.27|47|40,1733909522|29|62|1.52|44|39,1733913122|29|57|1.72|45|39,1733916723|29|57|1.72|44|36,1733920324|29|57|1.72|44|36,1733923924|28|64|1.36|43|34,1733927525|28|62|1.44|43|34,1733931125|29|62|1.52|43|31,1733934726|29|61|1.56|41|35".split(','),val2;
 
 		for(i=0;i<val.length;i++){
 			val2=val[i].split('|');
 			for(j=1;j<val2.length;j++)
 				chart.data.datasets[j-1].data[i]={x:val2[0]-(3*3600),y:parseFloat(val2[j]),string:val2[j]};
-				//chart.data.datasets[j-1].data[i]={x:(val2[0]-(3*3600))%86400,y:parseFloat(val2[j]),string:val2[j]};
 		}
 
 		chart.update();
 
-setInterval(() => {
 		val=document.querySelector('#legend tbody');
 
 		val2={};
@@ -162,7 +189,6 @@ setInterval(() => {
 				val.appendChild(row);
 			}
 		});
-}, 1000);
 
 		document.querySelector('#legend').addEventListener('click',function(e){
 			if(e.target&&e.target.matches('td.show-line')){
@@ -182,5 +208,92 @@ setInterval(() => {
 
 			chart.update();
 		});
+		//////////////////////////////////////////////
+		let textOnLine2={id:'textOnLine',
+			afterDatasetsDraw(chart){
+				let{ctx,data}=chart;
+
+				data.datasets.forEach((dataset,i)=>{
+					let points=chart.getDatasetMeta(i).data;
+
+					chart.getDatasetMeta(i).data.forEach((point,index)=>{
+						ctx.save();
+
+						let y=point.y-3;
+
+						ctx.fillStyle=dataset.borderColor;
+						ctx.shadowColor='black';
+						ctx.shadowOffsetX=1;
+						ctx.shadowOffsetY=1;
+						ctx.fillStyle='#D8DEE9';
+						ctx.fillText('Día '+dataset.data[index].x,point.x-15,y);
+						ctx.fillText(dataset.data[index].y+'cc',point.x-15,y+12);
+						ctx.restore();
+					});
+				});
+			}
+		};
+
+		let chart2=new Chart(document.getElementById('chart2'),{
+			type:'line',
+			data:{datasets:[{borderColor:'#87B4BC',backgroundColor:'#87B4BC',borderWidth:1.1,pointRadius:3,tension:.5}]},
+			options:{
+				plugins:{
+					legend:{display:false},
+					tooltip:{
+						displayColors:false,
+						callbacks:{
+							title:()=>'Esquema de Riego:',
+							label:(item)=>{
+								let data=CalcIrrigation(item.raw.y);
+								return[
+									`Total de Pulsos: ${data[0]}`,
+									`Cantidad de Riego por Pulso: ${data[1].toFixed(1)}cc (${(data[1]/item.raw.y*100).toFixed(1)}% de ${item.raw.y}cc)`,
+									`Duración de cada Pulso: ${data[2].toFixed(1)} segundos`,
+									`Horas de Riego: ${data[3].join(' ')}`
+								];
+							}
+						}
+					}
+				},
+				animation:{duration:0},
+				scales:{x:{type:'linear',ticks:{stepSize:2}}}
+			},plugins:[textOnLine2]
+		});
+
+		{
+		let val="1|10,7|20,14|25,27|300,40|600,53|500,66|1900,75|0".split(',');
+									for (let i = 0; i < val.length; i++) {
+									  let val2 = val[i].split('|');
+									  let day = val2[0], targetCC = val2[1];
+									  chart2.data.datasets[0].data[i]={ x: day, y: targetCC };
+									}
+
+		chart2.update();
+	}
+/////////////////////////
+document.getElementById('chart2').onclick=function(e){
+	let dots=chart2.getElementsAtEventForMode(e,'nearest',{intersect:true},true);
+
+	if(dots.length){
+		if(confirm("¿Seguro que queres Eliminar este Riego?")){
+			chart2.data.datasets[dots[0].datasetIndex].data.splice(dots[0].index,1);
+			chart2.update();
+		}
+	}else{
+		let rect=chart2.canvas.getBoundingClientRect();
+		let day=prompt("Ingrese el Día:",Math.round(chart2.scales.x.getValueForPixel(e.clientX-rect.left)));
+
+		if(day!==null&&!isNaN(day)){
+			let dur=prompt("Ingrese la Cantidad de cc a Regar:",Math.round(chart2.scales.y.getValueForPixel(e.clientY-rect.top)));
+
+			if(dur!==null&&!isNaN(dur)){
+				chart2.data.datasets[0].data.push({x:parseFloat(day),y:parseFloat(dur)});
+				chart2.data.datasets[0].data.sort((a,b)=>a.x-b.x);
+				chart2.update();
+			}
+		}
+	}
+};
 	</script>
 </html>
