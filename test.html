@@ -214,8 +214,6 @@
 				let{ctx,data}=chart;
 
 				data.datasets.forEach((dataset,i)=>{
-					let points=chart.getDatasetMeta(i).data;
-
 					chart.getDatasetMeta(i).data.forEach((point,index)=>{
 						ctx.save();
 

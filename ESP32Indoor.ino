@@ -598,7 +598,7 @@ String HTMLProcessor(const String &var) {
     if (g_ulFansRestElapsedTime > 0) {
       strReturn = "En Reposo...<br>Tiempo Restante: ";
 
-      unsigned long ulTimeRemaining = g_ulFansRestDuration - (millis() - g_ulFansRestElapsedTime);  // Miliseconds
+      unsigned long ulTimeRemaining = g_ulFansRestDuration - (millis() - g_ulFansRestElapsedTime);  // Miliseconds  // TODO: Me parece que sería mejor tener la variable ulCurrentMillis declarada globalmente y obtener el tick actual directamente de ahí
 
       if (ulTimeRemaining < 60000) {
         strReturn += String(ulTimeRemaining / 1000) + " segundos";
@@ -1205,7 +1205,7 @@ void setup() {
         strResponse += ":";
 
         if (g_bFansRest)
-          strResponse += String(g_ulFansRestDuration - (millis() - g_ulFansRestElapsedTime)); // Miliseconds
+          strResponse += String(g_ulFansRestDuration - (millis() - g_ulFansRestElapsedTime)); // Miliseconds  // TODO: Esto lo tendria que enviar en segundos. Aparte, me parece que sería mejor tener la variable ulCurrentMillis declarada globalmente y obtener el tick actual directamente de ahí
         else
           strResponse += "0";
 

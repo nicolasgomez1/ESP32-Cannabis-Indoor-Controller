@@ -93,6 +93,25 @@
 				return[avai,ccpp,dpm>0?(ccpp/dpm)*60:0,hours];
 			}
 
+			function CalcTime(seconds){
+				let result;
+
+				if(seconds>0){
+					if(seconds<60){
+						result=seconds+' segundos';
+					}else{
+						let val=Math.floor(seconds/60);
+						result=val+(val==1?' minuto':' minutos');
+						val=seconds%%60;
+
+						if(val>0)
+							result+=' y '+val+' segundos';
+					}
+				}
+
+				return result;
+			}
+
 			function SendAction(action,...args){
 				let currentUrl=new URL(window.location.href);
 
@@ -156,6 +175,7 @@
 						document.getElementById('vpdstate').style.color=vpd[0];
 
 						let soils=data[3].split(',');
+
 						for(i=0;i<soils.length;i++)
 							document.getElementById('soil'+i).innerText=soils[i]+'%%';
 
@@ -169,20 +189,8 @@
 
 						let result='',resttime=parseInt(data[6]);
 
-						if(resttime>0){
-							result='En Reposo...<br>Tiempo Restante: ';
-
-							if(resttime<60000){
-								result+=Math.floor(resttime/1000)+' segundos';
-							}else{
-								let val=Math.floor(resttime/60000);
-								result+=val+(val==1?' minuto':' minutos');
-								val=Math.floor((resttime%%60000)/1000);
-
-								if(val>0)
-									result+=' y '+val+' segundos';
-							}
-						}
+						if(resttime>0)
+							result='En Reposo...<br>Tiempo Restante: '+CalcTime(resttime/1000);
 
 						document.getElementById('reststate').innerHTML=result;
 
@@ -196,20 +204,8 @@
 						let wattimerem=parseInt(data[10]);
 						result='';
 
-						if(wattimerem>0){
-							result='Regando...<br>Tiempo Restante: ';
-
-							if(wattimerem<60){
-								result+=wattimerem+' segundos';
-							}else{
-								let val=Math.floor(wattimerem/60);
-								result+=val+(val==1?' minuto':' minutos');
-								val=wattimerem%%60;
-
-								if(val>0)
-									result+=' y '+val+' segundos';
-							}
-						}
+						if(wattimerem>0)
+							result='Regando...<br>Tiempo Restante: '+CalcTime(wattimerem);
 
 						document.getElementById('watstate').innerHTML=result;
 
@@ -263,7 +259,7 @@
 	</head>
 	<body bgcolor=#303841 style=font-family:Arial;color:#D8DEE9>
 		<center>
-			<table style='width:80%%;border-collapse:collapse'>
+			<table style='width:50%%;border-collapse:collapse'>
 				<th align=left>Parametros</th>
 				<tr>
 					<td>Hora Actual:</td>
@@ -394,8 +390,6 @@
 				let{ctx,data}=chart;
 
 				data.datasets.forEach((dataset,i)=>{
-					let points=chart.getDatasetMeta(i).data;
-
 					chart.getDatasetMeta(i).data.forEach((point,index)=>{
 						ctx.save();
 
