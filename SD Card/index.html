@@ -121,9 +121,7 @@
 				if(args[0]=='all'){
 					let elementIds=['lightstart','lightstop','lightbright','intfansta','venttempstart','venthumstart','currentwateringday','restinterval','restdur','temphys','humhys','dripperminute','ssid','ssidpwd'];
 
-					elementIds.forEach(id=>{
-						currentUrl.searchParams.set(id,document.getElementById(id).value);
-					});
+					elementIds.forEach(id=>{currentUrl.searchParams.set(id,document.getElementById(id).value);});
 
 					currentUrl.searchParams.set('wateringchart',chart2.data.datasets[0].data.map(p=>`${p.x}|${p.y}`).join(','));
 				}else if(args.length%%2===0){
@@ -266,8 +264,8 @@
 					<td id=currenttime>%CURRENTTIME%</td>
 					<td><button onclick=SendAction('update','settime',Math.floor(Date.now()/1000))>Sincronizar</button></td>
 				</tr>
-				<tr><td>Temperatura Ambiente:</td><td><p id=temp>%ENVTEMP%°C</p></td></tr>
-				<tr><td>Humedad Ambiente:</td><td><p id=humi>%ENVHUM%&#37;</p></td></tr>
+				<tr><td>Temperatura Ambiente:</td><td id=temp>%ENVTEMP%°C</td></tr>
+				<tr><td>Humedad Ambiente:</td><td id=humi>%ENVHUM%&#37;</td></tr>
 				%VPDSECTION%
 				%SOILSECTION%
 				<tr>
@@ -345,7 +343,9 @@
 			}
 		};
 
-		let chart=new Chart(document.getElementById('chart'),{type:'line',
+		let chart=new Chart(document.getElementById('chart'),
+		{
+			type:'line',
 			data:{
 				datasets:[
 					{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C',yAxisID:'0'},
@@ -408,7 +408,8 @@
 			}
 		};
 
-		let chart2=new Chart(document.getElementById('chart2'),{
+		let chart2=new Chart(document.getElementById('chart2'),
+		{
 			type:'line',
 			data:{datasets:[{borderColor:'#87B4BC',backgroundColor:'#87B4BC',borderWidth:1.1,pointRadius:3,tension:.5}]},
 			options:{
@@ -435,7 +436,20 @@
 			},plugins:[textOnLine2]
 		});
 
-		document.getElementById('chart2').onclick=function(e){
+		let touchStart=null;
+
+		chart2.canvas.addEventListener('pointerdown',function(e){touchStart={x:e.clientX,y:e.clientY};});
+		chart2.canvas.addEventListener('pointerup',function(e){
+			if(!touchStart)
+				return;
+
+			if(Math.abs(e.clientX-touchStart.x)>5||Math.abs(e.clientY-touchStart.y)>5){
+				touchStart=null;
+				return;
+			}
+
+			touchStart=null;
+
 			let dots=chart2.getElementsAtEventForMode(e,'nearest',{intersect:true},true);
 
 			if(dots.length){
@@ -457,6 +471,6 @@
 					}
 				}
 			}
-		};
+		});
 	</script>
 </html>

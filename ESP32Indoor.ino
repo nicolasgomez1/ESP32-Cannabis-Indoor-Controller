@@ -52,6 +52,8 @@ struct Settings {
 // Default IP for AP mode is: 192.168.4.1
 // If Environment Humidity or Temperature Reads 0, the fans never gonna start.
 // If Light Start & Stop Times Is 0, the light never gonna start.
+// DHT1 have a pullup (between data and vcc)
+// HW080 have a pulldown (in return line to gnd)
 
 // Definitions
 //#define ENABLE_SERIAL_LOGGER  // Use this when debugging
@@ -61,7 +63,7 @@ struct Settings {
 #define MAX_PROFILES 3  // 0 Vegetative (Filename: veg), 1 Flowering (Filename: flo), 2 Drying (Filename: dry)
 
 #define MAX_GRAPH_MARKS 48  // How much logs show in Web Panel Graph
-#define GRAPH_MARKS_INTERVAL 3600000/*3600000 = 1 Hour*/  // Intervals in which values ​​are stored for the graph // TODO: Esto lo podría incluir en la configuración interna. Para poder cambiarlo desde el Panel Web
+#define GRAPH_MARKS_INTERVAL 3600000/*1 Hour*/  // Intervals in which values ​​are stored for the graph // TODO: Esto lo podría incluir en la configuración interna. Para poder cambiarlo desde el Panel Web
 
 #define WIFI_MAX_RETRYS 5 // Max Wifi reconnection attempts
 #define WIFI_CHECK_INTERVAL 1000/*1 Second*/
@@ -155,7 +157,7 @@ float g_fEnvironmentVPD = 0.0f;
 unsigned long g_ulFansRestElapsedTime = 0;
 bool g_bFansRest = false;
 uint8_t g_nSoilsHumidity[nSoilHumidityPinsCount] = {};
-const char* g_strArrayGraphData[MAX_GRAPH_MARKS] = {};
+char* g_strArrayGraphData[MAX_GRAPH_MARKS] = {};
 
 // Global Handles, Interface & Instances
 AsyncWebServer pWebServer(WEBSERVER_PORT);  // Asynchronous web server instance listening on WEBSERVER_PORT
@@ -479,8 +481,6 @@ void Thread_WifiReconnect(void *parameter) {
 
       WiFi.softAP(ACCESSPOINT_NAME); // Start Access Point, while try to connect to Wifi
     }
-#else
-    WiFi.mode(WIFI_STA);
 #endif
 
     LOGGER("Trying to reconnect Wifi...", INFO);
@@ -598,7 +598,7 @@ String HTMLProcessor(const String &var) {
     if (g_ulFansRestElapsedTime > 0) {
       strReturn = "En Reposo...<br>Tiempo Restante: ";
 
-      unsigned long ulTimeRemaining = g_ulFansRestDuration - (millis() - g_ulFansRestElapsedTime);  // Miliseconds  // TODO: Me parece que sería mejor tener la variable ulCurrentMillis declarada globalmente y obtener el tick actual directamente de ahí
+      unsigned long ulTimeRemaining = g_ulFansRestDuration - (millis() - g_ulFansRestElapsedTime);  // Miliseconds
 
       if (ulTimeRemaining < 60000) {
         strReturn += String(ulTimeRemaining / 1000) + " segundos";
@@ -775,9 +775,6 @@ void setup() {
             if (nBytesRead > 0) {
               while (nBytesRead > 0 && (cBuffer[nBytesRead - 1] == '\r' || cBuffer[nBytesRead - 1] == ' '))
                 cBuffer[--nBytesRead] = '\0';
-
-              if (g_strArrayGraphData[nLinesRead] != nullptr)
-                free((void*)g_strArrayGraphData[nLinesRead]);
 
               g_strArrayGraphData[nLinesRead] = strdup(cBuffer);
 
@@ -1205,7 +1202,7 @@ void setup() {
         strResponse += ":";
 
         if (g_bFansRest)
-          strResponse += String(g_ulFansRestDuration - (millis() - g_ulFansRestElapsedTime)); // Miliseconds  // TODO: Esto lo tendria que enviar en segundos. Aparte, me parece que sería mejor tener la variable ulCurrentMillis declarada globalmente y obtener el tick actual directamente de ahí
+          strResponse += String(g_ulFansRestDuration - (millis() - g_ulFansRestElapsedTime)); // Miliseconds  // TODO: Esto lo tendría que enviar en segundos. Aparte, me parece que sería mejor tener la variable ulCurrentMillis declarada globalmente y obtener el tick actual directamente de ahí. aparte, tengo que remover la división entre 1000 en el código de JS
         else
           strResponse += "0";
 
@@ -1223,7 +1220,7 @@ void setup() {
         if (sizeGraphArraySize > 0 && g_strArrayGraphData[0] != nullptr) {
           strResponse += ":";
 
-          for (int i = sizeGraphArraySize - 1; i >= 0; i--) {
+          for (size_t i = sizeGraphArraySize - 1; i >= 0; i--) {
             if (g_strArrayGraphData[i] != nullptr) {
               if (i < (sizeGraphArraySize - 1))
                 strResponse += ",";
@@ -1235,7 +1232,7 @@ void setup() {
         // ========================================================================================================================= //
         AsyncWebServerResponse *response = request->beginResponse(200, "text/plain;charset=utf-8", "REFRESH" + strResponse);
         /*
-          Response structure example: each data[X] is divided by :
+          Response structure example: each data[X] is divided by:
           data[0] → Environment Temperature
           data[1] → Environment Humidity
           data[2] → Environment VPD
@@ -1453,6 +1450,22 @@ void loop() {
       }
 
       WriteToSD("/metrics.log", strValues, true);
+
+      for (uint8_t i = MAX_GRAPH_MARKS - 1; i > 0; i--) { // Shifts all values ​​up one position
+        if (g_strArrayGraphData[i]) {
+          free(g_strArrayGraphData[i]);
+          g_strArrayGraphData[i] = nullptr; // Just in case...
+        }
+  
+        g_strArrayGraphData[i] = g_strArrayGraphData[i - 1] ? strdup(g_strArrayGraphData[i - 1]) : nullptr; // If the previous position has a value, pass it to the current iteration position. Otherwise, set it to null.
+      }
+
+      if (g_strArrayGraphData[0]) {
+        free(g_strArrayGraphData[0]);
+        g_strArrayGraphData[0] = nullptr; // Just in case...
+      }
+
+      g_strArrayGraphData[0] = strdup(strValues.c_str()); // Store the current value at the beginning of the array
     }
     // ================================================== Watering Pump Flow Test Section ================================================== //
     if (g_bTestPump) {
