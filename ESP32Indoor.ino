@@ -52,8 +52,6 @@ struct Settings {
 // Default IP for AP mode is: 192.168.4.1
 // If Environment Humidity or Temperature Reads 0, the fans never gonna start.
 // If Light Start & Stop Times Is 0, the light never gonna start.
-// DHT1 have a pullup (between data and vcc)
-// HW080 have a pulldown (in return line to gnd)
 
 // Definitions
 //#define ENABLE_SERIAL_LOGGER  // Use this when debugging
@@ -63,7 +61,7 @@ struct Settings {
 #define MAX_PROFILES 3  // 0 Vegetative (Filename: veg), 1 Flowering (Filename: flo), 2 Drying (Filename: dry)
 
 #define MAX_GRAPH_MARKS 48  // How much logs show in Web Panel Graph
-#define GRAPH_MARKS_INTERVAL 3600000/*1 Hour*/  // Intervals in which values ​​are stored for the graph // TODO: Esto lo podría incluir en la configuración interna. Para poder cambiarlo desde el Panel Web
+#define GRAPH_MARKS_INTERVAL 3600000/*3600000 = 1 Hour*/  // Intervals in which values ​​are stored for the graph // TODO: Esto lo podría incluir en la configuración interna. Para poder cambiarlo desde el Panel Web
 
 #define WIFI_MAX_RETRYS 5 // Max Wifi reconnection attempts
 #define WIFI_CHECK_INTERVAL 1000/*1 Second*/
@@ -481,6 +479,8 @@ void Thread_WifiReconnect(void *parameter) {
 
       WiFi.softAP(ACCESSPOINT_NAME); // Start Access Point, while try to connect to Wifi
     }
+#else
+    WiFi.mode(WIFI_STA);
 #endif
 
     LOGGER("Trying to reconnect Wifi...", INFO);
@@ -1202,7 +1202,7 @@ void setup() {
         strResponse += ":";
 
         if (g_bFansRest)
-          strResponse += String(g_ulFansRestDuration - (millis() - g_ulFansRestElapsedTime)); // Miliseconds  // TODO: Esto lo tendría que enviar en segundos. Aparte, me parece que sería mejor tener la variable ulCurrentMillis declarada globalmente y obtener el tick actual directamente de ahí. aparte, tengo que remover la división entre 1000 en el código de JS
+          strResponse += String(g_ulFansRestDuration - (millis() - g_ulFansRestElapsedTime)); // Miliseconds
         else
           strResponse += "0";
 
@@ -1220,7 +1220,7 @@ void setup() {
         if (sizeGraphArraySize > 0 && g_strArrayGraphData[0] != nullptr) {
           strResponse += ":";
 
-          for (size_t i = sizeGraphArraySize - 1; i >= 0; i--) {
+          for (int i = sizeGraphArraySize - 1; i >= 0; i--) {
             if (g_strArrayGraphData[i] != nullptr) {
               if (i < (sizeGraphArraySize - 1))
                 strResponse += ",";
@@ -1232,7 +1232,7 @@ void setup() {
         // ========================================================================================================================= //
         AsyncWebServerResponse *response = request->beginResponse(200, "text/plain;charset=utf-8", "REFRESH" + strResponse);
         /*
-          Response structure example: each data[X] is divided by:
+          Response structure example: each data[X] is divided by :
           data[0] → Environment Temperature
           data[1] → Environment Humidity
           data[2] → Environment VPD
@@ -1292,34 +1292,42 @@ void loop() {
 
         LOGGER("Lights Started.", INFO);
       }
-      ///////////////////////////////////////////////////
-      if (timeInfo->tm_hour == 0 && timeInfo->tm_mday != g_nLastResetDay) {
-        g_nLastResetDay = timeInfo->tm_mday;
+    } else {  // If Current Time is out of ON range, turn it OFF
+      if (!digitalRead(GetPinByName("Lights"))) {
+        digitalWrite(GetPinByName("Lights"), PIN_OFF);
 
-        for (uint8_t i = 0; i < 24; ++i)
-          g_bWateredHour[i] = false;
-
-        g_pSettings[g_nCurrentProfile].CurrentWateringDay++;
-        WriteProfile(g_nCurrentProfile);
+        LOGGER("Lights Stopped.", INFO);
       }
+    }
+    // ================================================== Irrigation Section ================================================== //
+    if (timeInfo->tm_hour == 0 && timeInfo->tm_mday != g_nLastResetDay) {
+      g_nLastResetDay = timeInfo->tm_mday;
 
-      if (g_ulWateringDuration > 0) {
-        g_ulWateringDuration--; // Decrease -1 by each second pass
+      for (uint8_t i = 0; i < 24; ++i)
+        g_bWateredHour[i] = false;
 
-        if (g_ulWateringDuration <= 0 && !digitalRead(GetPinByName("Water Pump"))) {
-          digitalWrite(GetPinByName("Water Pump"), PIN_OFF);
+      g_pSettings[g_nCurrentProfile].CurrentWateringDay++;
+      WriteProfile(g_nCurrentProfile);
+    }
 
-          g_ulWateringDuration = 0;
+    if (g_ulWateringDuration > 0) {
+      g_ulWateringDuration--;  // Decrease -1 by each second pass
 
-          LOGGER("Watering Finished.", INFO);
-        }
+      if (g_ulWateringDuration <= 0 && !digitalRead(GetPinByName("Irrigation Pump"))) {
+        digitalWrite(GetPinByName("Irrigation Pump"), PIN_OFF);
+
+        g_ulWateringDuration = 0;
+
+        LOGGER("Irrigation Finished.", INFO);
       }
+    }
 
+    if (!digitalRead(GetPinByName("Lights"))) {
       if (!g_bWateredHour[timeInfo->tm_hour]) {
         uint16_t nLastKnownCC = 0;
-        uint8_t nStartWaterHour = (g_nEffectiveStartLights + 2) % 24;
-        uint8_t nStopWaterHour = (g_nEffectiveStopLights - 2 + 24) % 24;
-        int8_t nTotalPulses = (nStopWaterHour - nStartWaterHour + 24) % 24;
+        uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 2) % 24;
+        uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24;
+        int8_t nTotalPulses = (nStopIrrigationHour - nStartIrrigationHour + 24) % 24;
 
         for (const auto& Watering : g_pSettings[g_nCurrentProfile].WateringStages) {
           if (g_pSettings[g_nCurrentProfile].CurrentWateringDay >= Watering.Day)
@@ -1333,19 +1341,19 @@ void loop() {
         String strIrrigationHours = "";
 
         for (uint8_t i = 0; i < nTotalPulses; i++) {
-          uint8_t nHour = (nStartWaterHour + i) % 24;
+          uint8_t nHour = (nStartIrrigationHour + i) % 24;
 
-          if (nHour <= timeInfo->tm_hour)// NOTE: Here I have a dilemma. Can I mark the previous hours as watered, or even the previous hours and the current hour. If I mark only the previous hours and not the current one, it could happen that the current hour's watering is completed, then the power goes out immediately, and when the controller is restarted, it starts watering again. This would accumulate two waterings in close proximity, potentially producing an excess of irrigation solution.
+          if ((nStartIrrigationHour <= timeInfo->tm_hour && nHour >= nStartIrrigationHour && nHour <= timeInfo->tm_hour) || (nStartIrrigationHour > timeInfo->tm_hour && (nHour >= nStartIrrigationHour || nHour <= timeInfo->tm_hour)))
             g_bWateredHour[nHour] = true;
 
           if (!g_bWateredHour[timeInfo->tm_hour] && nHour == timeInfo->tm_hour) {
-            g_ulWateringDuration = ceil(fPulseTime);  // Round up and cast to unsigned long
+            g_ulWateringDuration = ceil(fPulseTime); // Round up and cast to uint32_t
             g_bWateredHour[nHour] = true;
 
-            if (digitalRead(GetPinByName("Water Pump"))) {
-              digitalWrite(GetPinByName("Water Pump"), PIN_ON);
+            if (digitalRead(GetPinByName("Irrigation Pump"))) {
+              digitalWrite(GetPinByName("Irrigation Pump"), PIN_ON);
 
-              LOGGER("Watering Started.", INFO);
+              LOGGER("Irrigation Started.", INFO);
             }
           }
 
@@ -1357,15 +1365,7 @@ void loop() {
           strIrrigationHours += " " + String(nHourLabel) + (nHour >= 12 ? "PM" : "AM");
         }
 
-        g_bWateredHour[timeInfo->tm_hour] = true;
-
         LOGGER("Total Irrigation Pulses: %d | CC Per Pulse: %.1f | Pulse Duration: %.1f seconds | Pulse Hours:%s", INFO, nTotalPulses, fCCPerPulse, fPulseTime, strIrrigationHours.c_str());
-      }
-    } else {  // If Current Time is out of ON range, turn it OFF
-      if (!digitalRead(GetPinByName("Lights"))) {
-        digitalWrite(GetPinByName("Lights"), PIN_OFF);
-
-        LOGGER("Lights Stopped.", INFO);
       }
     }
     // ================================================== Fans Section ================================================== //
@@ -1456,7 +1456,7 @@ void loop() {
           free(g_strArrayGraphData[i]);
           g_strArrayGraphData[i] = nullptr; // Just in case...
         }
-  
+
         g_strArrayGraphData[i] = g_strArrayGraphData[i - 1] ? strdup(g_strArrayGraphData[i - 1]) : nullptr; // If the previous position has a value, pass it to the current iteration position. Otherwise, set it to null.
       }
 
