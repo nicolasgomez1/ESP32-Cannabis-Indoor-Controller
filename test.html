@@ -214,6 +214,8 @@
 				let{ctx,data}=chart;
 
 				data.datasets.forEach((dataset,i)=>{
+					let points=chart.getDatasetMeta(i).data;
+
 					chart.getDatasetMeta(i).data.forEach((point,index)=>{
 						ctx.save();
 
@@ -270,41 +272,28 @@
 		chart2.update();
 	}
 /////////////////////////
-	let touchStart=null;
+document.getElementById('chart2').onclick=function(e){
+	let dots=chart2.getElementsAtEventForMode(e,'nearest',{intersect:true},true);
 
-		chart2.canvas.addEventListener('pointerdown',function(e){touchStart={x:e.clientX,y:e.clientY};});
-		chart2.canvas.addEventListener('pointerup',function(e){
-			if(!touchStart)
-				return;
+	if(dots.length){
+		if(confirm("¿Seguro que queres Eliminar este Riego?")){
+			chart2.data.datasets[dots[0].datasetIndex].data.splice(dots[0].index,1);
+			chart2.update();
+		}
+	}else{
+		let rect=chart2.canvas.getBoundingClientRect();
+		let day=prompt("Ingrese el Día:",Math.round(chart2.scales.x.getValueForPixel(e.clientX-rect.left)));
 
-			if(Math.abs(e.clientX-touchStart.x)>5||Math.abs(e.clientY-touchStart.y)>5){
-				touchStart=null;
-				return;
+		if(day!==null&&!isNaN(day)){
+			let dur=prompt("Ingrese la Cantidad de cc a Regar:",Math.round(chart2.scales.y.getValueForPixel(e.clientY-rect.top)));
+
+			if(dur!==null&&!isNaN(dur)){
+				chart2.data.datasets[0].data.push({x:parseFloat(day),y:parseFloat(dur)});
+				chart2.data.datasets[0].data.sort((a,b)=>a.x-b.x);
+				chart2.update();
 			}
-
-			touchStart=null;
-
-			let dots=chart2.getElementsAtEventForMode(e,'nearest',{intersect:true},true);
-
-			if(dots.length){
-				if(confirm('¿Seguro que queres eliminar este Riego?')){
-					chart2.data.datasets[dots[0].datasetIndex].data.splice(dots[0].index,1);
-					chart2.update();
-				}
-			}else{
-				let rect=chart2.canvas.getBoundingClientRect();
-				let day=prompt('Día:',Math.round(chart2.scales.x.getValueForPixel(e.clientX-rect.left)));
-
-				if(day!==null&&!isNaN(day)&&day>=0){
-					let cc=prompt('Cantidad de cc a Regar:',Math.round(chart2.scales.y.getValueForPixel(e.clientY-rect.top)));
-
-					if(cc!==null&&!isNaN(cc)&&cc>=0){
-						chart2.data.datasets[0].data.push({x:parseFloat(day),y:parseFloat(cc)});
-						chart2.data.datasets[0].data.sort((a,b)=>a.x-b.x);
-						chart2.update();
-					}
-				}
-			}
-		});
+		}
+	}
+};
 	</script>
 </html>

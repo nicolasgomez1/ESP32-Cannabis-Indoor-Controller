@@ -937,15 +937,15 @@ void setup() {
             ProfilesLoader();
 
             // Check if currently are watering, and stop it
-            if (g_ulWateringDuration > 0 && !digitalRead(GetPinByName("Water Pump"))) {
+            /*if (g_ulWateringDuration > 0 && !digitalRead(GetPinByName("Water Pump"))) { // NOTE: This disabled too
               digitalWrite(GetPinByName("Water Pump"), PIN_OFF);
 
               LOGGER("Watering Finished because profile has been changed.", INFO);
-            }
+            }*/
 
             // Reset Watering variables
             g_nLastResetDay = -1;
-            g_ulWateringDuration = 0;
+            //g_nIrrigationDuration = 0;  // NOTE: Better let complete the Irrigation process. Cuz this can create problems related to Race condition...
             memset(g_bWateredHour, 0, sizeof(g_bWateredHour));
 
             strReturn += "Se cambió al Perfil de: ";
@@ -1300,72 +1300,79 @@ void loop() {
       }
     }
     // ================================================== Irrigation Section ================================================== //
-    if (timeInfo->tm_hour == 0 && timeInfo->tm_mday != g_nLastResetDay) {
-      g_nLastResetDay = timeInfo->tm_mday;
+    {
+      static bool bLastPulseDone = false;
 
-      for (uint8_t i = 0; i < 24; ++i)
-        g_bWateredHour[i] = false;
+      if (bLastPulseDone && timeInfo->tm_mday != g_nLastResetDay) {
+        g_nLastResetDay = timeInfo->tm_mday;
+        bLastPulseDone = false;
 
-      g_pSettings[g_nCurrentProfile].CurrentWateringDay++;
-      WriteProfile(g_nCurrentProfile);
-    }
+        memset(g_bWateredHour, 0, sizeof(g_bWateredHour));
 
-    if (g_ulWateringDuration > 0) {
-      g_ulWateringDuration--;  // Decrease -1 by each second pass
+        g_pSettings[g_nCurrentProfile].CurrentWateringDay++;
 
-      if (g_ulWateringDuration <= 0 && !digitalRead(GetPinByName("Irrigation Pump"))) {
-        digitalWrite(GetPinByName("Irrigation Pump"), PIN_OFF);
-
-        g_ulWateringDuration = 0;
-
-        LOGGER("Irrigation Finished.", INFO);
+        WriteProfile(g_nCurrentProfile);
       }
-    }
 
-    if (!digitalRead(GetPinByName("Lights"))) {
-      if (!g_bWateredHour[timeInfo->tm_hour]) {
-        uint16_t nLastKnownCC = 0;
+      if (g_ulWateringDuration > 0) {
+        g_ulWateringDuration--;  // Decrease -1 by each second pass
+
+        if (g_ulWateringDuration <= 0 && !digitalRead(GetPinByName("Water Pump"))) {
+          digitalWrite(GetPinByName("Water Pump"), PIN_OFF);
+
+          g_ulWateringDuration = 0;
+
+          LOGGER("Irrigation Finished.", INFO);
+        }
+      }
+
+      if (!digitalRead(GetPinByName("Lights")) && !g_bWateredHour[timeInfo->tm_hour]) {
         uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 2) % 24;
         uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24;
-        int8_t nTotalPulses = (nStopIrrigationHour - nStartIrrigationHour + 24) % 24;
+        uint8_t nTotalPulses = (nStopIrrigationHour - nStartIrrigationHour + 24) % 24;
 
-        for (const auto& Watering : g_pSettings[g_nCurrentProfile].WateringStages) {
-          if (g_pSettings[g_nCurrentProfile].CurrentWateringDay >= Watering.Day)
-            nLastKnownCC = Watering.TargetCC;
-          else
-            break;
-        }
+        if (g_nDripPerMinute > 0 && nTotalPulses > 0) {
+          uint16_t nLastKnownCC = 0;
 
-        float fCCPerPulse = (nTotalPulses > 0) ? ((float)nLastKnownCC / nTotalPulses) : 0.0f;
-        float fPulseTime = (g_nDripPerMinute > 0) ? (fCCPerPulse / g_nDripPerMinute) * 60.0f : 0.0f;  // Seconds
-        String strIrrigationHours = "";
-
-        for (uint8_t i = 0; i < nTotalPulses; i++) {
-          uint8_t nHour = (nStartIrrigationHour + i) % 24;
-
-          if ((nStartIrrigationHour <= timeInfo->tm_hour && nHour >= nStartIrrigationHour && nHour <= timeInfo->tm_hour) || (nStartIrrigationHour > timeInfo->tm_hour && (nHour >= nStartIrrigationHour || nHour <= timeInfo->tm_hour)))
-            g_bWateredHour[nHour] = true;
-
-          if (!g_bWateredHour[timeInfo->tm_hour] && nHour == timeInfo->tm_hour) {
-            g_ulWateringDuration = ceil(fPulseTime); // Round up and cast to uint32_t
-            g_bWateredHour[nHour] = true;
-
-            if (digitalRead(GetPinByName("Irrigation Pump"))) {
-              digitalWrite(GetPinByName("Irrigation Pump"), PIN_ON);
-
-              LOGGER("Irrigation Started.", INFO);
-            }
+          for (const auto& Watering : g_pSettings[g_nCurrentProfile].WateringStages) {
+            if (g_pSettings[g_nCurrentProfile].CurrentWateringDay >= Watering.Day)
+              nLastKnownCC = Watering.TargetCC;
+            else
+              break;
           }
 
-          uint8_t nHourLabel = nHour % 12;
+          float fCCPerPulse = static_cast<float>(nLastKnownCC) / nTotalPulses;
+          float fCCFlowPerSecond = g_nDripPerMinute / 60.0f;
+          float fPulseDuration = fCCPerPulse / fCCFlowPerSecond;
+          //String strIrrigationHours = "";
 
-          if (nHourLabel == 0)
-            nHourLabel = 12;
+          for (uint8_t i = 0; i < nTotalPulses; i++) {
+            uint8_t nHour = (nStartIrrigationHour + i) % 24;
 
-          strIrrigationHours += " " + String(nHourLabel) + (nHour >= 12 ? "PM" : "AM");
+            if (nHour == timeInfo->tm_hour) {
+              g_ulWateringDuration = ceil(fPulseDuration); // Round up and cast to uint32_t
+              g_bWateredHour[nHour] = true;
+
+              if (i == (nTotalPulses - 1))
+                bLastPulseDone = true;
+
+              if (digitalRead(GetPinByName("Water Pump"))) {
+                digitalWrite(GetPinByName("Water Pump"), PIN_ON);
+
+                LOGGER("Irrigation Started. Number: %d/%d Current Hour: %d Pulse Duration: %.1f", INFO, (i + 1), nTotalPulses, timeInfo->tm_hour, fPulseDuration);
+              }
+            }
+
+            /*uint8_t nHourLabel = nHour % 12;
+
+            if (nHourLabel == 0)
+              nHourLabel = 12;
+
+            strIrrigationHours += " " + String(nHourLabel) + (nHour >= 12 ? "PM" : "AM");*/
+          }
+
+          //LOGGER("Total Irrigation Pulses: %d | CC Per Pulse: %.1f | Pulse Duration: %.1f seconds | Pulse Hours:%s", INFO, nTotalPulses, fCCPerPulse, fPulseDuration, strIrrigationHours.c_str());
         }
-
-        LOGGER("Total Irrigation Pulses: %d | CC Per Pulse: %.1f | Pulse Duration: %.1f seconds | Pulse Hours:%s", INFO, nTotalPulses, fCCPerPulse, fPulseTime, strIrrigationHours.c_str());
       }
     }
     // ================================================== Fans Section ================================================== //
@@ -1405,7 +1412,7 @@ void loop() {
           // Control by Temperature
           if (g_nEnvironmentTemperature >= g_pSettings[g_nCurrentProfile].StartVentilationTemperature)
             bStartVentilationByTemperature = true;
-          else if (g_nEnvironmentTemperature <=(g_pSettings[g_nCurrentProfile].StartVentilationTemperature - g_nTemperatureStopHysteresis))
+          else if (g_nEnvironmentTemperature <= (g_pSettings[g_nCurrentProfile].StartVentilationTemperature - g_nTemperatureStopHysteresis))
             bStartVentilationByTemperature = false;
 
           // Control by Humidity

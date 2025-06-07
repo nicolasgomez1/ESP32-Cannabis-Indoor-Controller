@@ -1,0 +1,58 @@
+4 Electrovalvulas
+
+1 - Agua
+2 - Ferti de vege
+3 - Ferti de flora
+4 - Regulador de pH
+--------------------------------------------
+2 sensores de nivel de liquido
+
+1 - Abajo del todo en el reservorio
+2 - Arriba del todo en el reservorio
+--------------------------------------------
+2 bombas de fluido
+
+1 - En el fondo del reservorio, en posicion horizontal (Para mezclar la solución de riego)
+2 - La que efectivamente riega
+--------------------------------------------
+Logica
+
+------ 
+Agua
+* Valor de tiempo previo a la hora de riego/o al valor de humedad. Para empezar a llenar de agua el reservorio
+* Valor de tiempo de apertura de electrovalvula (Ademas un check, si aun sigue abierta la valvula de llenado de agua, y se cierra el circuito del sensor de nivel superior: cerrar la valvula)
+------
+
+------
+Fertis
+* Valor de tiempo previo a la hora de riego/o al valor de humedad. Para incorporar el ferti de vege
+* Valor de tiempo de apertura de electrovalvula para la incorporacion del ferti
+
+* Valor de tiempo previo a la hora de riego/o al valor de humedad. Para incorporar el ferti de flora
+* Valor de tiempo de apertura de electrovalvula para la incorporacion del ferti
+------
+
+------
+Regulador de pH
+* Valor de tiempo previo a la hora de riego/o al valor de humedad. Para incorporar el regulador de pH
+* Switch Incorporar regulador Por Tiempo/Por valor de Sonda
+* Valor de tiempo de apertura de electrovalvula/Medicion de pH para la incorporacion del regulador
+------
+
+------
+Bombas
+* Switch criterio de riego por Tiempo transcurrido/Nivel de humedad del suelo
+* Valor de tiempo previo a la hora de riego/o al valor de humedad. Para prender la bomba de mezclado (Aca se pone un poco tricky, por que tenes que suponer que cuando tengas 30% de humedad, te quedan X horas antes de tener que regar. Esto se tendria que pensar un poco mas. O directamente no depender del % de humedad)
+* Valor de tiempo de duracion del encendido de la bomba de riego (Ademas un check, si el sensor de nivel inferior abre el circuito, apagar las bombas)
+------
+
+
+
+
+
+
+Logica de riego
+
+Habilitar la posibilidad de riego, pasada 2 horas desde el encendido de la luz
+Deshabilitar la posibilidad de riego cuando queden 2 horas para apagar la luz
+
