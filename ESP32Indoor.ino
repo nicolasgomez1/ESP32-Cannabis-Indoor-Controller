@@ -273,7 +273,7 @@ void ProfilesLoader() {
       g_pSettings[i].StopLightTime = atoi(cBuffer);
 
       if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
-        g_nEffectiveStopLights = (g_pSettings[g_nCurrentProfile].StopLightTime == 0) ? 24 : g_pSettings[g_nCurrentProfile].StopLightTime; // Stores the effective light stop hour, converting 0 to 24 (midnight)
+        g_nEffectiveStopLights = (g_pSettings[g_nCurrentProfile].StopLightTime == 24) ? 0 : g_pSettings[g_nCurrentProfile].StopLightTime; // Stores the effective light stop hour, converting 0 to 24 (midnight)
       ///////////////////////////////////////////////////
       cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // LIGHT BRIGHTNESS LEVEL
 
@@ -970,7 +970,7 @@ void setup() {
 
           if (lNewValue != g_pSettings[nSelectedProfile].StopLightTime) {
             g_pSettings[nSelectedProfile].StopLightTime = lNewValue;
-            g_nEffectiveStopLights = (g_pSettings[nSelectedProfile].StopLightTime == 0) ? 24 : g_pSettings[nSelectedProfile].StopLightTime; // Stores the effective light stop hour, converting 0 to 24 (midnight)
+            g_nEffectiveStopLights = (g_pSettings[nSelectedProfile].StopLightTime == 24) ? 0 : g_pSettings[nSelectedProfile].StopLightTime; // Stores the effective light stop hour, converting 0 to 24 (midnight)
 
             strReturn += "Se actualizó la Hora de Apagado de Luz.\r\n";
           }
@@ -1458,7 +1458,7 @@ void loop() {
 
       WriteToSD("/metrics.log", strValues, true);
 
-      for (uint8_t i = MAX_GRAPH_MARKS - 1; i > 0; i--) { // Shifts all values ​​up one position
+      for (uint8_t i = MAX_GRAPH_MARKS - 1; i > 0; i--) { // Shifts all values up one position
         if (g_strArrayGraphData[i]) {
           free(g_strArrayGraphData[i]);
           g_strArrayGraphData[i] = nullptr; // Just in case...
