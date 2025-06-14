@@ -8,8 +8,6 @@
 		<link rel=stylesheet type=text/css href=style.css>
 		<script src=chart.js></script>
 		<script>
-			let hstart,hstop;
-
 			function ProfileSelector(){
 				let val=parseInt(document.getElementById('profilesel').value);
 
@@ -47,11 +45,18 @@
 					SendAction('update','lightbright',v);
 			}
 
-			function GetLightStartStop(){return[Math.round(hstart.scrollTop/15)+1,Math.round(hstop.scrollTop/15)+1];}
-
 			function CalcDur(){
-				let r=GetLightStartStop();
-				document.getElementById('lightdur').innerText='Horas de Luz: '+(r[1]-r[0]+24)%%24
+				let start=parseInt(document.getElementById('lightstart').value),stop=parseInt(document.getElementById('lightstop').value),startind='AM',stopind='AM';
+
+				if(start>=12)
+					startind='PM';
+
+				if(stop>=12)
+					stopind='PM';
+
+				document.getElementById('lightstartind').innerText=startind;
+				document.getElementById('lightstopind').innerText=stopind;
+				document.getElementById('lightdur').innerText='Horas de Luz: '+(stop-start+24)%%24;
 			}
 
 			function CalcTime(s){
@@ -74,9 +79,8 @@
 			}
 
 			function CalcIrrigation(cc){
-				let r=GetLightStartStop();
-				let dpm=parseFloat(document.getElementById('ifpm').value);
-				let effstart=r[0]==0?24:r[0],effstop=r[1]==0?24:r[1];
+				let lightstart=parseInt(document.getElementById('lightstart').value),lightstop=parseInt(document.getElementById('lightstop').value),dpm=parseFloat(document.getElementById('ifpm').value);
+				let effstart=lightstart==0?24:lightstart,effstop=lightstop==0?24:lightstop;
 				let irrstart=(effstart+2)%%24;
 				let avai=(effstop-2+24)%%24-irrstart;
 
@@ -103,11 +107,7 @@
 				currentUrl.searchParams.set('profilesel',document.getElementById('profilesel').value);
 
 				if(args[0]=='all'){
-					let r=GetLightStartStop();
-					currentUrl.searchParams.set('lightstart',r[0]);
-					currentUrl.searchParams.set('lightstop',r[1]);
-
-					let elementIds=['lightbright','intfansta','venttempstart','venthumstart','phcc','vegcc','flocc','currentwateringday','restint','restdur','temphys','humhys','ifpm','phfpm','vegfpm','flofpm','mixdur','saint','ssid','ssidpwd'];
+					let elementIds=['lightstart','lightstop','lightbright','intfansta','venttempstart','venthumstart','phcc','vegcc','flocc','currentwateringday','restint','restdur','temphys','humhys','ifpm','phfpm','vegfpm','flofpm','mixdur','saint','ssid','ssidpwd'];
 
 					elementIds.forEach(id=>{currentUrl.searchParams.set(id,document.getElementById(id).value)});
 
@@ -136,10 +136,6 @@
 									}
 
 									chart2.update();
-								}else if(e=="lightstartstop"){
-									let s=v.split(',');
-									hstart.scrollTop=s[0]*15;
-									hstop.scrollTop=s[1]*15;
 								}else{
 									document.getElementById(e).value=v;
 								}
@@ -164,12 +160,12 @@
 						document.getElementById('vpdstate').innerText=vpd[1];
 						document.getElementById('vpdstate').style.color=vpd[0];
 
-						document.getElementById('level').innerText=data[3];
+						document.getElementById('level').innerHTML=data[3];
 
 						let soils=data[4].split(',');
 
 						for(i=0;i<soils.length;i++)
-							document.getElementById('soil'+i).innerText=soils[i];
+							document.getElementById('soil'+i).innerText=soils[i]+'%%';
 
 						let date=new Date(parseInt(data[5])*1000);
 
@@ -253,7 +249,7 @@
 	</head>
 	<body bgcolor=#303841 style=font-family:Arial;color:#D8DEE9>
 		<center>
-			<table>
+			<table border=1>
 				<th>Parametros</th>
 				<tr>
 					<td>Hora Actual:</td><td id=currenttime>%CURRENTTIME%</td>
@@ -271,8 +267,8 @@
 					<td colspan=2><input type=range class=slider id=profilesel min=0 max=2 step=1 value='%PROFILE%'oninput=ProfileSelector()><span id=profileind></span></td>
 				</tr>
 				<th colspan=3><div></div>Luz</th>
-				<tr><td>Hora de Encendido</td><td><main class=wheel-container><main class=wheel id=hourstart></main></main></td><td rowspan=2 id=lightdur></td></tr>
-				<tr><td>Hora de Apagado</td><td><main class=wheel-container><main class=wheel id=hourstop></main></main></td></tr>
+				<tr><td>Hora de Encendido</td><td><input id=lightstart value='%STARTLIGHT%'oninput=CalcDur()><span id=lightstartind></span></td><td rowspan=2 id=lightdur></td></tr>
+				<tr><td>Hora de Apagado</td><td><input id=lightstop value='%STOPLIGHT%'oninput=CalcDur()><span id=lightstopind></span></td></tr>
 				<tr>
 					<td>Intensidad</td>
 					<td colspan=2>
@@ -285,7 +281,7 @@
 				<tr><td>Temperatura ambiente de Encendido</td><td><input id=venttempstart value='%TEMPSTARTVENT%'>°C</td></tr>
 				<tr><td>Humedad ambiente de Encendido</td><td><input id=venthumstart value='%HUMSTARTVENT%'>%%</td></tr>
 				<th colspan=3><div></div>Fertilización</th>
-				<tr><td>Reductor de pH</td><td><input id=phcc value='%PHCC%'>cc</td><td rowspan=3><button id=applyferts onclick=SendAction('applyferts')>Incorporar<br>Fertilizantes</button></td></tr>
+				<tr><td>Reductor de pH</td><td><input id=phcc value='%PHCC%'>cc</td><td rowspan=3><button id=applyferts onclick=SendAction('applyferts')>Aplicar<br>Fertilizantes</button></td></tr>
 				<tr><td>Fertilizante de Vegetativo</td><td><input id=vegcc value='%VEGCC%'>cc</td></tr>
 				<tr><td>Fertilizante de Floración</td><td><input id=flocc value='%FLOCC%'>cc</td></tr>
 				<th colspan=3><div></div>Riego</th>
@@ -333,16 +329,6 @@
 			SetBright();
 			setInterval(()=>SendAction('refresh'),3000);
 		};
-
-		hstart=document.getElementById('hourstart'),hstop=document.getElementById('hourstop');
-
-		for(e of [hstart,hstop])for(i=1;i<=24;i++)e.appendChild(Object.assign(document.createElement('main'),{className:'hour',textContent:i+(i>=12?' PM':' AM')}));
-
-		[hstart,hstop].forEach(e=>e.addEventListener('wheel',ev=>{
-			ev.preventDefault();
-			e.scrollBy({top:Math.sign(ev.deltaY)*15});
-			CalcDur();
-		}));
 
 		Object.assign(Chart.defaults.datasets.line,{borderWidth:1.1,pointRadius:0});
 		Chart.defaults.scales={linear:{offset:true,display:false}};
@@ -403,10 +389,10 @@
 
 		document.querySelector('#legend').addEventListener('click',e=>{
 			if(e.target&&e.target.matches('td.showline')){
-				let ds=chart.data.datasets[e.target.getAttribute('ddi')];
-				ds.hidden=!ds.hidden;
+				let dataset=chart.data.datasets[e.target.getAttribute('ddi')];
+				dataset.hidden=!dataset.hidden;
 				chart.update();
-				e.target.classList.toggle('hideline',ds.hidden);
+				e.target.classList.toggle('hideline',dataset.hidden);
 			}
 		});
 
