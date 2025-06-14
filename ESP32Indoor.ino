@@ -21,7 +21,6 @@
 #include <ESPAsyncWebServer.h>
 // TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado.
 // TODO: Bajar el tiempo de intervalo para tomar muestras y almacenarlo en el graph a un minuto, y verificar que la horas del esp32 concuerdan con las horas del grafico. Además verificar que efectivamente si defino una hora de encendido de 0 a 24, se comporte como espero
-// TODO: Por varios motivos no deberia poderse definir rango de horas de luz menos a 4.
 // TODO: Tanto en el esp32 como en la pagina, tengo que cambiar el algoritmo que calcula los pulsos de riego. Para el perfil de Floracion dividir los riegos entre 2 (La idea es espaciar mas los pulsos y asi tener mas dryback)
 struct RelayPin {
   const char* Name; // Channel name
@@ -87,8 +86,8 @@ struct ProfileSettings {
 
 #define TIMEZONE "America/Argentina/Buenos_Aires"
 
-#define CALLMEBOT_APY_KEY TODO...
-#define CALLME_BOT_PHONE_TO_SEND "TODO..."
+#define CALLMEBOT_APY_KEY TODO:...
+#define CALLME_BOT_PHONE_TO_SEND "TODO:..."
 
 #define S8050_FREQUENCY 300   // https://www.mouser.com/datasheet/2/149/SS8050-117753.pdf
 #define S8050_RESOLUTION 12
@@ -199,7 +198,6 @@ bool g_bTestIrrigationPump = false, g_bTestPHReducerPump = false, g_bTestVegetat
 uint32_t g_nTestPumpStartTime = 0;
 
 bool g_bApplyFertilizers = false;
-uint32_t g_nFertilizersTimer = 0;
 
 char g_strArrayGraphData[MAX_GRAPH_MARKS][MAX_GRAPH_MARKS_LENGTH] = {};
 
@@ -269,21 +267,21 @@ uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60; }
 //uint32_t HoursToTicks(uint32_t nHours) { return nHours * 1000 * 60 * 60; }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Returns the name of the pump to test based on the active flag.
-// Returns a pointer to a constant string or nullptr if none is active.
+// Returns the name of the first pump that is marked for testing based on the current boolean test flags.
+// Only one pump can be tested at a time; the function returns the first active one in priority order.
+// NOTE: A bitmask-based version of this function was benchmarked and showed slightly better performance.
+//       Consider switching to bitmask logic in the future for improved efficiency and simplified state handling.
 const char* GetPumpToTest() {
-  const char* cPumpToTest = nullptr;
-
   if (g_bTestIrrigationPump)
-    cPumpToTest = "Irrigation Pump";
+    return "Irrigation Pump";
   else if (g_bTestPHReducerPump)
-    cPumpToTest = "pH Reducer Pump";
+    return "pH Reducer Pump";
   else if (g_bTestVegetativeFertPump)
-    cPumpToTest = "Vegetative Fert Pump";
+    return "Vegetative Fert Pump";
   else if (g_bTestFloweringFertPump)
-    cPumpToTest = "Flowering Fert Pump";
+    return "Flowering Fert Pump";
 
-  return cPumpToTest;
+  return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1691,90 +1689,127 @@ void loop() {
     }
     // ================================================== Irrigation Section ================================================== //
     {
-      static bool bLastPulseDone = false;
-
-      if (bLastPulseDone && timeInfo.tm_mday != g_nLastResetDay) {
-        g_nLastResetDay = timeInfo.tm_mday;
-        bLastPulseDone = false;
-
-        memset(g_bWateredHour, 0, sizeof(g_bWateredHour));
-
-        g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay++;
-
-        SaveProfile(g_nCurrentProfile);
-      }
-
-      if (g_nIrrigationDuration > 0) {  // TODO: Aca implementar el codigo que prende la fuente, luego la bomba de mezcla y finalmente se hace el riego
-                                        // TODO: Para la logica de aplicacion de fertis al igual que la logica de riego, primero verificar que el Pin "Power Supply" esté en RELAY_PIN_ON
-                                        // TODO: Antes de prender la bomba de riego (para regar), primero prender la bomba de mezcla y antes de prende la bomba de mezcla, activar la fuente ("Power Supply")
-        g_nIrrigationDuration--;  // Decrease -1 by each second pass
-
-        if (g_nIrrigationDuration == 0) {
-          digitalWrite(GetPinByName("Irrigation Pump"), RELAY_PIN_OFF);
-
-          LOGGER(INFO, "Irrigation Finished.");
-        }
-      }
-
-      if (!digitalRead(GetPinByName("Lights")) && !g_bWateredHour[timeInfo.tm_hour] && !g_bApplyFertilizers && g_nTestPumpStartTime == 0) {
+      if (!g_bWateredHour[timeInfo.tm_hour] && !g_bApplyFertilizers && g_nTestPumpStartTime == 0) {
+        static uint8_t nCurrentPulse = 0;
+        static bool bLastPulseDone = false;
+        static bool bApplyIrrigation = false;
         uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 2) % 24;
         uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24;
         uint8_t nTotalPulses = (nStopIrrigationHour - nStartIrrigationHour + 24) % 24;
 
         if (g_nIrrigationFlowPerMinute > 0 && nTotalPulses > 0) {
-          uint16_t nLastKnownCC = 0;
+          if (!digitalRead(GetPinByName("Lights")) && !bApplyIrrigation) {
+            uint16_t nLastKnownCC = 0;
 
-          for (const auto& Watering : g_pProfileSettings[g_nCurrentProfile].WateringStages) {
-            if (g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay >= Watering.Day)
-              nLastKnownCC = Watering.TargetCC;
-            else
-              break;
-          }
-
-          float fCCPerPulse = static_cast<float>(nLastKnownCC) / nTotalPulses;
-          float fCCFlowPerSecond = g_nIrrigationFlowPerMinute / 60.0f;
-          float fPulseDuration = fCCPerPulse / fCCFlowPerSecond;
-          //String strIrrigationHours = "";
-
-          for (uint8_t i = 0; i < nTotalPulses; i++) {
-            uint8_t nHour = (nStartIrrigationHour + i) % 24;
-
-            if (nHour == timeInfo.tm_hour) {
-              g_bWateredHour[nHour] = true;
-
-              if (i == (nTotalPulses - 1))
-                bLastPulseDone = true;
-
-              if (digitalRead(GetPinByName("Irrigation Pump"))) { // TODO: Voy a tener que mover el encendido de la bomba a la seccion de mas arriba.
-                digitalWrite(GetPinByName("Irrigation Pump"), RELAY_PIN_ON);
-
-                g_nIrrigationDuration = ceil(fPulseDuration); // Round up and cast to uint32_t
-
-                if (((nHour == (nStartIrrigationHour + nTotalPulses - 1) % 24)) && g_nIrrigationSolutionLevel <= 25) {  // Checks if the current hour is the last scheduled irrigation pulse hour of the day
-                  char cBuffer[41];
-                  snprintf(cBuffer, sizeof(cBuffer), "Reservorio de Solución de Riego al %d%.", g_nIrrigationSolutionLevel);
-                  SendNotification(cBuffer);
-                }
-
-                LOGGER(INFO, "Irrigation Started. Number: %d/%d Current Hour: %d Pulse Duration: %.1f", (i + 1), nTotalPulses, timeInfo.tm_hour, fPulseDuration);
-              }
+            for (const auto& Watering : g_pProfileSettings[g_nCurrentProfile].WateringStages) {
+              if (g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay >= Watering.Day)
+                nLastKnownCC = Watering.TargetCC;
+              else
+                break;
             }
 
-            /*uint8_t nHourLabel = nHour % 12;
+            for (nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) {
+              if (((nStartIrrigationHour + nCurrentPulse) % 24) == timeInfo.tm_hour) {
+                bApplyIrrigation = true;
+                g_nIrrigationDuration = ((static_cast<float>(nLastKnownCC) / nTotalPulses) * 60000) / g_nIrrigationFlowPerMinute;
 
-            if (nHourLabel == 0)
-              nHourLabel = 12;
+                break;
+              }
+            }
+          } else if (bApplyIrrigation) {
+            if (PowerSupplyControl(true)) {
+              static uint32_t nIrrigationTimer = 0;
 
-            strIrrigationHours += " " + String(nHourLabel) + (nHour >= 12 ? "PM" : "AM");*/
+              if (nIrrigationTimer == 0) {
+                nIrrigationTimer = nCurrentMillis;
+              } else {
+                static bool bWaitTime = false;
+
+                if (!bWaitTime && (nCurrentMillis - nIrrigationTimer) >= 1500) {  // Wait 1.5 seconds to stabilize the voltage output just in case
+                  bWaitTime = true;
+                } else if (bWaitTime) {
+                  static uint8_t nStage = 0;
+
+                  switch (nStage) {
+                    case 0: // Mixing Pump
+                      {
+                        const char* cPump = "Mixing Pump";
+
+                        if (digitalRead(GetPinByName(cPump))) {
+                          digitalWrite(GetPinByName(cPump), RELAY_PIN_ON);
+
+                          nIrrigationTimer = nCurrentMillis;
+
+                          LOGGER(INFO, "%s Started.", cPump);
+                        } else {
+                          if ((nCurrentMillis - nIrrigationTimer) >= g_nMixingPumpDuration /*Ticks*/) {
+                            digitalWrite(GetPinByName(cPump), RELAY_PIN_OFF);
+
+                            LOGGER(INFO, "%s Stopped.", cPump);
+
+                            nStage++;
+                          }
+                        }
+                      }
+                      break;
+                    case 1: // Irrigation Pump
+                      {
+                        const char* cPump = "Irrigation Pump";
+
+                        if (digitalRead(GetPinByName(cPump))) {
+                          digitalWrite(GetPinByName(cPump), RELAY_PIN_ON);
+
+                          nIrrigationTimer = nCurrentMillis;
+
+                          LOGGER(INFO, "%s Started. Irrigation Data: Pulse Number: %d/%d Current Hour: %d Pulse Duration: %d seconds.", cPump, (nCurrentPulse + 1), nTotalPulses, timeInfo.tm_hour, TicksToSeconds(g_nIrrigationDuration));
+                        } else {
+                          if ((nCurrentMillis - nIrrigationTimer) >= g_nIrrigationDuration /*Ticks*/) {
+                            digitalWrite(GetPinByName(cPump), RELAY_PIN_OFF);
+
+                            LOGGER(INFO, "%s Stopped. Irrigation Finished", cPump);
+
+                            PowerSupplyControl(false);
+
+                            bWaitTime = false;
+                            nStage = 0;
+                            bApplyIrrigation = false;
+
+                            uint8_t nHour = (nStartIrrigationHour + nCurrentPulse) % 24;
+
+                            if (nCurrentPulse == (nTotalPulses - 1)) {
+                              if (timeInfo.tm_mday != g_nLastResetDay) {
+                                g_nLastResetDay = timeInfo.tm_mday;
+
+                                memset(g_bWateredHour, 0, sizeof(g_bWateredHour));
+
+                                g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay++;
+
+                                SaveProfile(g_nCurrentProfile);
+                              }
+                            }
+
+                            if (((nHour == (nStartIrrigationHour + nTotalPulses - 1) % 24)) && g_nIrrigationSolutionLevel <= 25) {  // Checks if the current hour is the last scheduled irrigation pulse hour of the day
+                              char cBuffer[41];
+                              snprintf(cBuffer, sizeof(cBuffer), "Reservorio de Solución de Riego al %d%.", g_nIrrigationSolutionLevel);
+                              SendNotification(cBuffer);
+                            }
+
+                            g_bWateredHour[nHour] = true;
+                          }
+                        }
+                      }
+                      break;
+                  }
+                }
+              }
+            }
           }
-
-          //LOGGER(INFO, "Total Irrigation Pulses: %d | CC Per Pulse: %.1f | Pulse Duration: %.1f seconds | Pulse Hours:%s", nTotalPulses, fCCPerPulse, fPulseDuration, strIrrigationHours.c_str());
         } else {
-          LOGGER(ERROR, "The Irrigation Scheme or the Flow Rate per Minute of the Irrigation Pump was not defined.");
+          LOGGER(ERROR, "The Irrigation Scheme or the Flow Rate per Minute of the Irrigation Pump was not defined, this Pulse will be skipped.");
 
-          SendNotification(String("El Esquema de Riego o el Caudal por Minuto de la Bomba de Riego, no fue definido. No se pudo Regar.").c_str());
+          SendNotification(String("El Esquema de Riego o el Caudal por Minuto de la Bomba de Riego, no fue definido, se saltará este Pulso.").c_str());
 
-          g_bWateredHour[timeInfo.tm_hour] = true;
+          g_bWateredHour[timeInfo.tm_hour] = true;  // NOTE: Dilemma: This Pulse will be marked as watered. All you have to do is reconfigure the parameters and wait for the next one to begin watering
         }
       }
     }
@@ -1791,7 +1826,7 @@ void loop() {
 
         g_bFansRest = true;
 
-        LOGGER(INFO, "Fans Rest mode started.");
+        LOGGER(INFO, "Fans Rest mode Started.");
       } else {  // Is not
         if (g_nEnvironmentTemperature > 0 && g_nEnvironmentHumidity > 0) {  // Check if Environment Sensor is working
           // ================================================== Internal Fan control by Temperature ================================================== //
@@ -1840,7 +1875,7 @@ void loop() {
         g_bFansRest = false;
         g_nFansRestElapsedTime = 0;
 
-        LOGGER(INFO, "Fans Rest time completed.");
+        LOGGER(INFO, "Fans Rest time Completed.");
       }
     }
     // ================================================== Pumps Flow Test Section ================================================== //
@@ -1856,7 +1891,7 @@ void loop() {
           LOGGER(INFO, "%s Flow test Started.", cPumpToTest);
         }
       }
-    } else if (g_nTestPumpStartTime > 0 && (nCurrentMillis - g_nTestPumpStartTime) >= 60000) {
+    } else if (g_nTestPumpStartTime > 0 && (nCurrentMillis - g_nTestPumpStartTime) >= 60000) {  // NOTE: Dilemma, Actually, since it's within a 1-second check, it could stay on for up to 61 seconds. I'd have to analyze whether moving this outside the 1-second check would impact CPU usage
       const char* cPumpToTest = GetPumpToTest();
 
       if (cPumpToTest) {  // Just in case...
@@ -1874,12 +1909,14 @@ void loop() {
     // ================================================== Fertilizers Application Section ================================================== //
     if (g_bApplyFertilizers) {
       if (PowerSupplyControl(true)) {
-        if (g_nFertilizersTimer == 0) {
-          g_nFertilizersTimer = nCurrentMillis;
+        static uint32_t nFertilizersTimer = 0;
+
+        if (nFertilizersTimer == 0) {
+          nFertilizersTimer = nCurrentMillis;
         } else {
           static bool bWaitTime = false;
 
-          if (!bWaitTime && (nCurrentMillis - g_nFertilizersTimer) >= 1500) { // Wait 1.5 seconds to stabilize the voltage output just in case
+          if (!bWaitTime && (nCurrentMillis - nFertilizersTimer) >= 1500) { // Wait 1.5 seconds to stabilize the voltage output just in case
             bWaitTime = true;
           } else if (bWaitTime) {
             static uint8_t nStage = 0;
@@ -1892,11 +1929,11 @@ void loop() {
                   if (digitalRead(GetPinByName(cPump))) {
                     digitalWrite(GetPinByName(cPump), RELAY_PIN_ON);
 
-                    g_nFertilizersTimer = nCurrentMillis;
+                    nFertilizersTimer = nCurrentMillis;
 
                     LOGGER(INFO, "%s Started.", cPump);
                   } else {
-                    if ((nCurrentMillis - g_nFertilizersTimer) >= ((g_pProfileSettings[g_nCurrentProfile].PHReducerToApply * 60000) / g_nPHReducerFlowPerMinute)) {
+                    if ((nCurrentMillis - nFertilizersTimer) >= ((g_pProfileSettings[g_nCurrentProfile].PHReducerToApply * 60000) / g_nPHReducerFlowPerMinute)) {
                       digitalWrite(GetPinByName(cPump), RELAY_PIN_OFF);
 
                       LOGGER(INFO, "%s Stopped.", cPump);
@@ -1913,11 +1950,11 @@ void loop() {
                   if (digitalRead(GetPinByName(cPump))) {
                     digitalWrite(GetPinByName(cPump), RELAY_PIN_ON);
 
-                    g_nFertilizersTimer = nCurrentMillis;
+                    nFertilizersTimer = nCurrentMillis;
 
                     LOGGER(INFO, "%s Started.", cPump);
                   } else {
-                    if ((nCurrentMillis - g_nFertilizersTimer) >= ((g_pProfileSettings[g_nCurrentProfile].VegetativeFertilizerToApply * 60000) / g_nVegetativeFlowPerMinute)) {
+                    if ((nCurrentMillis - nFertilizersTimer) >= ((g_pProfileSettings[g_nCurrentProfile].VegetativeFertilizerToApply * 60000) / g_nVegetativeFlowPerMinute)) {
                       digitalWrite(GetPinByName(cPump), RELAY_PIN_OFF);
 
                       LOGGER(INFO, "%s Stopped.", cPump);
@@ -1934,11 +1971,11 @@ void loop() {
                   if (digitalRead(GetPinByName(cPump))) {
                     digitalWrite(GetPinByName(cPump), RELAY_PIN_ON);
 
-                    g_nFertilizersTimer = nCurrentMillis;
+                    nFertilizersTimer = nCurrentMillis;
 
                     LOGGER(INFO, "%s Started.", cPump);
                   } else {
-                    if ((nCurrentMillis - g_nFertilizersTimer) >= ((g_pProfileSettings[g_nCurrentProfile].FloweringFertilizerToApply * 60000) / g_nFloweringFlowPerMinute)) {
+                    if ((nCurrentMillis - nFertilizersTimer) >= ((g_pProfileSettings[g_nCurrentProfile].FloweringFertilizerToApply * 60000) / g_nFloweringFlowPerMinute)) {
                       digitalWrite(GetPinByName(cPump), RELAY_PIN_OFF);
 
                       LOGGER(INFO, "%s Stopped.", cPump);
