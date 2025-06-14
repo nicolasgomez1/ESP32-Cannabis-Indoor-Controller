@@ -1,32 +1,40 @@
-///////////////////////////////////////////////////////////////////////////////////
-//          _________________________________________________________________    //
-//         /                                                                /\   //
-//        /  _   __    _                   __                   ______     / /\  //
-//       /  / | / /   (_)  _____  ____    / /  ____ _   _____  / ____/  __/ /    //
-//      /  /  |/ /   / /  / ___/ / __ \  / /  / __ `/  / ___/ / / __   /\_\/     //
-//     /  / /|  /   / /  / /__  / /_/ / / /  / /_/ /  (__  ) / /_/ /  /_/        //
-//    /  /_/ |_/   /_/   \___/  \____/ /_/   \__,_/  /____/  \____/    /\        //
-//   /                                                                / /        //
-//  /________________________________________________________________/ /         //
-//  \________________________________________________________________\/          //
-//   \    \    \    \    \    \    \    \    \    \    \    \    \    \          //
-//                               Version 3 (2025)                                //
-///////////////////////////////////////////////////////////////////////////////////
+//          _________________________________________________________________
+//         /                                                                /\
+//        /  _   __    _                   __                   ______     / /\
+//       /  / | / /   (_)  _____  ____    / /  ____ _   _____  / ____/  __/ /
+//      /  /  |/ /   / /  / ___/ / __ \  / /  / __ `/  / ___/ / / __   /\_\/
+//     /  / /|  /   / /  / /__  / /_/ / / /  / /_/ /  (__  ) / /_/ /  /_/
+//    /  /_/ |_/   /_/   \___/  \____/ /_/   \__,_/  /____/  \____/    /\
+//   /                        Version 4 (2025)                        / /
+//  /________________________________________________________________/ /
+//  \________________________________________________________________\/
+//   \    \    \    \    \    \    \    \    \    \    \    \    \    \
+
 #include <SD.h> // https://docs.arduino.cc/libraries/sd/#SD%20class
 #include <WiFi.h>
 #include <time.h>
+#include <vector>
+#include <Update.h>
 #include <ESPmDNS.h>
 #include <SimpleDHT.h>
+#include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
-#include <vector>
-
+// TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado.
+// TODO: Bajar el tiempo de intervalo para tomar muestras y almacenarlo en el graph a un minuto, y verificar que la horas del esp32 concuerdan con las horas del grafico. Además verificar que efectivamente si defino una hora de encendido de 0 a 24, se comporte como espero
+// TODO: Por varios motivos no deberia poderse definir rango de horas de luz menos a 4.
+// TODO: Tanto en el esp32 como en la pagina, tengo que cambiar el algoritmo que calcula los pulsos de riego. Para el perfil de Floracion dividir los riegos entre 2 (La idea es espaciar mas los pulsos y asi tener mas dryback)
 struct RelayPin {
   const char* Name; // Channel name
   uint8_t Pin;      // Pin number
 };
 
+struct SoilMoisturePin {
+  uint8_t Pin;  // Pin Number
+  const char HTMLColor[8];  // HTML Color for use in Graph on Web Panel
+};
+
 struct WateringData {
-  uint8_t Day;
+  uint8_t Day;  // // WARNING: Maybe is too low, only 8 months
   uint16_t TargetCC;
 
   bool operator==(const WateringData& other) const {  // Little overload but needed for compare
@@ -34,7 +42,7 @@ struct WateringData {
   }
 };
 
-struct Settings {
+struct ProfileSettings {
   uint8_t StartLightTime;
   uint8_t StopLightTime;
   uint16_t LightBrightness;
@@ -44,6 +52,10 @@ struct Settings {
   uint8_t StartVentilationTemperature;
   uint8_t StartVentilationHumidity;
 
+  uint16_t PHReducerToApply;
+  uint16_t VegetativeFertilizerToApply;
+  uint16_t FloweringFertilizerToApply;
+
   uint16_t CurrentWateringDay;
   std::vector<WateringData> WateringStages;
 };
@@ -52,6 +64,8 @@ struct Settings {
 // Default IP for AP mode is: 192.168.4.1
 // If Environment Humidity or Temperature Reads 0, the fans never gonna start.
 // If Light Start & Stop Times Is 0, the light never gonna start.
+// DHT11 have a pullup (between data and vcc)
+// HW080 have a pulldown (in return line to gnd)
 
 // Definitions
 //#define ENABLE_SERIAL_LOGGER  // Use this when debugging
@@ -61,7 +75,7 @@ struct Settings {
 #define MAX_PROFILES 3  // 0 Vegetative (Filename: veg), 1 Flowering (Filename: flo), 2 Drying (Filename: dry)
 
 #define MAX_GRAPH_MARKS 48  // How much logs show in Web Panel Graph
-#define GRAPH_MARKS_INTERVAL 3600000/*3600000 = 1 Hour*/  // Intervals in which values ​​are stored for the graph // TODO: Esto lo podría incluir en la configuración interna. Para poder cambiarlo desde el Panel Web
+#define MAX_GRAPH_MARKS_LENGTH 36 // How long text is (Example: 1749390362|100|99|0.02|100|100|4095) If change from DHT11 to DHT22 can be 1 more byte more. For each extra soil moisture sensor is 4 bytes more. Remember add a extra byte for null terminator
 
 #define WIFI_MAX_RETRYS 5 // Max Wifi reconnection attempts
 #define WIFI_CHECK_INTERVAL 1000/*1 Second*/
@@ -71,8 +85,10 @@ struct Settings {
 #define DNS_ADDRESS "indoor"  // http://"DNS_ADDRESS".local/
 #define ACCESSPOINT_NAME "ESP32_Indoor"
 
-#define TIMEZONE_UTC_OFFSET (-3 * 3600) // Timezone // TODO: Esto lo podría incluir en la configuración interna. Para poder cambiarlo desde el Panel Web
-#define TIMEZONE_DST_OFFSET 0 // Daylight Savings Time
+#define TIMEZONE "America/Argentina/Buenos_Aires"
+
+#define CALLMEBOT_APY_KEY TODO...
+#define CALLME_BOT_PHONE_TO_SEND "TODO..."
 
 #define S8050_FREQUENCY 300   // https://www.mouser.com/datasheet/2/149/SS8050-117753.pdf
 #define S8050_RESOLUTION 12
@@ -84,78 +100,108 @@ struct Settings {
 
 #define DHT_MAX_READS 5 // To get average
 
+#define HCSR04_MAX_READS 5  // To get average
+
 // Pins
-#define DHT_DATA_PIN 16 // https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
+#define DHT_DATA_PIN 4 // https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
 
 #define SD_CS_PIN 5 // Chip select for Enable/Disable SD Card
 
-#define S8050_PWM_PIN 33  // I'm using a 1K resistor in serie in BASE Pin (Light Brightness controller)
+#define S8050_PWM_PIN 32  // I'm using a 1K resistor in serie in BASE Pin (Light Brightness controller) // https://www.mouser.com/datasheet/2/149/SS8050-117753.pdf
 
-#define HW080_VCC_PIN 32  // I Enable this pin when want to read and disable it to prevent electrolysis
+#define HW080_VCC_PIN 13  // I Enable this pin when want to read and disable it to prevent electrolysis
 
-const RelayPin pRelayModulePins[] = {
-  { "Lights", 14 },           // Pin for Channel 0 of Relay Module
-  { "Internal Fan", 27 },     // Pin for Channel 1 of Relay Module
-  { "Ventilation", 26 },  // Pin for Channel 2 of Relay Module
-  { "Water Pump", 25 }        // Pin for Channel 3 of Relay Module
+#define HCSR04_TRIGGER_PIN 14
+#define HCSR04_ECHO_PIN 33
+
+const RelayPin pRelayModulePins[] = { // Add here more Pins from the Relays Module
+  { "Lights", 16 },               // Channel 0 of Relay Module 0  // NOTE: In theory if the driver is turned off with a high value (Because the s8050 transistor is NPN) in S8050_PWM_PIN, I don't need to turn off the lights through the relay and use this channel for something else...
+  { "Internal Fan", 17 },         // Channel 1 of Relay Module 0
+  { "Ventilation", 18 },          // Channel 2 of Relay Module 0
+  { "Mixing Pump", 19 },          // Channel 3 of Relay Module 0
+  { "Irrigation Pump", 21 },      // Channel 4 of Relay Module 0
+  { "pH Reducer Pump", 22 },      // Channel 5 of Relay Module 0
+  { "Vegetative Fert Pump", 23 }, // Channel 6 of Relay Module 0
+  { "Flowering Fert Pump", 25 },  // Channel 7 of Relay Module 0
+  
+  { "Power Supply", 26 }  // Channel 0 of Relay Module 1
+  //{ "Water Electrovalve", 27 }, // Channel 1 of Relay Module 1
+  //{ "NONE", 13 }, // Channel 2 of Relay Module 1
+  //{ "NONE", CAN BE 15 BUT IS "RISKY" }  // Channel 3 of Relay Module 1
 };
 
-const uint8_t nSoilHumidityPins[] = {
-  34,  // Soil Humidity Sensor 0
-  35   // Soil Humidity Sensor 1
+const SoilMoisturePin pSoilMoisturePins[] = { // Add here more Pins for Soil Moisture
+  { 34, "#B57165" },  // Soil Humidity Sensor 0
+  { 35, "#784B43" }   // Soil Humidity Sensor 1
+  //{ 36, "..." },
+  //{ 39, "..." }
 };
 
 // Global Constants
 const uint8_t nRelayModulePinsCount = sizeof(pRelayModulePins) / sizeof(pRelayModulePins[0]);
-const uint8_t nSoilHumidityPinsCount = sizeof(nSoilHumidityPins) / sizeof(nSoilHumidityPins[0]);
+const uint8_t nSoilMoisturePinsCount = sizeof(pSoilMoisturePins) / sizeof(pSoilMoisturePins[0]);
 
 // Global Variables
-const char* g_strWebServerFiles[] = {
+const char* g_strWebServerFiles[] = { // Add here files to be server by the webserver
   "fan.webp",
-  "chart.js"  // Add here files to be server by the webserver
-};
-
-const String g_strSoilGraphColor[] = {
-  "#B57165",
-  "#784B43"  // Add here more colors for graph
+  "style.css",
+  "chart.js"
 };
 
 // DO NOT TOUCH IT!
 enum ERR_TYPE { INFO, WARN, ERROR };
 
-#define PIN_ON  LOW
-#define PIN_OFF HIGH
+#define RELAY_PIN_ON  LOW
+#define RELAY_PIN_OFF HIGH
 
 // Settings storage Variables
 char g_cSSID[32];
 char g_cSSIDPWD[32];
 
-unsigned long g_ulFansRestInterval = 0;
-unsigned long g_ulFansRestDuration = 0;
+uint32_t g_nSamplingInterval = 0;
+
+uint32_t g_nFansRestInterval = 0;
+uint32_t g_nFansRestDuration = 0;
 
 uint8_t g_nTemperatureStopHysteresis = 0;
 uint8_t g_nHumidityStopHysteresis = 0;
-uint16_t g_nDripPerMinute = 0;
 
-Settings g_pSettings[MAX_PROFILES] = {};
+uint16_t g_nIrrigationFlowPerMinute = 0;
+uint16_t g_nPHReducerFlowPerMinute = 0;
+uint16_t g_nVegetativeFlowPerMinute = 0;
+uint16_t g_nFloweringFlowPerMinute = 0;
+
+uint32_t g_nMixingPumpDuration = 0;
+
+uint16_t g_nIrrigationReservoirLowerLevel = 0;
+
+ProfileSettings g_pProfileSettings[MAX_PROFILES] = {};
 ///////////////////////////////////////////
-unsigned long g_ulStartUpTime = 0;
 bool g_bIsSDInit = false;
 uint8_t g_nCurrentProfile = 0;
 uint8_t g_nEffectiveStartLights = 0;
 uint8_t g_nEffectiveStopLights = 0;
+
 int8_t g_nLastResetDay = -1;
 bool g_bWateredHour[24] = { false };
-unsigned long g_ulWateringDuration = 0;
-bool g_bTestPump = false;
-unsigned long g_ulTestWateringPumpStartTime = 0;
+uint32_t g_nIrrigationDuration = 0;
+
 uint8_t g_nEnvironmentTemperature = 0;
 uint8_t g_nEnvironmentHumidity = 0;
 float g_fEnvironmentVPD = 0.0f;
-unsigned long g_ulFansRestElapsedTime = 0;
+uint8_t g_nIrrigationSolutionLevel = 0;
+uint8_t g_nSoilsHumidity[nSoilMoisturePinsCount] = {};
+
 bool g_bFansRest = false;
-uint8_t g_nSoilsHumidity[nSoilHumidityPinsCount] = {};
-char* g_strArrayGraphData[MAX_GRAPH_MARKS] = {};
+uint32_t g_nFansRestElapsedTime = 0;
+
+bool g_bTestIrrigationPump = false, g_bTestPHReducerPump = false, g_bTestVegetativeFertPump = false, g_bTestFloweringFertPump = false;
+uint32_t g_nTestPumpStartTime = 0;
+
+bool g_bApplyFertilizers = false;
+uint32_t g_nFertilizersTimer = 0;
+
+char g_strArrayGraphData[MAX_GRAPH_MARKS][MAX_GRAPH_MARKS_LENGTH] = {};
 
 // Global Handles, Interface & Instances
 AsyncWebServer pWebServer(WEBSERVER_PORT);  // Asynchronous web server instance listening on WEBSERVER_PORT
@@ -163,266 +209,29 @@ SimpleDHT11 pDHT11(DHT_DATA_PIN);           // Interface to DHT11 Temperature & 
 TaskHandle_t pWiFiReconnect;                // Task handle for Wifi reconnect logic running on core 0
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Tries to initialize the SD card file system if not already initialized.
-// If bShowSuccessLog is true, logs a success message when initialization succeeds.
-// Sets g_bIsSDInit to true if the SD card is ready.
-void ConnectSD(bool bShowSuccessLog) {
-  if (!SD.open("/")) {
-    SD.end();
+// Sets the system time and timezone based on a given Unix timestamp.
+// Updates the system's internal clock to the provided timestamp (seconds since epoch).
+// Applies the timezone defined by the TIMEZONE macro and refreshes the timezone settings.
+void SetCurrentDatetime(time_t unixTimestamp) {
+  setenv("TZ", TIMEZONE, 1);
+  tzset();
 
-    g_bIsSDInit = SD.begin(SD_CS_PIN);
-    if (!g_bIsSDInit)
-      LOGGER("Failed to initialize SD Card File System.", ERROR);
-
-    if (bShowSuccessLog)
-      LOGGER("SD Card File System initialized.", INFO);
-  } else {  // Just in case
-    g_bIsSDInit = true;
-  }
+  struct timeval tv;
+  tv.tv_sec = unixTimestamp;
+  tv.tv_usec = 0;
+  settimeofday(&tv, nullptr);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Writes a line of text to the specified file on the SD card.
-// If strFileName is "logging_", appends the current date to create a log file name (e.g., logging_2025_04_30.log).
-// If bAppend is true, appends to the file; otherwise, overwrites it.
-// Automatically initializes the SD card if needed (without logging success).
-void WriteToSD(String strFileName, String strText, bool bAppend) {
-  ConnectSD(false);
+// Retrieves the current local time as a tm struct.
+// Converts the current system time (UTC) to local time according to system timezone settings.
+// Returns a struct tm containing broken-down time elements (year, month, day, hour, etc).
+struct tm GetLocalTimeNow() {
+  time_t timeNow = time(nullptr);
+  struct tm timeInfo;
+  localtime_r(&timeNow, &timeInfo);
 
-  if (!g_bIsSDInit)
-    return;
-
-  if (strFileName == "logging_") {
-    time_t timeNow = time(nullptr);
-    struct tm *timeInfo = localtime(&timeNow);
-
-    strFileName += String(timeInfo->tm_year + 1900) + "_" + String(timeInfo->tm_mon + 1) + "_" + String(timeInfo->tm_mday) + ".log";
-  }
-
-  File pFile = SD.open(strFileName.c_str(), (bAppend ? FILE_APPEND : FILE_WRITE));
-  if (pFile) {
-    pFile.println(strText.c_str());
-
-    pFile.close();
-  }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Saves the current configuration of the specified profile to the SD card.
-// The profile index (0 = veg, 1 = flo, 2 = dry) determines the file path used.
-// Writes general configuration values (lighting and climate settings) to a main file (e.g., /veg).
-// Writes irrigation stage data (day and target cc values) to a separate file with "_watering" suffix (e.g., /veg_watering).
-void WriteProfile(uint8_t nProfile) {
-  ConnectSD(false);
-
-  if (!g_bIsSDInit)
-    return;
-
-  String strProfileName = ((nProfile == 0) ? "/veg" : ((nProfile == 1) ? "/flo" : "/dry"));
-  File pProfileFile = SD.open(strProfileName, FILE_WRITE);  // Save Current Profile Values
-  if (pProfileFile) {
-    pProfileFile.println(g_pSettings[nProfile].StartLightTime);
-    pProfileFile.println(g_pSettings[nProfile].StopLightTime);
-    pProfileFile.println(g_pSettings[nProfile].LightBrightness);
-    pProfileFile.println(g_pSettings[nProfile].StartInternalFanTemperature);
-    pProfileFile.println(g_pSettings[nProfile].StartVentilationTemperature);
-    pProfileFile.println(g_pSettings[nProfile].StartVentilationHumidity);
-    pProfileFile.println(g_pSettings[nProfile].CurrentWateringDay);
-
-    pProfileFile.close();
-
-    File pWateringProfileFile = SD.open(strProfileName + "_watering", FILE_WRITE);  // Save Current Profile Values
-    if (pWateringProfileFile) {
-      for (const auto& Watering : g_pSettings[nProfile].WateringStages)
-        pWateringProfileFile.printf("%u|%u\n", Watering.Day, Watering.TargetCC);
-
-      pWateringProfileFile.close();
-    }
-
-    LOGGER("Profile: %s updated successfully.", INFO, strProfileName);
-  }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Loads profile configuration data from SD card files (/veg, /flo, /dry) into the g_pSettings array.
-// If the SD card is not initialized, attempts to initialize it by calling ConnectSD(false).
-// For the current active profile (g_nCurrentProfile), updates effective light start/stop times
-// by normalizing hour values (24 to 0 for start, 0 to 24 for stop).
-void ProfilesLoader() {
-  ConnectSD(false);
-
-  if (!g_bIsSDInit)
-    return;
-
-  char cBuffer[64];
-
-  for (uint8_t i = 0; i < MAX_PROFILES; i++) {
-    String strProfileName = ((i == 0) ? "/veg" : ((i == 1) ? "/flo" : "/dry"));
-
-    File pProfileFile = SD.open(strProfileName, FILE_READ);
-    if (pProfileFile) {
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // START LIGHT TIME
-
-      g_pSettings[i].StartLightTime = atoi(cBuffer);
-
-      if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
-        g_nEffectiveStartLights = (g_pSettings[g_nCurrentProfile].StartLightTime == 24) ? 0 : g_pSettings[g_nCurrentProfile].StartLightTime;  // Stores the effective light start hour, converting 24 to 0 (midnight)
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // STOP LIGHT TIME
-
-      g_pSettings[i].StopLightTime = atoi(cBuffer);
-
-      if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
-        g_nEffectiveStopLights = (g_pSettings[g_nCurrentProfile].StopLightTime == 24) ? 0 : g_pSettings[g_nCurrentProfile].StopLightTime; // Stores the effective light stop hour, converting 0 to 24 (midnight)
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // LIGHT BRIGHTNESS LEVEL
-
-      g_pSettings[i].LightBrightness = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // INTERNAL FAN TEMPERATURE START
-
-      g_pSettings[i].StartInternalFanTemperature = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VENTILATION TEMPERATURE START
-
-      g_pSettings[i].StartVentilationTemperature = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VENTILATION HUMIDITY START
-
-      g_pSettings[i].StartVentilationHumidity = atoi(cBuffer);
-      /////////////////////////////////////////////////// 
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CURRENT WATERING DAY
-
-      g_pSettings[i].CurrentWateringDay = atoi(cBuffer);
-
-      pProfileFile.close();
-    }
-
-    File pWateringProfileFile = SD.open(strProfileName + "_watering", FILE_READ);
-    if (pWateringProfileFile) {
-      g_pSettings[i].WateringStages.clear();
-
-      while (pWateringProfileFile.available()) {
-        cBuffer[pWateringProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';
-        TrimTrailingWhitespace(cBuffer);
-
-        char* cDivider = strchr(cBuffer, '|');
-        if (cDivider) {
-          *cDivider = '\0';
-
-          g_pSettings[i].WateringStages.push_back({atoi(cBuffer), atoi(cDivider + 1)});
-        }
-      }
-
-      pWateringProfileFile.close();
-    }
-  }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Logs a formatted message with a severity prefix (INFO, WARNING, ERROR, etc.).
-// Outputs to SD card if ENABLE_SD_LOGGING is defined, and/or to Serial if ENABLE_SERIAL_LOGGER is defined.
-// Formats the message using printf-style syntax with variable arguments.
-// Automatically prepends a severity label to the message (e.g., [INFO], [ERROR]).
-void LOGGER(const char *format, ERR_TYPE nType, ...) {
-#if defined(ENABLE_SD_LOGGING) || defined(ENABLE_SERIAL_LOGGER)
-  va_list args;
-
-  char cPrefix[11], cBuffer[1024];
-
-  switch (nType) {
-    case INFO:
-      snprintf(cPrefix, sizeof(cPrefix), "[INFO] ");
-      break;
-    case WARN:
-      snprintf(cPrefix, sizeof(cPrefix), "[WARNING] ");
-      break;
-    case ERROR:
-      snprintf(cPrefix, sizeof(cPrefix), "[ERROR] ");
-      break;
-    default:
-      snprintf(cPrefix, sizeof(cPrefix), "[UNKNOWN] ");
-      break;
-  }
-
-  va_start(args, nType);
-
-  snprintf(cBuffer, sizeof(cBuffer), "%s", cPrefix);
-  vsnprintf(cBuffer + strlen(cPrefix), sizeof(cBuffer) - strlen(cPrefix), format, args);
-
-  va_end(args);
-
-#ifdef ENABLE_SD_LOGGING
-  WriteToSD("/logging_", String(cBuffer), true);
-#endif
-#ifdef ENABLE_SERIAL_LOGGER
-  Serial.println(cBuffer);
-#endif
-#endif
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Reads temperature and humidity from a DHT11 sensor, retrying a defined number of times if necessary.
-// Updates global variables for temperature, humidity, and VPD. If the readings are invalid or fail after
-// the maximum number of retries, logs an error and sets the global variables to default (0).
-void GetEnvironmentParameters() {
-  uint8_t nError = SimpleDHTErrSuccess;
-  uint8_t nReadTrysCount = 0;
-  byte bTemperature = 0, bHumidity = 0;
-
-  do {  // Try read Temp & Humidity values from Environment
-    if ((nError = pDHT11.read(&bTemperature, &bHumidity, NULL)) != SimpleDHTErrSuccess) { // Get Environment Temperature and Humidity
-      nReadTrysCount++;
-
-      //LOGGER("Read DHT11 failed, Error=%d, Duration=%d.", ERROR, SimpleDHTErrCode(nError), SimpleDHTErrDuration(nError));
-
-      delay(100);
-    }
-  } while (nError != SimpleDHTErrSuccess && nReadTrysCount < DHT_MAX_READS);  // Repeat while it fails and not reach max trys
-
-  if (nError == SimpleDHTErrSuccess) {
-    g_nEnvironmentTemperature = (uint8_t)bTemperature;
-    g_nEnvironmentHumidity = (uint8_t)bHumidity;
-
-    if ((g_nEnvironmentTemperature > 0 && g_nEnvironmentTemperature <= 52) && (g_nEnvironmentHumidity > 0 && g_nEnvironmentHumidity <= 100)) {  // DHT11 → Temp 0~50±2 | Hum 0~80±5
-      float E_s = 6.112 * exp((17.67 * g_nEnvironmentTemperature) / (243.5 + g_nEnvironmentTemperature));
-
-      g_fEnvironmentVPD = (E_s - (g_nEnvironmentHumidity / 100.0) * E_s) / 10.0;
-    } else {
-      g_fEnvironmentVPD = 0;
-
-      //LOGGER("Invalid Temperature or Humidity readings.", ERROR);
-    }
-  } else {
-    g_nEnvironmentTemperature = 0;
-    g_nEnvironmentHumidity = 0;
-    g_fEnvironmentVPD = 0;
-
-    //LOGGER("Failed to read DHT11 after max retries.", ERROR);
-  }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Reads the average humidity value from a soil sensor. 
-// Excites the sensor by setting the VCC pin high and waits for stable readings. 
-// Takes multiple analog readings, sums them, and normalizes the result to a percentage scale (0-100). 
-// After readings, the VCC pin is set low to stop electrolysis. 
-// Returns the normalized humidity value as an integer between 0 and 100.
-uint8_t GetSoilHumidity(uint8_t nSensorNumber) {
-  digitalWrite(HW080_VCC_PIN, PIN_OFF);  // Put Pin output in High to excite the moisture sensors
-
-  delay(10);  // Small Wait to obtain an stable reading
-
-  unsigned long ulCombinedValues = 0;
-
-  for (uint8_t i = 0; i < HW080_MAX_READS; i++) {
-    ulCombinedValues += analogRead(nSoilHumidityPins[nSensorNumber]);
-    delay(100); // Small delay between reads
-  }
-
-  digitalWrite(HW080_VCC_PIN, PIN_ON); // Put pin output in low to stop electrolysis
-
-  return constrain(map(ulCombinedValues / HW080_MAX_READS, HW080_MIN, HW080_MAX, 0, 100), 0, 100);
+  return timeInfo;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -451,13 +260,416 @@ void TrimTrailingWhitespace(char* str) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Provides utility functions to convert between ticks (milliseconds) and human-readable time units.
 // Ticks are assumed to be in milliseconds, as returned by the millis() function.
-//unsigned long TicksToSeconds(unsigned long lTicks) { return lTicks / 1000; }
-unsigned long TicksToMinutes(unsigned long lTicks) { return lTicks / (1000 * 60); }
-//unsigned long TicksToHours(unsigned long lTicks) { return lTicks / (1000 * 60 * 60); }
+uint32_t TicksToSeconds(uint32_t nTicks) { return nTicks / 1000; }
+uint32_t TicksToMinutes(uint32_t nTicks) { return nTicks / (1000 * 60); }
+//uint32_t TicksToHours(uint32_t nTicks) { return nTicks / (1000 * 60 * 60); }
 
-//unsigned long SecondsToTicks(unsigned long lSeconds) { return lSeconds * 1000; }
-unsigned long MinutesToTicks(unsigned long lMinutes) { return lMinutes * 1000 * 60; }
-//unsigned long HoursToTicks(unsigned long lHours) { return lHours * 1000 * 60 * 60; }
+uint32_t SecondsToTicks(uint32_t nSeconds) { return nSeconds * 1000; }
+uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60; }
+//uint32_t HoursToTicks(uint32_t nHours) { return nHours * 1000 * 60 * 60; }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Returns the name of the pump to test based on the active flag.
+// Returns a pointer to a constant string or nullptr if none is active.
+const char* GetPumpToTest() {
+  const char* cPumpToTest = nullptr;
+
+  if (g_bTestIrrigationPump)
+    cPumpToTest = "Irrigation Pump";
+  else if (g_bTestPHReducerPump)
+    cPumpToTest = "pH Reducer Pump";
+  else if (g_bTestVegetativeFertPump)
+    cPumpToTest = "Vegetative Fert Pump";
+  else if (g_bTestFloweringFertPump)
+    cPumpToTest = "Flowering Fert Pump";
+
+  return cPumpToTest;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Logs a formatted message with a severity prefix (INFO, WARNING, or ERROR) to the SD card and/or Serial output.
+// The message is built using a printf-style format string and optional arguments.
+// Logging targets are controlled via the ENABLE_SD_LOGGING and ENABLE_SERIAL_LOGGER compile-time flags.
+// - nType: Logging severity (INFO, WARN, ERROR).
+// - format: C-style format string followed by optional values (like printf).
+// Prepends the message with a prefix indicating its type and sends it to the enabled outputs.
+void LOGGER(ERR_TYPE nType, const char* format, ...) {
+#if defined(ENABLE_SD_LOGGING) || defined(ENABLE_SERIAL_LOGGER)
+  va_list args;
+
+  char cPrefix[11], cBuffer[512];
+
+  switch (nType) {
+    case INFO:
+      snprintf(cPrefix, sizeof(cPrefix), "[INFO] ");
+      break;
+    case WARN:
+      snprintf(cPrefix, sizeof(cPrefix), "[WARNING] ");
+      break;
+    case ERROR:
+      snprintf(cPrefix, sizeof(cPrefix), "[ERROR] ");
+      break;
+    default:
+      snprintf(cPrefix, sizeof(cPrefix), "[UNKNOWN] ");
+      break;
+  }
+
+  va_start(args, nType);
+
+  snprintf(cBuffer, sizeof(cBuffer), "%s", cPrefix);
+  vsnprintf(cBuffer + strlen(cPrefix), sizeof(cBuffer) - strlen(cPrefix), format, args);
+
+  va_end(args);
+
+#ifdef ENABLE_SD_LOGGING
+  WriteToSD("/logging_", cBuffer, true);
+#endif
+#ifdef ENABLE_SERIAL_LOGGER
+  Serial.println(cBuffer);
+#endif
+#endif
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Controls the relay channel associated with the Power Supply by setting its state.
+// If bState is true, attempts to turn the relay ON (only if it was previously OFF).
+// If bState is false, turns the relay OFF unconditionally.
+// Returns true if the relay pin was found and written to; false otherwise.
+bool PowerSupplyControl(bool bState) {
+  uint8_t nPin = GetPinByName("Power Supply");
+  int8_t nState = -1;
+
+  if (bState) {
+    if (digitalRead(nPin))
+      nState = RELAY_PIN_ON;
+    else
+      return true;
+  } else {
+    if (!digitalRead(nPin))
+      nState = RELAY_PIN_OFF;
+    else
+      return true;
+  }
+
+  if (nState != -1) {
+    digitalWrite(nPin, nState);
+
+    LOGGER(INFO, "The Power Supply was turned %s.", bState ? "ON" : "OFF");
+
+    return true;
+  }
+
+  LOGGER(ERROR, "Was not possible to turn %s The Power Supply.", bState ? "ON" : "OFF");
+
+  return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Tries to initialize the SD card file system if not already initialized.
+// If bShowSuccessLog is true, logs a success message when initialization succeeds.
+// Sets g_bIsSDInit to true if the SD card is ready.
+void ConnectSD(bool bShowSuccessLog) {
+  if (!SD.open("/")) {
+    SD.end();
+
+    g_bIsSDInit = SD.begin(SD_CS_PIN);
+    if (!g_bIsSDInit)
+      LOGGER(ERROR, "Failed to initialize SD Card File System.");
+
+    if (bShowSuccessLog)
+      LOGGER(INFO, "SD Card File System initialized.");
+  } else {  // Just in case
+    g_bIsSDInit = true;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Writes a text line to a specified file on the SD card.
+// If bAppend is true, the text is appended; otherwise, the file is overwritten.
+// If the filename is "logging_", automatically generates a daily log filename with the current date.
+// Accepts the input text as a null-terminated C-string (const char*).
+// Ensures the SD card is initialized before attempting to write.
+void WriteToSD(const char* cFileName, const char* cText, bool bAppend) {
+  ConnectSD(false);
+
+  if (!g_bIsSDInit)
+    return;
+
+  char cFinalFileName[64];
+
+  if (strcmp(cFileName, "logging_") == 0) {
+    struct tm currentTime = GetLocalTimeNow();
+    snprintf(cFinalFileName, sizeof(cFinalFileName), "logging_%04d_%02d_%02d.log", currentTime.tm_year + 1900, currentTime.tm_mon + 1, currentTime.tm_mday);
+  } else {
+    strncpy(cFinalFileName, cFileName, sizeof(cFinalFileName));
+    cFinalFileName[sizeof(cFinalFileName) - 1] = '\0';
+  }
+
+  File pFile = SD.open(cFinalFileName, bAppend ? FILE_APPEND : FILE_WRITE);
+  if (pFile) {
+    pFile.println(cText);
+
+    pFile.close();
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Saves the current configuration of the specified profile to the SD card.
+// The profile index (0 = veg, 1 = flo, 2 = dry) determines the file path used.
+// Writes general configuration values (lighting and climate settings) to a main file (e.g., /veg).
+// Writes irrigation stage data (day and target cc values) to a separate file with "_watering" suffix (e.g., /veg_watering).
+void SaveProfile(uint8_t nProfile) {
+  ConnectSD(false);
+
+  if (!g_bIsSDInit)
+    return;
+
+  String strProfileName = ((nProfile == 0) ? "/veg" : ((nProfile == 1) ? "/flo" : "/dry"));
+  File pProfileFile = SD.open(strProfileName, FILE_WRITE);  // Save Current Profile Values
+  if (pProfileFile) {
+    pProfileFile.println(g_pProfileSettings[nProfile].StartLightTime);
+    pProfileFile.println(g_pProfileSettings[nProfile].StopLightTime);
+    pProfileFile.println(g_pProfileSettings[nProfile].LightBrightness);
+    pProfileFile.println(g_pProfileSettings[nProfile].StartInternalFanTemperature);
+    pProfileFile.println(g_pProfileSettings[nProfile].StartVentilationTemperature);
+    pProfileFile.println(g_pProfileSettings[nProfile].StartVentilationHumidity);
+    pProfileFile.println(g_pProfileSettings[nProfile].CurrentWateringDay);
+    pProfileFile.println(g_pProfileSettings[nProfile].PHReducerToApply);
+    pProfileFile.println(g_pProfileSettings[nProfile].VegetativeFertilizerToApply);
+    pProfileFile.println(g_pProfileSettings[nProfile].FloweringFertilizerToApply);
+
+    pProfileFile.close();
+
+    File pWateringProfileFile = SD.open(strProfileName + "_watering", FILE_WRITE);
+    if (pWateringProfileFile) {
+      for (const auto& Watering : g_pProfileSettings[nProfile].WateringStages)
+        pWateringProfileFile.printf("%u|%u\n", Watering.Day, Watering.TargetCC);
+
+      pWateringProfileFile.close();
+    }
+
+    LOGGER(INFO, "Profile: %s updated successfully.", strProfileName);
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Saves Internals settings to the SD card.
+// This function ensures that the internal system behavior persists across reboots.
+void SaveSettings() {
+  ConnectSD(false);
+
+  if (!g_bIsSDInit)
+    return;
+
+  File pSettingsFile = SD.open("/settings", FILE_WRITE);
+  if (pSettingsFile) {
+    pSettingsFile.println(g_cSSID);
+    pSettingsFile.println(g_cSSIDPWD);
+
+    pSettingsFile.println(g_nSamplingInterval);
+
+    pSettingsFile.println(g_nCurrentProfile);
+
+    pSettingsFile.println(g_nFansRestInterval);
+    pSettingsFile.println(g_nFansRestDuration);
+
+    pSettingsFile.println(g_nTemperatureStopHysteresis);
+    pSettingsFile.println(g_nHumidityStopHysteresis);
+
+    pSettingsFile.println(g_nIrrigationFlowPerMinute);
+    pSettingsFile.println(g_nPHReducerFlowPerMinute);
+    pSettingsFile.println(g_nVegetativeFlowPerMinute);
+    pSettingsFile.println(g_nFloweringFlowPerMinute);
+
+    pSettingsFile.println(g_nMixingPumpDuration);
+
+    pSettingsFile.println(g_nIrrigationReservoirLowerLevel);
+
+    pSettingsFile.close();
+
+    LOGGER(INFO, "Settings file updated successfully.");
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Loads profile configuration data from SD card files (/veg, /flo, /dry) into the g_pProfileSettings array.
+// If the SD card is not initialized, attempts to initialize it by calling ConnectSD(false).
+// For the current active profile (g_nCurrentProfile), updates effective light start/stop times
+// by normalizing hour values (24 to 0 for start, 0 to 24 for stop).
+void LoadProfiles() {
+  ConnectSD(false);
+
+  if (!g_bIsSDInit)
+    return;
+
+  char cBuffer[64];
+
+  for (uint8_t i = 0; i < MAX_PROFILES; i++) {
+    String strProfileName = ((i == 0) ? "/veg" : ((i == 1) ? "/flo" : "/dry"));
+
+    File pProfileFile = SD.open(strProfileName, FILE_READ);
+    if (pProfileFile) {
+      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // START LIGHT TIME
+      g_pProfileSettings[i].StartLightTime = atoi(cBuffer);
+
+      if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
+        g_nEffectiveStartLights = (g_pProfileSettings[g_nCurrentProfile].StartLightTime == 24) ? 0 : g_pProfileSettings[g_nCurrentProfile].StartLightTime;  // Stores the effective light start hour, converting 24 to 0 (midnight)
+      ///////////////////////////////////////////////////
+      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // STOP LIGHT TIME
+      g_pProfileSettings[i].StopLightTime = atoi(cBuffer);
+
+      if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
+        g_nEffectiveStopLights = (g_pProfileSettings[g_nCurrentProfile].StopLightTime == 24) ? 0 : g_pProfileSettings[g_nCurrentProfile].StopLightTime; // Stores the effective light stop hour, converting 24 to 0 (midnight)
+      ///////////////////////////////////////////////////
+      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // LIGHT BRIGHTNESS LEVEL
+      g_pProfileSettings[i].LightBrightness = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // INTERNAL FAN TEMPERATURE START
+      g_pProfileSettings[i].StartInternalFanTemperature = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VENTILATION TEMPERATURE START
+      g_pProfileSettings[i].StartVentilationTemperature = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VENTILATION HUMIDITY START
+      g_pProfileSettings[i].StartVentilationHumidity = atoi(cBuffer);
+      /////////////////////////////////////////////////// 
+      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CURRENT WATERING DAY
+      g_pProfileSettings[i].CurrentWateringDay = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CC OF PH REDUCER TO APPLY TO IRRIGATE SOLUTION
+      g_pProfileSettings[i].PHReducerToApply = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CC OF VEGETATIVE FERTILIZER TO APPLY TO IRRIGATE SOLUTION
+      g_pProfileSettings[i].VegetativeFertilizerToApply = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CC OF FLOWERING FERTILIZER TO APPLY TO IRRIGATE SOLUTION
+      g_pProfileSettings[i].FloweringFertilizerToApply = atoi(cBuffer);
+
+      pProfileFile.close();
+    }
+
+    File pWateringProfileFile = SD.open(strProfileName + "_watering", FILE_READ);
+    if (pWateringProfileFile) {
+      g_pProfileSettings[i].WateringStages.clear();
+
+      while (pWateringProfileFile.available()) {
+        cBuffer[pWateringProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // CC OF SOLUTION TO IRRIGATE
+        TrimTrailingWhitespace(cBuffer);
+
+        char* cDivider = strchr(cBuffer, '|');
+        if (cDivider) {
+          *cDivider = '\0';
+
+          g_pProfileSettings[i].WateringStages.push_back({atoi(cBuffer), atoi(cDivider + 1)});
+        }
+      }
+
+      pWateringProfileFile.close();
+    }
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Sends a WhatsApp notification message using the CallMeBot API.
+// Encodes the message text for URL transmission by percent-encoding special characters.
+// Constructs the full API request URL including phone number, encoded text, and API key.
+// Performs an HTTP GET request to send the notification.
+// Uses the HTTPClient library for making the HTTPS request.
+void SendNotification(const char* strMessage) {
+  HTTPClient http;
+  size_t i, j = 0;
+  char cEncodedMessage[512] = {0};
+
+  for (i = 0; strMessage[i] != '\0' && j < sizeof(cEncodedMessage) - 4; ++i) {
+    char c = strMessage[i];
+
+    if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+      cEncodedMessage[j++] = c;
+    } else {
+      snprintf(&cEncodedMessage[j], 4, "%%%02X", (unsigned char)c);
+      j += 3;
+    }
+  }
+
+  cEncodedMessage[j] = '\0';
+
+  char cFinalUrl[512];
+  snprintf(cFinalUrl, sizeof(cFinalUrl), "https://api.callmebot.com/whatsapp.php?phone=%s&text=%s&apikey=%s", CALLME_BOT_PHONE_TO_SEND, cEncodedMessage, CALLMEBOT_APY_KEY);
+
+  http.begin(cFinalUrl);
+  http.setTimeout(3000);
+
+  uint16_t nReturnCode = http.GET();
+  if (nReturnCode == 200)
+    LOGGER(INFO, "Notification sent successfully.");
+  else
+    LOGGER(ERROR, "Error while sending notification. Error Code: %d", nReturnCode);
+
+  http.end();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Measures the irrigation reservoir level using an HC-SR04 ultrasonic sensor.
+// Performs multiple distance readings to improve accuracy, averaging only the valid results.
+// Each reading triggers the sensor and waits for the echo, discarding timeouts.
+// Returns the average distance (in centimeters) as an integer (int16_t) from the sensor to the water surface.
+// If all readings fail, logs an error and returns 0.
+int16_t GetIrrigationReservoirLevel() {
+  float fCombinedValues = 0;
+  uint8_t nValidReads = 0;
+
+  for (uint8_t i = 0; i < HCSR04_MAX_READS; i++) {
+    if (!digitalRead(HCSR04_TRIGGER_PIN))
+      digitalWrite(HCSR04_TRIGGER_PIN, HIGH);
+
+    delayMicroseconds(10);  // Small Wait to obtain an stable reading
+
+    digitalWrite(HCSR04_TRIGGER_PIN, LOW);
+
+    float fDuration = pulseIn(HCSR04_ECHO_PIN, HIGH, 23529.4);
+
+    if (fDuration == 0) {
+      LOGGER(ERROR, "Irrigation Solution Level read out of range.");
+    } else {
+      fCombinedValues += fDuration * 0.0343 / 2;
+      nValidReads++;
+    }
+
+    delay(100); // Small delay between reads
+  }
+
+  if (nValidReads > 0) {
+    return static_cast<uint16_t>(fCombinedValues / nValidReads);
+  } else {
+    LOGGER(ERROR, "All HCSR04 readings failed.");
+    return 0;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Reads the average humidity value from a soil sensor. 
+// Excites the sensor by setting the VCC pin high and waits for stable readings. 
+// Takes multiple analog readings, sums them, and normalizes the result to a percentage scale (0~100). 
+// After readings, the VCC pin is set low to stop electrolysis. 
+// Returns the normalized humidity value as an integer between 0 and 100.
+uint8_t GetSoilHumidity(uint8_t nSensorNumber) {
+  if (!digitalRead(HW080_VCC_PIN))
+    digitalWrite(HW080_VCC_PIN, HIGH);  // Put Pin output in High to excite the moisture sensors
+
+  delay(10);  // Small Wait to obtain an stable reading
+
+  uint32_t nCombinedValues = 0;
+
+  for (uint8_t i = 0; i < HW080_MAX_READS; i++) {
+    nCombinedValues += analogRead(pSoilMoisturePins[nSensorNumber].Pin);
+
+    delay(100); // Small delay between reads
+  }
+
+  digitalWrite(HW080_VCC_PIN, LOW); // Put pin output in Low to stop electrolysis
+
+  return constrain(map(nCombinedValues / HW080_MAX_READS, HW080_MIN, HW080_MAX, 0, 100), 0, 100);
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Handles automatic WiFi reconnection using the global SSID and password credentials.
@@ -467,11 +679,11 @@ unsigned long MinutesToTicks(unsigned long lMinutes) { return lMinutes * 1000 * 
 // Tries to reconnect up to WIFI_MAX_RETRYS times, with a 1-second delay between attempts.
 // Logs a success message with IP address upon connection, or an error message if all attempts fail.
 // After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
-void Thread_WifiReconnect(void *parameter) {
+void Thread_WifiReconnect(void* parameter) {
   for (;;) {
 #if !defined(ENABLE_AP_ALWAYS)
     if (!(WiFi.getMode() & WIFI_AP)) {
-      LOGGER("Starting Access Point (SSID: %s) mode for reconfiguration...", INFO, ACCESSPOINT_NAME);
+      LOGGER(INFO, "Starting Access Point (SSID: %s) mode for reconfiguration...", ACCESSPOINT_NAME);
 
       WiFi.mode(WIFI_AP_STA); // Set dual mode, Access Point & Station
 
@@ -479,11 +691,9 @@ void Thread_WifiReconnect(void *parameter) {
 
       WiFi.softAP(ACCESSPOINT_NAME); // Start Access Point, while try to connect to Wifi
     }
-#else
-    WiFi.mode(WIFI_STA);
 #endif
 
-    LOGGER("Trying to reconnect Wifi...", INFO);
+    LOGGER(INFO, "Trying to reconnect Wifi...");
 
     WiFi.begin(g_cSSID, g_cSSIDPWD);
 
@@ -495,16 +705,16 @@ void Thread_WifiReconnect(void *parameter) {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-      LOGGER("Connected to Wifi SSID: %s PASSWORD: %s. IP: %s.", INFO, g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
+      LOGGER(INFO, "Connected to Wifi SSID: %s PASSWORD: %s. IP: %s.", g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
 
 #if !defined(ENABLE_AP_ALWAYS)
       WiFi.softAPdisconnect(true);
       WiFi.mode(WIFI_STA);
 
-      LOGGER("Access Point disconnected.", INFO);
+      LOGGER(INFO, "Access Point disconnected.");
 #endif
     } else {
-      LOGGER("Max Wifi reconnect attempts reached.", ERROR);
+      LOGGER(ERROR, "Max Wifi reconnect attempts reached.");
     }
 
     vTaskSuspend(NULL); // Suspends the task until needed again
@@ -516,12 +726,24 @@ void Thread_WifiReconnect(void *parameter) {
 // Supports returning environmental data, system states, and dynamically generated HTML blocks
 // for insertion into templates. Used with templating engines (e.g., AsyncWebServer's .setTemplateProcessor).
 String HTMLProcessor(const String &var) {
-  if (var == "DPM") {
-    return String(g_nDripPerMinute);
+  if (var == "IFPM") {
+    return String(g_nIrrigationFlowPerMinute);
+  } else if (var == "PHFPM") {
+    return String(g_nPHReducerFlowPerMinute);
+  } else if (var == "VEGFPM") {
+    return String(g_nVegetativeFlowPerMinute);
+  } else if (var == "FLOFPM") {
+    return String(g_nFloweringFlowPerMinute);
+  } else if (var == "MIXDUR") {
+    return String(TicksToSeconds(g_nMixingPumpDuration));
+  } else if (var == "SAINT") {
+    return String(TicksToMinutes(g_nSamplingInterval));
   } else if (var == "ENVTEMP") {
     return String(g_nEnvironmentTemperature);
   } else if (var == "ENVHUM") {
     return String(g_nEnvironmentHumidity);
+  } else if (var == "LEVEL") {
+    return String(g_nIrrigationSolutionLevel) + "&#37;";
   } else if (var == "VPDSECTION") {
     String strHTMLColor = "#FE7F96", strState = "Zona de Peligro";
 
@@ -536,58 +758,61 @@ String HTMLProcessor(const String &var) {
       strState = "Floración";
     }
 
-    return "<tr><td>Déficit de Presión de Vapor:</td><td><font id=vpd color=" + strHTMLColor + ">" + String(g_fEnvironmentVPD, 2) + "</font>kPa</td><td>(<font id=vpdstate color=" + strHTMLColor + ">" + strState + "</font>)</td></tr>";
+    return "<span id=vpd style=color:" + strHTMLColor + ">" + String(g_fEnvironmentVPD, 2) + "</span>kPa (<span id=vpdstate style=color:" + strHTMLColor + ">" + strState + "</span>)";
   } else if (var == "SOILSECTION") {
     String strReturn;
 
-    for (uint8_t i = 0; i < nSoilHumidityPinsCount; i++)
+    for (uint8_t i = 0; i < nSoilMoisturePinsCount; i++)
       strReturn += "<tr><td>Humedad de Maceta " + String(i) + ":</td><td><p id=soil" + String(i) + ">" + String(g_nSoilsHumidity[i]) + "&#37;</p></td></tr>";
 
     return strReturn;
   } else if (var == "CURRENTTIME") {
-    time_t timeNow = time(nullptr);
-    struct tm *timeInfo = localtime(&timeNow);
-    auto timeformat = [](int value) {
-      return String(value).length() == 1 ? "0" + String(value) : String(value);
-    };
+    struct tm currentTime = GetLocalTimeNow();
+    auto timeformat = [](int value) { return (String(value).length() == 1) ? "0" + String(value) : String(value); };
 
-    return String(timeformat(timeInfo->tm_hour) + ":" + timeformat(timeInfo->tm_min) + ":" + timeformat(timeInfo->tm_sec));
+    return String(timeformat(currentTime.tm_hour) + ":" + timeformat(currentTime.tm_min) + ":" + timeformat(currentTime.tm_sec));
+  } else if (var == "TIMEZONE") {
+    return String(TIMEZONE);
   } else if (var == "PROFILE") {
     return String(g_nCurrentProfile);
   } else if (var == "STARTLIGHT") {
-    return String(g_pSettings[g_nCurrentProfile].StartLightTime);
+    return String(g_pProfileSettings[g_nCurrentProfile].StartLightTime);
   } else if (var == "STOPLIGHT") {
-    return String(g_pSettings[g_nCurrentProfile].StopLightTime);
+    return String(g_pProfileSettings[g_nCurrentProfile].StopLightTime);
   } else if (var == "MAXBRIGHT") {
     return String(S8050_MAX_VALUE);
-  } else if (var == "TIMEZONEUTCOFFSET") {
-    return String(TIMEZONE_UTC_OFFSET);
   } else if (var == "BRIGHTLEVEL") {
-    return String(g_pSettings[g_nCurrentProfile].LightBrightness < 401 ? 0 : g_pSettings[g_nCurrentProfile].LightBrightness); // WARNING: Hardcode offset
+    return String((g_pProfileSettings[g_nCurrentProfile].LightBrightness < 401) ? 0 : g_pProfileSettings[g_nCurrentProfile].LightBrightness); // WARNING: Hardcode offset
   } else if (var == "STAINTFAN") {
-    return String(g_pSettings[g_nCurrentProfile].StartInternalFanTemperature);
+    return String(g_pProfileSettings[g_nCurrentProfile].StartInternalFanTemperature);
   } else if (var == "TEMPSTARTVENT") {
-    return String(g_pSettings[g_nCurrentProfile].StartVentilationTemperature);
+    return String(g_pProfileSettings[g_nCurrentProfile].StartVentilationTemperature);
   } else if (var == "HUMSTARTVENT") {
-    return String(g_pSettings[g_nCurrentProfile].StartVentilationHumidity);
+    return String(g_pProfileSettings[g_nCurrentProfile].StartVentilationHumidity);
+  } else if (var == "PHCC") {
+    return String(g_pProfileSettings[g_nCurrentProfile].PHReducerToApply);
+  } else if (var == "VEGCC") {
+    return String(g_pProfileSettings[g_nCurrentProfile].VegetativeFertilizerToApply);
+  } else if (var == "FLOCC") {
+    return String(g_pProfileSettings[g_nCurrentProfile].FloweringFertilizerToApply);
   } else if (var == "CURRENTWATERINGDAY") {
-    return String(g_pSettings[g_nCurrentProfile].CurrentWateringDay);
+    return String(g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay);
   } else if (var == "WATSTATE") {
     String strReturn;
 
-    if (g_ulWateringDuration > 0) {
+    if (g_nIrrigationDuration > 0) {
       strReturn = "Regando...<br>Tiempo Restante: ";
 
-      if (g_ulWateringDuration < 60) {
-        strReturn += String(g_ulWateringDuration) + " segundos";
+      if (g_nIrrigationDuration < 60) {
+        strReturn += String(g_nIrrigationDuration) + " segundos";
       } else {
-        unsigned long ulMinutes = g_ulWateringDuration / 60;
-        unsigned long ulSeconds = g_ulWateringDuration % 60;
+        uint16_t nMinutes = g_nIrrigationDuration / 60;
+        uint16_t nSeconds = g_nIrrigationDuration % 60;
 
-        strReturn += String(ulMinutes) + (ulMinutes == 1 ? " minuto" : " minutos");
+        strReturn += String(nMinutes) + ((nMinutes == 1) ? " minuto" : " minutos");
 
-        if (ulSeconds > 0)
-          strReturn += " y " + String(ulSeconds) + " segundos";
+        if (nSeconds > 0)
+          strReturn += " y " + String(nSeconds) + " segundos";
       }
     }
 
@@ -595,29 +820,29 @@ String HTMLProcessor(const String &var) {
   } else if (var == "RESTSTATE") {
     String strReturn;
 
-    if (g_ulFansRestElapsedTime > 0) {
+    if (g_nFansRestElapsedTime > 0) {
       strReturn = "En Reposo...<br>Tiempo Restante: ";
 
-      unsigned long ulTimeRemaining = g_ulFansRestDuration - (millis() - g_ulFansRestElapsedTime);  // Miliseconds
+      uint32_t nTimeRemaining = g_nFansRestDuration - (millis() - g_nFansRestElapsedTime);  // Miliseconds
 
-      if (ulTimeRemaining < 60000) {
-        strReturn += String(ulTimeRemaining / 1000) + " segundos";
+      if (nTimeRemaining < 60000) {
+        strReturn += String(nTimeRemaining / 1000) + " segundos";
       } else {
-        unsigned long ulMinutes = ulTimeRemaining / 60000;
-        unsigned long ulSeconds = (ulTimeRemaining % 60000) / 1000;
+        uint32_t nMinutes = nTimeRemaining / 60000;
+        uint32_t nSeconds = (nTimeRemaining % 60000) / 1000;
 
-        strReturn += String(ulMinutes) + (ulMinutes == 1 ? " minuto" : " minutos");
+        strReturn += String(nMinutes) + (nMinutes == 1 ? " minuto" : " minutos");
 
-        if (ulSeconds > 0)
-          strReturn += " y " + String(ulSeconds) + " segundos";
+        if (nSeconds > 0)
+          strReturn += " y " + String(nSeconds) + " segundos";
       }
     }
 
     return strReturn;
   } else if (var == "RESTINTERVAL") {
-    return String(TicksToMinutes(g_ulFansRestInterval));
+    return String(TicksToMinutes(g_nFansRestInterval));
   } else if (var == "RESTDUR") {
-    return String(TicksToMinutes(g_ulFansRestDuration));
+    return String(TicksToMinutes(g_nFansRestDuration));
   } else if (var == "TEMPSTOPHYS") {
     return String(g_nTemperatureStopHysteresis);
   } else if (var == "HUMSTOPHYS") {
@@ -629,8 +854,8 @@ String HTMLProcessor(const String &var) {
   } else if (var == "SOILLINES") {
     String strReturn;
 
-    for (uint8_t i = 0; i < nSoilHumidityPinsCount; i++)
-      strReturn += ",{label:'Humedad de Maceta " + String(i) + "',borderColor:'" + g_strSoilGraphColor[i] + "',backgroundColor:'" + g_strSoilGraphColor[i] + "',symbol:'%%',yAxisID:'" + (3 + i) + "'}";
+    for (uint8_t i = 0; i < nSoilMoisturePinsCount; i++)
+      strReturn += "{label:'Humedad de Maceta " + String(i) + "',borderColor:'" + pSoilMoisturePins[i].HTMLColor + "',backgroundColor:'" + pSoilMoisturePins[i].HTMLColor + "',symbol:'%%',yAxisID:'" + (3 + i) + "'},";
 
     return strReturn;
   }
@@ -644,39 +869,37 @@ void setup() {
   delay(3000);  // Small delay cuz that trash don't print the initial log
 #endif
 
-  LOGGER("========== Indoor Controller Started ==========", INFO);
-  
-  g_ulStartUpTime = millis();
-
-  LOGGER("Initializing Pins...", INFO);
-
-  char cLogBuffer[32];  // WARNING: Take care, not big size
+  LOGGER(INFO, "========== Indoor Controller Started ==========");
+  LOGGER(INFO, "Initializing Pins...");
 
   for (uint8_t i = 0; i < nRelayModulePinsCount; ++i) {
-    pinMode(pRelayModulePins[i].Pin, OUTPUT);     // Set Pin Mode
-    digitalWrite(pRelayModulePins[i].Pin, PIN_OFF);  // Set default Pin State
+    pinMode(pRelayModulePins[i].Pin, OUTPUT); // Set Pin Mode
+    digitalWrite(pRelayModulePins[i].Pin, RELAY_PIN_OFF); // Set default Pin State
 
-    snprintf(cLogBuffer, sizeof(cLogBuffer), "%s Pin Done!", pRelayModulePins[i].Name);
-    LOGGER(cLogBuffer, INFO);
+    LOGGER(INFO, "%s Pin Done!", pRelayModulePins[i].Name);
   }
 
   ledcAttach(S8050_PWM_PIN, S8050_FREQUENCY, S8050_RESOLUTION);
-  LOGGER("Light Brightness Pin Done!", INFO);
+  LOGGER(INFO, "Light Brightness Pin Done!");
 
   pinMode(HW080_VCC_PIN, OUTPUT);
-  digitalWrite(HW080_VCC_PIN, PIN_ON);
-  LOGGER("Power Pin for Soil Humidity Sensors Done!", INFO);
+  digitalWrite(HW080_VCC_PIN, LOW);
+  LOGGER(INFO, "Power Pin for Soil Humidity Sensors Done!");
 
-  for (uint8_t i = 0; i < nSoilHumidityPinsCount; i++) {
-    pinMode(nSoilHumidityPins[i], INPUT);
+  for (uint8_t i = 0; i < nSoilMoisturePinsCount; i++) {
+    pinMode(pSoilMoisturePins[i].Pin, INPUT);
 
-    snprintf(cLogBuffer, sizeof(cLogBuffer), "Soil Humidity Pin %d Done!", i);
-    LOGGER(cLogBuffer, INFO);
+    LOGGER(INFO, "Soil Humidity Pin %d Done!", i);
   }
+
+  pinMode(HCSR04_TRIGGER_PIN, OUTPUT);
+  digitalWrite(HCSR04_TRIGGER_PIN, LOW);
+  pinMode(HCSR04_ECHO_PIN, INPUT);
+  LOGGER(INFO, "Pins for Irrigation Solution Reservoir Level Done!");
 
   ConnectSD(true);  // Try to init SD Card
 
-  LOGGER("Loading Settings & Time...", INFO);
+  LOGGER(INFO, "Loading Settings & Time...");
 
   if (g_bIsSDInit) {
     File pSettingsFile = SD.open("/settings", FILE_READ); // Read Settings File
@@ -687,66 +910,71 @@ void setup() {
       TrimTrailingWhitespace(cBuffer);
 
       strncpy(g_cSSID, cBuffer, sizeof(g_cSSID));
-
       g_cSSID[sizeof(g_cSSID) - 1] = '\0';
       ///////////////////////////////////////////////////
       cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SSID PASSWORD
       TrimTrailingWhitespace(cBuffer);
 
       strncpy(g_cSSIDPWD, cBuffer, sizeof(g_cSSIDPWD));
-
       g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
+      ///////////////////////////////////////////////////
+      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SAMPLING TAKE INTERVALS FOR GRAPH
+      g_nSamplingInterval = atoi(cBuffer);
       ///////////////////////////////////////////////////
       cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SELECTED PROFILE
       g_nCurrentProfile = atoi(cBuffer);
       ///////////////////////////////////////////////////
       cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // FANS REST INTERVAL
-      g_ulFansRestInterval = atoi(cBuffer);
+      g_nFansRestInterval = atoi(cBuffer);
       ///////////////////////////////////////////////////
       cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // FANS REST DURATION
-      g_ulFansRestDuration = atoi(cBuffer);
+      g_nFansRestDuration = atoi(cBuffer);
       ///////////////////////////////////////////////////
       cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // TEMPERATURE HYSTERESIS TO STOP FANS
       g_nTemperatureStopHysteresis = atoi(cBuffer);
       ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // MOISTURE HYSTERESIS TO STOP FANS
+      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // HUMIDITY HYSTERESIS TO STOP FANS
       g_nHumidityStopHysteresis = atoi(cBuffer);
       ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // DRIPS PER MINUTE
-      g_nDripPerMinute = atoi(cBuffer);
+      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // IRRIGATION PUMP FLOW PER MINUTE
+      g_nIrrigationFlowPerMinute = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // PH REDUCER PUMP FLOW PER MINUTE
+      g_nPHReducerFlowPerMinute = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VEGETATIVE FERTILIZER PUMP FLOW PER MINUTE
+      g_nVegetativeFlowPerMinute = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // FLOWERING FERTILIZER PUMP FLOW PER MINUTE
+      g_nFloweringFlowPerMinute = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // MIXING PUMP DURATION
+      g_nMixingPumpDuration = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // LOWER POINT OF IRRIGATION SOLUTION RESERVOIR
+      g_nIrrigationReservoirLowerLevel = atoi(cBuffer);
       ///////////////////////////////////////////////////
       pSettingsFile.close();
       ///////////////////////////////////////////////////
-      ProfilesLoader();  // LOAD PROFILES VALUES
+      LoadProfiles();  // LOAD PROFILES VALUES
 
-      ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - (g_pSettings[g_nCurrentProfile].LightBrightness < 401 ? 0 : g_pSettings[g_nCurrentProfile].LightBrightness));  // WARNING: Hardcode offset
+      ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - ((g_pProfileSettings[g_nCurrentProfile].LightBrightness < 401) ? 0 : g_pProfileSettings[g_nCurrentProfile].LightBrightness));  // WARNING: Hardcode offset
     } else {
-      LOGGER("Failed to open Settings file.", ERROR);
+      LOGGER(ERROR, "Failed to open Settings file.");
     }
     ///////////////////////////////////////////////////
     File pTimeFile = SD.open("/time", FILE_READ); // Read Time file
     if (pTimeFile) {
-      LOGGER("Getting Datetime from SD Card...", INFO);
+      LOGGER(INFO, "Getting Datetime from SD Card...");
 
-      struct timeval tv;
-      String strTimestamp = pTimeFile.readStringUntil('\n');
-      tv.tv_sec = strTimestamp.toInt();
-      tv.tv_usec = 0;
+      SetCurrentDatetime(pTimeFile.readStringUntil('\n').toInt());
 
-      settimeofday(&tv, nullptr);
-
-      configTime(TIMEZONE_UTC_OFFSET, TIMEZONE_DST_OFFSET, nullptr, nullptr);
-
-      time_t timeNow = time(nullptr);
-      struct tm timeInfo;
-
-      localtime_r(&timeNow, &timeInfo);
-
-      LOGGER("Current Datetime: %04d-%02d-%02d %02d:%02d:%02d.", INFO, timeInfo.tm_year + 1900, timeInfo.tm_mon + 1, timeInfo.tm_mday, timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec);
+      struct tm currentTime = GetLocalTimeNow();
+      LOGGER(INFO, "Current Datetime: %04d-%02d-%02d %02d:%02d:%02d.", currentTime.tm_year + 1900, currentTime.tm_mon + 1, currentTime.tm_mday, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
 
       pTimeFile.close();
     } else {
-      LOGGER("Failed to open Time file.", ERROR);
+      LOGGER(ERROR, "Failed to open Time file.");
     }
     ///////////////////////////////////////////////////
     File pMetricsFile = SD.open("/metrics.log", FILE_READ);  // Read Time file
@@ -776,7 +1004,8 @@ void setup() {
               while (nBytesRead > 0 && (cBuffer[nBytesRead - 1] == '\r' || cBuffer[nBytesRead - 1] == ' '))
                 cBuffer[--nBytesRead] = '\0';
 
-              g_strArrayGraphData[nLinesRead] = strdup(cBuffer);
+              strncpy(g_strArrayGraphData[nLinesRead], cBuffer, MAX_GRAPH_MARKS_LENGTH - 1);
+              g_strArrayGraphData[nLinesRead][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
 
               nLinesRead++;
             }
@@ -797,19 +1026,19 @@ void setup() {
       pMetricsFile.close();
     }
   } else {
-    LOGGER("SD initialization failed. Settings & Time will not be loaded, but the system will not restart to avoid unexpected relay behavior.", ERROR);
+    LOGGER(ERROR, "SD initialization failed. Settings & Time will not be loaded, but the system will not restart to avoid unexpected relay behavior.");
   }
 
-  LOGGER("Initializing Wifi...", INFO);
+  LOGGER(INFO, "Initializing Wifi...");
 
 #ifdef ENABLE_AP_ALWAYS
   WiFi.mode(WIFI_AP_STA); // Set dual mode, Access Point & Station
 
   WiFi.softAP(ACCESSPOINT_NAME);
 
-  LOGGER("Access Point active. AP IP: %s", INFO, WiFi.softAPIP().toString().c_str());
+  LOGGER(INFO, "Access Point active. AP IP: %s", WiFi.softAPIP().toString().c_str());
 #else
-  WiFi.mode(WIFI_STA);    // Only Station mode
+  WiFi.mode(WIFI_STA);  // Only Station mode
 #endif
 
   if (g_bIsSDInit) {
@@ -819,31 +1048,31 @@ void setup() {
 
     while (WiFi.status() != WL_CONNECTED && nConnectTrysCount < WIFI_MAX_RETRYS) {
       nConnectTrysCount++;
-      delay(WIFI_CHECK_INTERVAL);  // Wait before trying again
+      delay(WIFI_CHECK_INTERVAL); // Wait before trying again
     }
 
     if (WiFi.status() == WL_CONNECTED)
-      LOGGER("Connected to Wifi SSID: %s PASSWORD: %s. IP: %s.", INFO, g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
+      LOGGER(INFO, "Connected to Wifi SSID: %s PASSWORD: %s. IP: %s.", g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
     else
-      LOGGER("Max Wifi reconnect attempts reached.", ERROR);
+      LOGGER(ERROR, "Max Wifi reconnect attempts reached.");
   }
 
-  LOGGER("Initializing mDNS...", INFO);
+  LOGGER(INFO, "Initializing mDNS...");
 
   if (MDNS.begin(DNS_ADDRESS)) {
     MDNS.addService("http", "tcp", WEBSERVER_PORT);
 
-    LOGGER("mDNS Started at: %s.local Service: HTTP, Protocol: TCP, Port: %d.", INFO, DNS_ADDRESS, WEBSERVER_PORT);
+    LOGGER(INFO, "mDNS Started at: %s.local Service: HTTP, Protocol: TCP, Port: %d.", DNS_ADDRESS, WEBSERVER_PORT);
   } else {
-    LOGGER("Failed to initialize mDNS.", ERROR);
+    LOGGER(ERROR, "Failed to initialize mDNS.");
   }
 
-  LOGGER("Creating Wifi reconnect task thread...", INFO);
+  LOGGER(INFO, "Creating Wifi reconnect task thread...");
 
   xTaskCreatePinnedToCore(Thread_WifiReconnect, "Wifi Reconnect Task", 4096, NULL, 1, &pWiFiReconnect, 0);
   vTaskSuspend(pWiFiReconnect); // Suspend the task as it's not needed right now
 
-  LOGGER("Setting up Web Server Paths & Commands...", INFO);
+  LOGGER(INFO, "Setting up Web Server Paths & Commands...");
 
   for (uint8_t i = 0; i < sizeof(g_strWebServerFiles) / sizeof(g_strWebServerFiles[0]); i++) {
     String path = "/" + String(g_strWebServerFiles[i]);
@@ -851,32 +1080,43 @@ void setup() {
     pWebServer.serveStatic(path.c_str(), SD, path.c_str()).setCacheControl("max-age=86400");
   }
 
-  pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+  pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
     /*IPAddress pClientIP = request->client()->getRemoteAddress();
-    LOGGER("HTTP Request IP From: %d.%d.%d.%d.", INFO, pClientIP[0], pClientIP[1], pClientIP[2], pClientIP[3]);*/
+    LOGGER(INFO, "HTTP Request IP From: %d.%d.%d.%d.", pClientIP[0], pClientIP[1], pClientIP[2], pClientIP[3]);*/
 
     if (request->hasArg("action")) {  // Process the request
-      if (request->arg("action") == "reload") {  // This is for reload Elements from the Panel based on selected Profile
+      if (request->arg("action") == "cisl") {
+        g_nIrrigationReservoirLowerLevel = GetIrrigationReservoirLevel();
+
+        SaveSettings();
+
+        request->send(200, "text/plain", "MSGSe calibró el valor Mínimo del Reservorio de Solución de Riego.");
+      } else if (request->arg("action") == "reload") {  // This is for reload Elements from the Panel based on selected Profile
         String strReturn = "";
 
         if (request->hasArg("profilesel")) {
           uint8_t nSelectedProfile = request->arg("profilesel").toInt();
 
-          strReturn += "lightstart:" + String(g_pSettings[nSelectedProfile].StartLightTime);
-          strReturn += ":lightstop:" + String(g_pSettings[nSelectedProfile].StopLightTime);
-          strReturn += ":lightbright:" + String(g_pSettings[nSelectedProfile].LightBrightness);
+          /*strReturn += "lightstart:" + String(g_pProfileSettings[nSelectedProfile].StartLightTime); // Previous version (Inputs)
+          strReturn += ":lightstop:" + String(g_pProfileSettings[nSelectedProfile].StopLightTime);*/
+          strReturn += "lightstartstop:" + String(g_pProfileSettings[nSelectedProfile].StartLightTime) + "," + String(g_pProfileSettings[nSelectedProfile].StopLightTime);  // Newest version (Scroll Wheel Selector)
+          strReturn += ":lightbright:" + String(g_pProfileSettings[nSelectedProfile].LightBrightness);
           ///////////////////////////////////////////////////
-          strReturn += ":intfansta:" + String(g_pSettings[nSelectedProfile].StartInternalFanTemperature);
+          strReturn += ":intfansta:" + String(g_pProfileSettings[nSelectedProfile].StartInternalFanTemperature);
           ///////////////////////////////////////////////////
-          strReturn += ":venttempstart:" + String(g_pSettings[nSelectedProfile].StartVentilationTemperature);
-          strReturn += ":venthumstart:" + String(g_pSettings[nSelectedProfile].StartVentilationHumidity);
+          strReturn += ":venttempstart:" + String(g_pProfileSettings[nSelectedProfile].StartVentilationTemperature);
+          strReturn += ":venthumstart:" + String(g_pProfileSettings[nSelectedProfile].StartVentilationHumidity);
           ///////////////////////////////////////////////////
-          strReturn += ":currentwateringday:" + String(g_pSettings[nSelectedProfile].CurrentWateringDay);
+          strReturn += ":phcc:" + String(g_pProfileSettings[nSelectedProfile].PHReducerToApply);
+          strReturn += ":vegcc:" + String(g_pProfileSettings[nSelectedProfile].VegetativeFertilizerToApply);
+          strReturn += ":flocc:" + String(g_pProfileSettings[nSelectedProfile].FloweringFertilizerToApply);
+          ///////////////////////////////////////////////////
+          strReturn += ":currentwateringday:" + String(g_pProfileSettings[nSelectedProfile].CurrentWateringDay);
 
           bool bFirst = true;
           strReturn += ":wateringchart:";
 
-          for (const auto& Watering : g_pSettings[nSelectedProfile].WateringStages) {
+          for (const auto& Watering : g_pProfileSettings[nSelectedProfile].WateringStages) {
             if (!bFirst)
               strReturn += ",";
             else
@@ -888,44 +1128,53 @@ void setup() {
 
         if (strReturn != "")
           request->send(200, "text/plain", "RELOAD" + strReturn);
-      } else if (request->arg("action") == "testpump") {
-        String strReturn = "La bomba no se puede probar en este momento.";
+      } else if (request->arg("action") == "applyferts") {
+        String strReturn = "No se pueden incorporar los Fertilizantes en este momento, ";
 
-        if (g_ulTestWateringPumpStartTime == 0 && g_ulWateringDuration <= 0) {
-          g_bTestPump = true;
+        if (g_nTestPumpStartTime == 0 && g_nIrrigationDuration == 0) {
+          strReturn = "Se comenzará a incorporar los fertilizantes.";
 
-          digitalWrite(GetPinByName("Water Pump"), PIN_ON);
-
-          strReturn = "La bomba estará encendida durante los próximos 60 segundos.";
-
-          LOGGER("Watering Pump Flow test started.", INFO);
+          g_bApplyFertilizers = true;
+        } else {
+          if (g_nTestPumpStartTime > 0)
+            strReturn += "porque se está ejecutando una prueba de Caudal.";
+          else if (g_nIrrigationDuration > 0)
+            strReturn += "porque se está ejecutando un Riego.";
         }
 
-        if (strReturn != "")
-          request->send(200, "text/plain", "MSG" + strReturn);
-      } else if (request->arg("action") == "restart") {
-        LOGGER("Restarting Controller by Web command.", INFO);
-        ESP.restart();
+        request->send(200, "text/plain", "MSG" + strReturn);
+      } else if (request->arg("action") == "testIpump" || // Irrigation
+                 request->arg("action") == "testPHpump" || // pH Reducer
+                 request->arg("action") == "testVpump" ||  // Vegetative Fert
+                 request->arg("action") == "testFpump") {  // Flowering Fert
+        String strReturn = "La bomba no se puede probar en este momento.";
+
+        if (g_nTestPumpStartTime == 0 && g_nIrrigationDuration == 0) {
+          if (request->arg("action") == "testIpump")
+            g_bTestIrrigationPump = true;
+          else if (request->arg("action") == "testPHpump")
+            g_bTestPHReducerPump = true;
+          else if (request->arg("action") == "testVpump")
+            g_bTestVegetativeFertPump = true;
+          else if (request->arg("action") == "testFpump")
+            g_bTestFloweringFertPump = true;
+
+          if (g_bTestIrrigationPump || g_bTestPHReducerPump || g_bTestVegetativeFertPump || g_bTestFloweringFertPump)
+            strReturn = "La bomba estará encendida durante los próximos 60 segundos.";
+        }
+
+        request->send(200, "text/plain", "MSG" + strReturn);
       } else if (request->arg("action") == "update") {  // This is for update Settings
         uint8_t nSelectedProfile = request->arg("profilesel").toInt();
-        unsigned long lNewValue;
+        uint64_t nNewValue;
         String strReturn = "";
+
         // =============== Current DateTime =============== //
         if (request->hasArg("settime")) {
-          struct timeval tv;
-          tv.tv_sec = request->arg("settime").toInt();
-          tv.tv_usec = 0;
+          SetCurrentDatetime(request->arg("settime").toInt());
 
-          settimeofday(&tv, nullptr);
-
-          configTime(TIMEZONE_UTC_OFFSET, TIMEZONE_DST_OFFSET, nullptr, nullptr);
-
-          time_t timeNow = time(nullptr);
-          struct tm timeInfo;
-
-          localtime_r(&timeNow, &timeInfo);
-
-          LOGGER("New Datetime: %04d-%02d-%02d %02d:%02d:%02d.", INFO, timeInfo.tm_year + 1900, timeInfo.tm_mon + 1, timeInfo.tm_mday, timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec);
+          struct tm currentTime = GetLocalTimeNow();
+          LOGGER(INFO, "New Datetime: %04d-%02d-%02d %02d:%02d:%02d.", currentTime.tm_year + 1900, currentTime.tm_mon + 1, currentTime.tm_mday, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
 
           strReturn += "Se sincronizó la Fecha actual.\r\n";
         }
@@ -934,95 +1183,125 @@ void setup() {
           if (nSelectedProfile != g_nCurrentProfile) {
             g_nCurrentProfile = nSelectedProfile;
 
-            ProfilesLoader();
+            LoadProfiles();
 
-            // Check if currently are watering, and stop it
-            /*if (g_ulWateringDuration > 0 && !digitalRead(GetPinByName("Water Pump"))) { // NOTE: This disabled too
-              digitalWrite(GetPinByName("Water Pump"), PIN_OFF);
+            // Check if currently are Watering, and stop it
+            //if (g_nIrrigationDuration > 0 && !digitalRead(GetPinByName("Irrigation Pump"))) { // NOTE: This disabled too
+            //  digitalWrite(GetPinByName("Irrigation Pump"), RELAY_PIN_OFF);
 
-              LOGGER("Watering Finished because profile has been changed.", INFO);
-            }*/
+            //  LOGGER(INFO, "Irrigation Finished because profile has been changed.");
+            //}
 
             // Reset Watering variables
             g_nLastResetDay = -1;
-            //g_nIrrigationDuration = 0;  // NOTE: Better let complete the Irrigation process. Cuz this can create problems related to Race condition...
+            //g_nIrrigationDuration = 0;  // NOTE: Better let complete the Irrigation process. Cuz this can create problems related to race condition...
             memset(g_bWateredHour, 0, sizeof(g_bWateredHour));
 
-            strReturn += "Se cambió al Perfil de: ";
+            strReturn += "Se cambió al Perfil de ";
             strReturn += (nSelectedProfile == 0) ? "Vegetativo" : ((nSelectedProfile == 1) ? "Floración" : "Secado");
             strReturn += ".\r\n";
           }
         }
         // =============== Light Start =============== //
         if (request->hasArg("lightstart")) {
-          lNewValue = request->arg("lightstart").toInt();
+          nNewValue = request->arg("lightstart").toInt();
 
-          if (lNewValue != g_pSettings[nSelectedProfile].StartLightTime) {
-            g_pSettings[nSelectedProfile].StartLightTime = lNewValue;
-            g_nEffectiveStartLights = (g_pSettings[nSelectedProfile].StartLightTime == 24) ? 0 : g_pSettings[nSelectedProfile].StartLightTime;  // Stores the effective light start hour, converting 24 to 0 (midnight)
+          if (nNewValue != g_pProfileSettings[nSelectedProfile].StartLightTime) {
+            g_pProfileSettings[nSelectedProfile].StartLightTime = nNewValue;
+            g_nEffectiveStartLights = (g_pProfileSettings[nSelectedProfile].StartLightTime == 24) ? 0 : g_pProfileSettings[nSelectedProfile].StartLightTime;  // Stores the effective light start hour, converting 24 to 0 (midnight)
 
             strReturn += "Se actualizó la Hora de Encendido de Luz.\r\n";
           }
         }
         // =============== Light Stop =============== //
         if (request->hasArg("lightstop")) {
-          lNewValue = request->arg("lightstop").toInt();
+          nNewValue = request->arg("lightstop").toInt();
 
-          if (lNewValue != g_pSettings[nSelectedProfile].StopLightTime) {
-            g_pSettings[nSelectedProfile].StopLightTime = lNewValue;
-            g_nEffectiveStopLights = (g_pSettings[nSelectedProfile].StopLightTime == 24) ? 0 : g_pSettings[nSelectedProfile].StopLightTime; // Stores the effective light stop hour, converting 0 to 24 (midnight)
+          if (nNewValue != g_pProfileSettings[nSelectedProfile].StopLightTime) {
+            g_pProfileSettings[nSelectedProfile].StopLightTime = nNewValue;
+            g_nEffectiveStopLights = (g_pProfileSettings[nSelectedProfile].StopLightTime == 24) ? 0 : g_pProfileSettings[nSelectedProfile].StopLightTime; // Stores the effective light stop hour, converting 24 to 0 (midnight)
 
             strReturn += "Se actualizó la Hora de Apagado de Luz.\r\n";
           }
         }
         // =============== Light Brightness =============== //
         if (request->hasArg("lightbright")) {
-          lNewValue = request->arg("lightbright").toInt();
+          nNewValue = request->arg("lightbright").toInt();
 
-          if (lNewValue != g_pSettings[nSelectedProfile].LightBrightness) {
-            g_pSettings[nSelectedProfile].LightBrightness = lNewValue < 401 ? 0 : lNewValue;
+          if (nNewValue != g_pProfileSettings[nSelectedProfile].LightBrightness) {
+            g_pProfileSettings[nSelectedProfile].LightBrightness = (nNewValue < 401) ? 0 : nNewValue;
 
-            ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - g_pSettings[nSelectedProfile].LightBrightness);
+            ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - g_pProfileSettings[nSelectedProfile].LightBrightness);
 
             strReturn += "Se actualizó la Intensidad de Luz.\r\n";
           }
         }
         // =============== Internal Fan Start =============== //
         if (request->hasArg("intfansta")) {
-          lNewValue = request->arg("intfansta").toInt();
+          nNewValue = request->arg("intfansta").toInt();
 
-          if (lNewValue != g_pSettings[nSelectedProfile].StartInternalFanTemperature) {
-            g_pSettings[nSelectedProfile].StartInternalFanTemperature = lNewValue;
+          if (nNewValue != g_pProfileSettings[nSelectedProfile].StartInternalFanTemperature) {
+            g_pProfileSettings[nSelectedProfile].StartInternalFanTemperature = nNewValue;
 
             strReturn += "Se actualizó la Temperatura de Encendido del Ventilador Interno.\r\n";
           }
         }
         // =============== Ventilation Temperature Start =============== //
         if (request->hasArg("venttempstart")) {
-          lNewValue = request->arg("venttempstart").toInt();
+          nNewValue = request->arg("venttempstart").toInt();
 
-          if (lNewValue != g_pSettings[nSelectedProfile].StartVentilationTemperature) {
-            g_pSettings[nSelectedProfile].StartVentilationTemperature = lNewValue;
+          if (nNewValue != g_pProfileSettings[nSelectedProfile].StartVentilationTemperature) {
+            g_pProfileSettings[nSelectedProfile].StartVentilationTemperature = nNewValue;
 
             strReturn += "Se actualizó la Temperatura de Encendido de Recirculación.\r\n";
           }
         }
         // =============== Ventilation Humidity Start =============== //
         if (request->hasArg("venthumstart")) {
-          lNewValue = request->arg("venthumstart").toInt();
+          nNewValue = request->arg("venthumstart").toInt();
 
-          if (lNewValue != g_pSettings[nSelectedProfile].StartVentilationHumidity) {
-            g_pSettings[nSelectedProfile].StartVentilationHumidity = lNewValue;
+          if (nNewValue != g_pProfileSettings[nSelectedProfile].StartVentilationHumidity) {
+            g_pProfileSettings[nSelectedProfile].StartVentilationHumidity = nNewValue;
 
             strReturn += "Se actualizó la Humedad de Encendido de la Recirculación.\r\n";
           }
         }
+        // =============== Application of CC of pH Reducer =============== //
+        if (request->hasArg("phcc")) {
+          nNewValue = request->arg("phcc").toInt();
+
+          if (nNewValue != g_pProfileSettings[nSelectedProfile].PHReducerToApply) {
+            g_pProfileSettings[nSelectedProfile].PHReducerToApply = nNewValue;
+
+            strReturn += "Se actualizó la cantidad de Reductor de pH que se incorporará a la Solución de Riego.\r\n";
+          }
+        }
+        // =============== Application of CC of Vegetative Fertilizer =============== //
+        if (request->hasArg("vegcc")) {
+          nNewValue = request->arg("vegcc").toInt();
+
+          if (nNewValue != g_pProfileSettings[nSelectedProfile].VegetativeFertilizerToApply) {
+            g_pProfileSettings[nSelectedProfile].VegetativeFertilizerToApply = nNewValue;
+
+            strReturn += "Se actualizó la cantidad de Fertilizante de Vegetativo que se incorporará a la Solución de Riego.\r\n";
+          }
+        }
+        // =============== Application of CC of Flowering Fertilizer =============== //
+        if (request->hasArg("flocc")) {
+          nNewValue = request->arg("flocc").toInt();
+
+          if (nNewValue != g_pProfileSettings[nSelectedProfile].FloweringFertilizerToApply) {
+            g_pProfileSettings[nSelectedProfile].FloweringFertilizerToApply = nNewValue;
+
+            strReturn += "Se actualizó la cantidad de Fertilizante de Floración que se incorporará a la Solución de Riego.\r\n";
+          }
+        }
         // =============== Current Watering Day =============== //
         if (request->hasArg("currentwateringday")) {
-          lNewValue = request->arg("currentwateringday").toInt();
+          nNewValue = request->arg("currentwateringday").toInt();
 
-          if (lNewValue != g_pSettings[nSelectedProfile].CurrentWateringDay) {
-            g_pSettings[nSelectedProfile].CurrentWateringDay = lNewValue;
+          if (nNewValue != g_pProfileSettings[nSelectedProfile].CurrentWateringDay) {
+            g_pProfileSettings[nSelectedProfile].CurrentWateringDay = nNewValue;
 
             strReturn += "Se actualizó los Días de Riego transcurridos.\r\n";
           }
@@ -1034,10 +1313,10 @@ void setup() {
           std::vector<WateringData> vecNewWateringStages;
 
           while (nIndex < strValues.length()) {
-            int nCommaIndex = strValues.indexOf(',', nIndex);
+            int16_t nCommaIndex = strValues.indexOf(',', nIndex);
             String strPair = (nCommaIndex == -1) ? strValues.substring(nIndex) : strValues.substring(nIndex, nCommaIndex);
 
-            int nSepIndex = strPair.indexOf('|');
+            int16_t nSepIndex = strPair.indexOf('|');
             if (nSepIndex != -1)
               vecNewWateringStages.push_back({ strPair.substring(0, nSepIndex).toInt(), strPair.substring(nSepIndex + 1).toInt() });
 
@@ -1047,60 +1326,110 @@ void setup() {
             nIndex = nCommaIndex + 1;
           }
 
-          if (vecNewWateringStages != g_pSettings[nSelectedProfile].WateringStages) {
-            g_pSettings[nSelectedProfile].WateringStages = vecNewWateringStages;
+          if (vecNewWateringStages != g_pProfileSettings[nSelectedProfile].WateringStages) {
+            g_pProfileSettings[nSelectedProfile].WateringStages = vecNewWateringStages;
 
-            strReturn += "Se actualizó el Esquema de Riesgo.\r\n";
+            strReturn += "Se actualizó el Esquema de Riego.\r\n";
           }
         }
         // =============== Fans Rest Interval =============== //
-        if (request->hasArg("restinterval")) {
-          lNewValue = MinutesToTicks(request->arg("restinterval").toInt());
+        if (request->hasArg("restint")) {
+          nNewValue = MinutesToTicks(request->arg("restint").toInt());
 
-          if (lNewValue != g_ulFansRestInterval) {
-            g_ulFansRestInterval = lNewValue;
+          if (nNewValue != g_nFansRestInterval) {
+            g_nFansRestInterval = nNewValue;
 
             strReturn += "Se actualizó el Intervalo de Reposo de Ventiladores.\r\n";
           }
         }
         // =============== Fans Rest Duration =============== //
         if (request->hasArg("restdur")) {
-          lNewValue = MinutesToTicks(request->arg("restdur").toInt());
+          nNewValue = MinutesToTicks(request->arg("restdur").toInt());
 
-          if (lNewValue != g_ulFansRestDuration) {
-            g_ulFansRestDuration = lNewValue;
+          if (nNewValue != g_nFansRestDuration) {
+            g_nFansRestDuration = nNewValue;
 
             strReturn += "Se actualizó la Duración de Reposo de Ventiladores.\r\n";
           }
         }
         // =============== Environment Temperature Hysteresis =============== //
         if (request->hasArg("temphys")) {
-          lNewValue = request->arg("temphys").toInt();
+          nNewValue = request->arg("temphys").toInt();
 
-          if (lNewValue != g_nTemperatureStopHysteresis) {
-            g_nTemperatureStopHysteresis = lNewValue;
+          if (nNewValue != g_nTemperatureStopHysteresis) {
+            g_nTemperatureStopHysteresis = nNewValue;
 
             strReturn += "Se actualizó la Histéresis de Apagado por Temperatura.\r\n";
           }
         }
         // =============== Environment Humidity Hysteresis =============== //
         if (request->hasArg("humhys")) {
-          lNewValue = request->arg("humhys").toInt();
+          nNewValue = request->arg("humhys").toInt();
 
-          if (lNewValue != g_nHumidityStopHysteresis) {
-            g_nHumidityStopHysteresis = lNewValue;
+          if (nNewValue != g_nHumidityStopHysteresis) {
+            g_nHumidityStopHysteresis = nNewValue;
 
             strReturn += "Se actualizó la Histéresis de Apagado por Humedad.\r\n";
           }
         }
-        // =============== Drip Per Minute =============== //
-        if (request->hasArg("dripperminute")) {
-          lNewValue = request->arg("dripperminute").toInt();
+        // =============== Irrigation Pump CC Flow Per Minute =============== //
+        if (request->hasArg("ifpm")) {
+          nNewValue = request->arg("ifpm").toInt();
 
-          if (lNewValue != g_nDripPerMinute) {
-            g_nDripPerMinute = lNewValue;
+          if (nNewValue != g_nIrrigationFlowPerMinute) {
+            g_nIrrigationFlowPerMinute = nNewValue;
 
-            strReturn += "Se actualizó el valor de Tasa de Goteo por Minuto.\r\n";
+            strReturn += "Se actualizó el Caudal por Minuto de Bomba de Riego.\r\n";
+          }
+        }
+        // =============== pH Reducer Pump CC Flow Per Minute =============== //
+        if (request->hasArg("phfpm")) {
+          nNewValue = request->arg("phfpm").toInt();
+
+          if (nNewValue != g_nPHReducerFlowPerMinute) {
+            g_nPHReducerFlowPerMinute = nNewValue;
+
+            strReturn += "Se actualizó el Caudal por Minuto de Bomba de Reductor de pH.\r\n";
+          }
+        }
+        // =============== Vegetative Fertilizer CC Pump Flow Per Minute =============== //
+        if (request->hasArg("vegfpm")) {
+          nNewValue = request->arg("vegfpm").toInt();
+
+          if (nNewValue != g_nVegetativeFlowPerMinute) {
+            g_nVegetativeFlowPerMinute = nNewValue;
+
+            strReturn += "Se actualizó el Caudal por Minuto de Bomba de Fertilizante de Vegetativo.\r\n";
+          }
+        }
+        // =============== Flowering Fertilizer CC Pump Flow Per Minute =============== //
+        if (request->hasArg("flofpm")) {
+          nNewValue = request->arg("flofpm").toInt();
+
+          if (nNewValue != g_nFloweringFlowPerMinute) {
+            g_nFloweringFlowPerMinute = nNewValue;
+
+            strReturn += "Se actualizó el Caudal por Minuto de Bomba de Fertilizante de Floración.\r\n";
+          }
+        }
+        // =============== Mixing Pump Duration =============== //
+        if (request->hasArg("mixdur")) {
+          nNewValue = SecondsToTicks(request->arg("mixdur").toInt());
+
+          if (nNewValue != g_nMixingPumpDuration) {
+            g_nMixingPumpDuration = nNewValue;
+
+            strReturn += "Se actualizó la Duración de Mezcla de Solución de Riego.\r\n";
+          }
+        }
+        // =============== Sampling take Intervals =============== //
+        if (request->hasArg("saint")) {
+          nNewValue = MinutesToTicks(request->arg("saint").toInt());
+
+          if (nNewValue != g_nSamplingInterval) {
+            g_nSamplingInterval = nNewValue;
+
+            strReturn += "Se actualizó el Intervalo de toma de Muestras.\r\n";
           }
         }
         // =============== WiFi =============== //
@@ -1138,71 +1467,57 @@ void setup() {
             g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
           }
 
-          ConnectSD(false);
+          SaveSettings();
 
-          if (g_bIsSDInit) {
-            File pSettingsFile = SD.open("/settings", FILE_WRITE);  // Save Internal Settings
-            if (pSettingsFile) {
-              pSettingsFile.println(g_cSSID);
-              pSettingsFile.println(g_cSSIDPWD);
+          SaveProfile(nSelectedProfile);
 
-              pSettingsFile.println(nSelectedProfile);
+          if (bWiFiChanges) { // After send response to web client, Try reconnect to Wifi if is required
+            LOGGER(WARN, "Disconnecting Wifi to start connection to new SSID...");
 
-              pSettingsFile.println(g_ulFansRestInterval);
-              pSettingsFile.println(g_ulFansRestDuration);
+            WiFi.disconnect(false); // First disconnect from current Network (Arg false to just disconnect the Station, not the AP)
 
-              pSettingsFile.println(g_nTemperatureStopHysteresis);
-              pSettingsFile.println(g_nHumidityStopHysteresis);
-
-              pSettingsFile.println(g_nDripPerMinute);
-
-              LOGGER("Settings file updated successfully.", INFO);
-
-              pSettingsFile.close();
-            }
-            ///////////////////////////////////////////////////
-            WriteProfile(nSelectedProfile);
-          } else {
-            LOGGER("Cannot connect to SD to save new settings!", ERROR);
+            if (eTaskGetState(pWiFiReconnect) == eRunning)  // Then check if task pWiFiReconnect is running. If it is, Suspend it to eventually Resume it with the new SSID and SSID Password
+              vTaskSuspend(pWiFiReconnect);
           }
         }
+      } else if (request->arg("action") == "restart") {
+        request->send(200, "text/plain", "MSGReiniciando Controlador...");
 
-        if (bWiFiChanges) { // After send response to web client, Try reconnect to Wifi if is required
-          LOGGER("Disconnecting Wifi to start connection to new SSID...", WARN);
+        LOGGER(INFO, "Restarting Controller by Web command.");
 
-          WiFi.disconnect(false); // First disconnect from current Network (Arg false to just disconnect the Station, not the AP)
+        delay(1000);
 
-          if (eTaskGetState(pWiFiReconnect) == eRunning)  // Then check if task pWiFiReconnect is running. If it is, Suspend it to eventually Resume it with the new SSID and SSID Password
-            vTaskSuspend(pWiFiReconnect);
-        }
+        ESP.restart();
       } else if (request->arg("action") == "refresh") { // This is for refresh Panel values
         uint8_t nSelectedProfile = request->arg("profilesel").toInt();
         String strResponse = "";
         // ================================================== Environment Section ================================================== //
         strResponse += String(g_nEnvironmentTemperature) + ":" + String(g_nEnvironmentHumidity) + ":" + String(g_fEnvironmentVPD, 2);
+        // ================================================== Irrigation Solution Level Section ================================================== //
+        strResponse += String(g_nIrrigationSolutionLevel) + "%";
         // ================================================== Soil Section ================================================== //
         strResponse += ":";
         bool bFirst = true;
 
-        for (uint8_t i = 0; i < nSoilHumidityPinsCount; i++) {
+        for (uint8_t i = 0; i < nSoilMoisturePinsCount; i++) {
           if (!bFirst)
-              strResponse += ",";
-            else
-              bFirst = false;
+            strResponse += ",";
+          else
+            bFirst = false;
 
-          strResponse += String(g_nSoilsHumidity[i]);
+          strResponse += String(g_nSoilsHumidity[i]) + "%";
         }
         // ================================================== Current Time Section ================================================== //
         time_t timeNow = time(nullptr);
 
         strResponse += ":" + String(timeNow);
         // ================================================== Light Brightness slider position Section ================================================== //
-        strResponse += ":" + String(g_pSettings[nSelectedProfile].LightBrightness < 401 ? 0 : g_pSettings[nSelectedProfile].LightBrightness);
+        strResponse += ":" + String((g_pProfileSettings[nSelectedProfile].LightBrightness < 401) ? 0 : g_pProfileSettings[nSelectedProfile].LightBrightness);
         // ================================================== Fans Rest State Section ================================================== //
         strResponse += ":";
 
         if (g_bFansRest)
-          strResponse += String(g_ulFansRestDuration - (millis() - g_ulFansRestElapsedTime)); // Miliseconds
+          strResponse += String(TicksToSeconds(g_nFansRestDuration - (millis() - g_nFansRestElapsedTime)));
         else
           strResponse += "0";
 
@@ -1211,18 +1526,16 @@ void setup() {
 
         // Ventilation
         strResponse += ":" + String(digitalRead(GetPinByName("Ventilation")));  // 1 = stopped, 0 turn on
-        // ================================================== Watering Section ================================================== //
-        strResponse += ":" + String(g_pSettings[nSelectedProfile].CurrentWateringDay);
-        strResponse += ":" + String(g_ulWateringDuration);  // Seconds
+        // ================================================== Irrigation Section ================================================== //
+        strResponse += ":" + String(g_pProfileSettings[nSelectedProfile].CurrentWateringDay);
+        strResponse += ":" + String(g_nIrrigationDuration);  // Seconds
         // ================================================== Graph Section ================================================== //
-        size_t sizeGraphArraySize = sizeof(g_strArrayGraphData) / sizeof(g_strArrayGraphData[0]);
-
-        if (sizeGraphArraySize > 0 && g_strArrayGraphData[0] != nullptr) {
+        if (g_strArrayGraphData[0][0] != '\0') {
           strResponse += ":";
 
-          for (int i = sizeGraphArraySize - 1; i >= 0; i--) {
-            if (g_strArrayGraphData[i] != nullptr) {
-              if (i < (sizeGraphArraySize - 1))
+          for (int8_t i = MAX_GRAPH_MARKS - 1; i >= 0; i--) {
+            if (g_strArrayGraphData[i][0] != '\0') {
+              if (i < (MAX_GRAPH_MARKS - 1))
                 strResponse += ",";
 
               strResponse += String(g_strArrayGraphData[i]);
@@ -1230,28 +1543,29 @@ void setup() {
           }
         }
         // ========================================================================================================================= //
-        AsyncWebServerResponse *response = request->beginResponse(200, "text/plain;charset=utf-8", "REFRESH" + strResponse);
+        AsyncWebServerResponse* response = request->beginResponse(200, "text/plain;charset=utf-8", "REFRESH" + strResponse);
         /*
-          Response structure example: each data[X] is divided by :
+          Response structure example: each data[X] is divided by:
           data[0] → Environment Temperature
           data[1] → Environment Humidity
           data[2] → Environment VPD
-          data[3] → <Soil Moistures values Array> Example: SOIL 1 MOISTURE VALUE,SOIL 2 MOISTURE VALUE
-          data[4] → Current Timestamp
-          data[5] → Light Brightness
-          data[6] → Fans Rest time Remaining
-          data[7] → Internal Fan State
-          data[8] → Ventilation Fan State
-          data[9] → Current Watering Day
-          data[10] → Watering Time Remaining
-          data[11] → <History Chart values Array> Example: Unix Timestamp|Environment Temperature|Environment Humidity|VPD|<Soil Moistures values Array>
+          data[3] → Irrigation Solution Level
+          data[4] → <Soil Moistures values Array> Example: SOIL 1 MOISTURE VALUE,SOIL 2 MOISTURE VALUE
+          data[5] → Current Timestamp
+          data[6] → Light Brightness
+          data[7] → Fans Rest time Remaining
+          data[8] → Internal Fan State
+          data[9] → Ventilation Fan State
+          data[10] → Current Watering Day
+          data[11] → Irrigation Time Remaining
+          data[12] → <History Chart values Array> Example: Unix Timestamp|Environment Temperature|Environment Humidity|VPD|<Soil Moistures values Array>
         */
         request->send(response);
       }
     } else {  // Return Panel content
       ConnectSD(false);
 
-      AsyncWebServerResponse *pResponse;
+      AsyncWebServerResponse* pResponse;
 
       if (g_bIsSDInit)
         pResponse = request->beginResponse(SD, "/index.html", "text/html", false, HTMLProcessor);
@@ -1262,104 +1576,187 @@ void setup() {
     }
   });
 
+  pWebServer.on("/ota", HTTP_POST, [](AsyncWebServerRequest* request) {
+    bool bUpdate = !Update.hasError();
+
+    String strMessage = bUpdate ? "Actualización cargada correctamente. Reiniciando..." : "Error al intentar Actualizar.";
+    strMessage.replace("'", "\\'");
+
+    request->send(200, "text/html", "<script>alert('" + strMessage + "');</script>");
+
+    if (bUpdate) {
+      LOGGER(INFO, "Restarting Controller to do a Firmware Update.");
+
+      delay(1000);
+
+      ESP.restart();
+    }
+  }, [](AsyncWebServerRequest* request, String strFileName, size_t nIndex, uint8_t* nData, size_t nLen, bool bFinal) {
+    if (!nIndex) {
+      LOGGER(INFO, "Updating Firmwware. File: %s", strFileName);
+
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN))
+        LOGGER(ERROR, "Firmware update failed. Error: %s", Update.errorString());
+    }
+
+    if (Update.write(nData, nLen) != nLen)
+      LOGGER(ERROR, "Firmware update failed. Error: %s", Update.errorString());
+
+    if (bFinal) {
+      if (Update.end(true))
+        LOGGER(INFO, "Firmware Update successfully.");
+      else
+        LOGGER(ERROR, "Firmware update failed. Error: %s", Update.errorString());
+    }
+  });
+
   pWebServer.begin();
 
-  LOGGER("Web Server Started at Port: %d.", INFO, WEBSERVER_PORT);
+  LOGGER(INFO, "Web Server Started at Port: %d.", WEBSERVER_PORT);
 }
 
 void loop() {
-  static unsigned long ulLastSecondTick = 0;  // General
-  static unsigned long ulLastStoreElapsedTime = 0;  // To Save Environment values to show in Graph
-  unsigned long ulCurrentMillis = millis(); 
+  static uint32_t nLastSecondTick = 0;  // General
+  static uint32_t nLastStoreElapsedTime = 0;  // To Save Environment values to show in Graph
+  uint64_t nCurrentMillis = millis();
 
-  if ((ulCurrentMillis - ulLastSecondTick) >= 1000) { // Check if 1 second has passed since the last tick to perform once-per-second tasks
-    ulLastSecondTick = ulCurrentMillis;
+  if ((nCurrentMillis - nLastSecondTick) >= 1000) { // Check if 1 second has passed since the last tick to perform once-per-second tasks
+    nLastSecondTick = nCurrentMillis;
     time_t timeNow = time(nullptr);
-    struct tm *timeInfo = localtime(&timeNow);
+    struct tm timeInfo;
+    localtime_r(&timeNow, &timeInfo);
     // ================================================== Wifi Section ================================================== //
-    if (ulCurrentMillis >= (g_ulStartUpTime + (WIFI_CHECK_INTERVAL * WIFI_MAX_RETRYS)) && eTaskGetState(pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED) // If is not connected to Wifi and is not currently running a reconnect trask, start it
+    if (eTaskGetState(pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED) // If is not connected to Wifi and is not currently running a reconnect trask, start it
       vTaskResume(pWiFiReconnect);
     // ================================================== Time Section ================================================== //
-    WriteToSD("/time", String((uint32_t)timeNow), false); // Write current time to SD Card
+    {
+      char cBuffer[12];
+      snprintf(cBuffer, sizeof(cBuffer), "%lu", static_cast<uint32_t>(timeNow));
+      WriteToSD("/time", cBuffer, false); // Write current time to SD Card
+    }
     // ================================================== Environment Section ================================================== //
-    GetEnvironmentParameters(); // Update Environment parameters in Global variables
-    // ================================================== Lights & Watering Sections ================================================== //
-    if ((g_pSettings[g_nCurrentProfile].StartLightTime > 0 || g_pSettings[g_nCurrentProfile].StopLightTime > 0) &&
-          (g_nEffectiveStartLights < g_nEffectiveStopLights && timeInfo->tm_hour >= g_nEffectiveStartLights && timeInfo->tm_hour < g_nEffectiveStopLights) || // If the Start hour is earlier than the Stop hour (e.g., from 8 to 20), turn on the lights only if the current hour is within that range
-          (g_nEffectiveStartLights >= g_nEffectiveStopLights && (timeInfo->tm_hour >= g_nEffectiveStartLights || timeInfo->tm_hour < g_nEffectiveStopLights))) {  // If the Start hour is later than or equal to the Stop hour (e.g., from 20 to 6), turn on the Lights if the current hour is either after the Start or before the Stop
-      if (digitalRead(GetPinByName("Lights"))) {
-        digitalWrite(GetPinByName("Lights"), PIN_ON);
+    {
+      uint8_t nError = SimpleDHTErrSuccess;
+      uint8_t nReadTrysCount = 0;
+      byte bTemperature = 0, bHumidity = 0;
 
-        LOGGER("Lights Started.", INFO);
+      do {  // Try read Temp & Humidity values from Environment
+        if ((nError = pDHT11.read(&bTemperature, &bHumidity, NULL)) != SimpleDHTErrSuccess) { // Get Environment Temperature and Humidity
+          nReadTrysCount++;
+
+          LOGGER(ERROR, "Read DHT11 failed, Error=%d, Duration=%d.", SimpleDHTErrCode(nError), SimpleDHTErrDuration(nError));
+
+          delay(100);
+        }
+      } while (nError != SimpleDHTErrSuccess && nReadTrysCount < DHT_MAX_READS);  // Repeat while it fails and not reach max trys
+
+      if (nError == SimpleDHTErrSuccess) {
+        g_nEnvironmentTemperature = static_cast<uint8_t>(bTemperature);
+        g_nEnvironmentHumidity = static_cast<uint8_t>(bHumidity);
+
+        if ((g_nEnvironmentTemperature >= 0 && g_nEnvironmentTemperature <= 52) && (g_nEnvironmentHumidity >= 15 && g_nEnvironmentHumidity <= 95)) {  // WARNING: DHT11 → Temp 0~50±2 | Hum 0~90±5
+          float fE_s = 6.112 * exp((17.67 * g_nEnvironmentTemperature) / (243.5 + g_nEnvironmentTemperature));
+
+          g_fEnvironmentVPD = (fE_s - (g_nEnvironmentHumidity / 100.0) * fE_s) / 10.0;
+        } else {
+          g_fEnvironmentVPD = 0;
+
+          LOGGER(ERROR, "Invalid Temperature or Humidity readings.");
+        }
+      } else {
+        g_nEnvironmentTemperature = 0;
+        g_nEnvironmentHumidity = 0;
+        g_fEnvironmentVPD = 0;
+
+        LOGGER(ERROR, "Failed to read DHT11 after max retries.");
+      }
+    }
+    // ================================================== Irrigation Solution Level Section ================================================== //
+    {
+      g_nIrrigationSolutionLevel = std::clamp(100 * (g_nIrrigationReservoirLowerLevel - GetIrrigationReservoirLevel()) / g_nIrrigationReservoirLowerLevel, 0, 100);
+    }
+    // ================================================== Lights Sections ================================================== //
+    if ((g_pProfileSettings[g_nCurrentProfile].StartLightTime > 0 || g_pProfileSettings[g_nCurrentProfile].StopLightTime > 0) &&  // Check if either the light start time or stop time is set (greater than 0)
+        (g_nEffectiveStartLights < g_nEffectiveStopLights && timeInfo.tm_hour >= g_nEffectiveStartLights && timeInfo.tm_hour < g_nEffectiveStopLights) || // Normal case: light start time is before stop time (e.g., from 7 AM to 7 PM)
+        (g_nEffectiveStartLights >= g_nEffectiveStopLights && (timeInfo.tm_hour >= g_nEffectiveStartLights || timeInfo.tm_hour < g_nEffectiveStopLights))) {  // Special case: light schedule crosses midnight (e.g., from 8 PM to 6 AM)
+      if (digitalRead(GetPinByName("Lights"))) {
+        digitalWrite(GetPinByName("Lights"), RELAY_PIN_ON);
+
+        LOGGER(INFO, "Lights Started.");
       }
     } else {  // If Current Time is out of ON range, turn it OFF
-      if (!digitalRead(GetPinByName("Lights"))) {
-        digitalWrite(GetPinByName("Lights"), PIN_OFF);
+      digitalWrite(GetPinByName("Lights"), RELAY_PIN_OFF);
 
-        LOGGER("Lights Stopped.", INFO);
-      }
+      LOGGER(INFO, "Lights Stopped.");
     }
     // ================================================== Irrigation Section ================================================== //
     {
       static bool bLastPulseDone = false;
 
-      if (bLastPulseDone && timeInfo->tm_mday != g_nLastResetDay) {
-        g_nLastResetDay = timeInfo->tm_mday;
+      if (bLastPulseDone && timeInfo.tm_mday != g_nLastResetDay) {
+        g_nLastResetDay = timeInfo.tm_mday;
         bLastPulseDone = false;
 
         memset(g_bWateredHour, 0, sizeof(g_bWateredHour));
 
-        g_pSettings[g_nCurrentProfile].CurrentWateringDay++;
+        g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay++;
 
-        WriteProfile(g_nCurrentProfile);
+        SaveProfile(g_nCurrentProfile);
       }
 
-      if (g_ulWateringDuration > 0) {
-        g_ulWateringDuration--;  // Decrease -1 by each second pass
+      if (g_nIrrigationDuration > 0) {  // TODO: Aca implementar el codigo que prende la fuente, luego la bomba de mezcla y finalmente se hace el riego
+                                        // TODO: Para la logica de aplicacion de fertis al igual que la logica de riego, primero verificar que el Pin "Power Supply" esté en RELAY_PIN_ON
+                                        // TODO: Antes de prender la bomba de riego (para regar), primero prender la bomba de mezcla y antes de prende la bomba de mezcla, activar la fuente ("Power Supply")
+        g_nIrrigationDuration--;  // Decrease -1 by each second pass
 
-        if (g_ulWateringDuration <= 0 && !digitalRead(GetPinByName("Water Pump"))) {
-          digitalWrite(GetPinByName("Water Pump"), PIN_OFF);
+        if (g_nIrrigationDuration == 0) {
+          digitalWrite(GetPinByName("Irrigation Pump"), RELAY_PIN_OFF);
 
-          g_ulWateringDuration = 0;
-
-          LOGGER("Irrigation Finished.", INFO);
+          LOGGER(INFO, "Irrigation Finished.");
         }
       }
 
-      if (!digitalRead(GetPinByName("Lights")) && !g_bWateredHour[timeInfo->tm_hour]) {
+      if (!digitalRead(GetPinByName("Lights")) && !g_bWateredHour[timeInfo.tm_hour] && !g_bApplyFertilizers && g_nTestPumpStartTime == 0) {
         uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 2) % 24;
         uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24;
         uint8_t nTotalPulses = (nStopIrrigationHour - nStartIrrigationHour + 24) % 24;
 
-        if (g_nDripPerMinute > 0 && nTotalPulses > 0) {
+        if (g_nIrrigationFlowPerMinute > 0 && nTotalPulses > 0) {
           uint16_t nLastKnownCC = 0;
 
-          for (const auto& Watering : g_pSettings[g_nCurrentProfile].WateringStages) {
-            if (g_pSettings[g_nCurrentProfile].CurrentWateringDay >= Watering.Day)
+          for (const auto& Watering : g_pProfileSettings[g_nCurrentProfile].WateringStages) {
+            if (g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay >= Watering.Day)
               nLastKnownCC = Watering.TargetCC;
             else
               break;
           }
 
           float fCCPerPulse = static_cast<float>(nLastKnownCC) / nTotalPulses;
-          float fCCFlowPerSecond = g_nDripPerMinute / 60.0f;
+          float fCCFlowPerSecond = g_nIrrigationFlowPerMinute / 60.0f;
           float fPulseDuration = fCCPerPulse / fCCFlowPerSecond;
           //String strIrrigationHours = "";
 
           for (uint8_t i = 0; i < nTotalPulses; i++) {
             uint8_t nHour = (nStartIrrigationHour + i) % 24;
 
-            if (nHour == timeInfo->tm_hour) {
-              g_ulWateringDuration = ceil(fPulseDuration); // Round up and cast to uint32_t
+            if (nHour == timeInfo.tm_hour) {
               g_bWateredHour[nHour] = true;
 
               if (i == (nTotalPulses - 1))
                 bLastPulseDone = true;
 
-              if (digitalRead(GetPinByName("Water Pump"))) {
-                digitalWrite(GetPinByName("Water Pump"), PIN_ON);
+              if (digitalRead(GetPinByName("Irrigation Pump"))) { // TODO: Voy a tener que mover el encendido de la bomba a la seccion de mas arriba.
+                digitalWrite(GetPinByName("Irrigation Pump"), RELAY_PIN_ON);
 
-                LOGGER("Irrigation Started. Number: %d/%d Current Hour: %d Pulse Duration: %.1f", INFO, (i + 1), nTotalPulses, timeInfo->tm_hour, fPulseDuration);
+                g_nIrrigationDuration = ceil(fPulseDuration); // Round up and cast to uint32_t
+
+                if (((nHour == (nStartIrrigationHour + nTotalPulses - 1) % 24)) && g_nIrrigationSolutionLevel <= 25) {  // Checks if the current hour is the last scheduled irrigation pulse hour of the day
+                  char cBuffer[41];
+                  snprintf(cBuffer, sizeof(cBuffer), "Reservorio de Solución de Riego al %d%.", g_nIrrigationSolutionLevel);
+                  SendNotification(cBuffer);
+                }
+
+                LOGGER(INFO, "Irrigation Started. Number: %d/%d Current Hour: %d Pulse Duration: %.1f", (i + 1), nTotalPulses, timeInfo.tm_hour, fPulseDuration);
               }
             }
 
@@ -1371,123 +1768,219 @@ void loop() {
             strIrrigationHours += " " + String(nHourLabel) + (nHour >= 12 ? "PM" : "AM");*/
           }
 
-          //LOGGER("Total Irrigation Pulses: %d | CC Per Pulse: %.1f | Pulse Duration: %.1f seconds | Pulse Hours:%s", INFO, nTotalPulses, fCCPerPulse, fPulseDuration, strIrrigationHours.c_str());
+          //LOGGER(INFO, "Total Irrigation Pulses: %d | CC Per Pulse: %.1f | Pulse Duration: %.1f seconds | Pulse Hours:%s", nTotalPulses, fCCPerPulse, fPulseDuration, strIrrigationHours.c_str());
+        } else {
+          LOGGER(ERROR, "The Irrigation Scheme or the Flow Rate per Minute of the Irrigation Pump was not defined.");
+
+          SendNotification(String("El Esquema de Riego o el Caudal por Minuto de la Bomba de Riego, no fue definido. No se pudo Regar.").c_str());
+
+          g_bWateredHour[timeInfo.tm_hour] = true;
         }
       }
     }
     // ================================================== Fans Section ================================================== //
-    if (!g_bFansRest && g_ulFansRestInterval > 0) { // If is not Rest time for Fans & check if g_ulFansRestInterval just in case of SD is not connected at Controller startup
-      static unsigned long ulFansRestIntervalTime = 0;
+    if (!g_bFansRest && g_nFansRestInterval > 0) { // If is not Rest time for Fans & check if g_nFansRestInterval just in case of SD is not connected at Controller startup
+      static uint32_t nFansRestIntervalTime = 0;
 
-      if ((ulCurrentMillis - ulFansRestIntervalTime) >= g_ulFansRestInterval) {  // First check if need go in Rest time
-        ulFansRestIntervalTime = ulCurrentMillis;
-        g_ulFansRestElapsedTime = ulCurrentMillis;
+      if ((nCurrentMillis - nFansRestIntervalTime) >= g_nFansRestInterval) {  // First check if need go in Rest time
+        nFansRestIntervalTime = nCurrentMillis;
+        g_nFansRestElapsedTime = nCurrentMillis;
         // Force Fans stop
-        digitalWrite(GetPinByName("Internal Fan"), PIN_OFF);
-        digitalWrite(GetPinByName("Ventilation"), PIN_OFF);
+        digitalWrite(GetPinByName("Internal Fan"), RELAY_PIN_OFF);
+        digitalWrite(GetPinByName("Ventilation"), RELAY_PIN_OFF);
 
         g_bFansRest = true;
 
-        LOGGER("Fans Rest mode started.", INFO);
+        LOGGER(INFO, "Fans Rest mode started.");
       } else {  // Is not
         if (g_nEnvironmentTemperature > 0 && g_nEnvironmentHumidity > 0) {  // Check if Environment Sensor is working
           // ================================================== Internal Fan control by Temperature ================================================== //
-          if (g_nEnvironmentTemperature >= g_pSettings[g_nCurrentProfile].StartInternalFanTemperature) {  // If Environment Temperature if higher or equal to needed to Start Internal Fan Temperature, start it
+          if (g_nEnvironmentTemperature >= g_pProfileSettings[g_nCurrentProfile].StartInternalFanTemperature) {  // If Environment Temperature if higher or equal to needed to Start Internal Fan Temperature, start it
             if (digitalRead(GetPinByName("Internal Fan"))) {
-              digitalWrite(GetPinByName("Internal Fan"), PIN_ON);
+              digitalWrite(GetPinByName("Internal Fan"), RELAY_PIN_ON);
 
-              LOGGER("Internal Fan Started.", INFO);
+              LOGGER(INFO, "Internal Fan Started.");
             }
-          } else if (g_nEnvironmentTemperature <= (g_pSettings[g_nCurrentProfile].StartInternalFanTemperature - g_nTemperatureStopHysteresis)) {  // If Environment Temperature is less or equal to: Start Internal Fan Temperature - Temperature Hysteresis, stop it
-            if (!digitalRead(GetPinByName("Internal Fan"))) {
-              digitalWrite(GetPinByName("Internal Fan"), PIN_OFF);
+          } else if (g_nEnvironmentTemperature <= (g_pProfileSettings[g_nCurrentProfile].StartInternalFanTemperature - g_nTemperatureStopHysteresis)) {  // If Environment Temperature is less or equal to: Start Internal Fan Temperature - Temperature Hysteresis, stop it
+            digitalWrite(GetPinByName("Internal Fan"), RELAY_PIN_OFF);
 
-              LOGGER("Internal Fan Stopped.", INFO);
-            }
+            LOGGER(INFO, "Internal Fan Stopped.");
           }
           // ================================================== Ventilation Fans control by Temperature & Humidity ================================================== //
           static bool bStartVentilationByTemperature = false;
           static bool bStartVentilationByHumidity = false;
 
           // Control by Temperature
-          if (g_nEnvironmentTemperature >= g_pSettings[g_nCurrentProfile].StartVentilationTemperature)
+          if (g_nEnvironmentTemperature >= g_pProfileSettings[g_nCurrentProfile].StartVentilationTemperature)
             bStartVentilationByTemperature = true;
-          else if (g_nEnvironmentTemperature <= (g_pSettings[g_nCurrentProfile].StartVentilationTemperature - g_nTemperatureStopHysteresis))
+          else if (g_nEnvironmentTemperature <= (g_pProfileSettings[g_nCurrentProfile].StartVentilationTemperature - g_nTemperatureStopHysteresis))
             bStartVentilationByTemperature = false;
 
           // Control by Humidity
-          if (g_nEnvironmentHumidity >= g_pSettings[g_nCurrentProfile].StartVentilationHumidity)
+          if (g_nEnvironmentHumidity >= g_pProfileSettings[g_nCurrentProfile].StartVentilationHumidity)
             bStartVentilationByHumidity = true;
-          else if (g_nEnvironmentHumidity <= (g_pSettings[g_nCurrentProfile].StartVentilationHumidity - g_nHumidityStopHysteresis))
+          else if (g_nEnvironmentHumidity <= (g_pProfileSettings[g_nCurrentProfile].StartVentilationHumidity - g_nHumidityStopHysteresis))
             bStartVentilationByHumidity = false;
           ///////////////////////////////////////////////////
           if (bStartVentilationByTemperature || bStartVentilationByHumidity) {
             if (digitalRead(GetPinByName("Ventilation"))) {
-                digitalWrite(GetPinByName("Ventilation"), PIN_ON);
+              digitalWrite(GetPinByName("Ventilation"), RELAY_PIN_ON);
 
-                LOGGER("Ventilation Started.", INFO);
-              }
-          } else {
-            if (!digitalRead(GetPinByName("Ventilation"))) {
-              digitalWrite(GetPinByName("Ventilation"), PIN_OFF);
-
-              LOGGER("Ventilation Stopped.", INFO);
+              LOGGER(INFO, "Ventilation Started.");
             }
+          } else {
+            digitalWrite(GetPinByName("Ventilation"), RELAY_PIN_OFF);
+
+            LOGGER(INFO, "Ventilation Stopped.");
           }
         }
       }
     } else {  // If Fans are in Rest time
-      if (g_ulFansRestDuration > 0 && (ulCurrentMillis - g_ulFansRestElapsedTime) >= g_ulFansRestDuration) {  // Check if g_ulFansRestDuration just in case of SD is not connected at Controller startup
+      if (g_nFansRestDuration > 0 && (nCurrentMillis - g_nFansRestElapsedTime) >= g_nFansRestDuration) {  // Check if g_nFansRestDuration just in case of SD is not connected at Controller startup
         g_bFansRest = false;
-        g_ulFansRestElapsedTime = 0;
+        g_nFansRestElapsedTime = 0;
 
-        LOGGER("Fans Rest time completed.", INFO);
+        LOGGER(INFO, "Fans Rest time completed.");
+      }
+    }
+    // ================================================== Pumps Flow Test Section ================================================== //
+    if (g_nTestPumpStartTime == 0 && (g_bTestIrrigationPump || g_bTestPHReducerPump || g_bTestVegetativeFertPump || g_bTestFloweringFertPump)) {
+      const char* cPumpToTest = GetPumpToTest();
+
+      if (cPumpToTest) {
+        if (digitalRead(GetPinByName(cPumpToTest))) {
+          digitalWrite(GetPinByName(cPumpToTest), RELAY_PIN_ON);
+
+          g_nTestPumpStartTime = nCurrentMillis;
+
+          LOGGER(INFO, "%s Flow test Started.", cPumpToTest);
+        }
+      }
+    } else if (g_nTestPumpStartTime > 0 && (nCurrentMillis - g_nTestPumpStartTime) >= 60000) {
+      const char* cPumpToTest = GetPumpToTest();
+
+      if (cPumpToTest) {  // Just in case...
+        digitalWrite(GetPinByName(cPumpToTest), RELAY_PIN_OFF);
+
+        LOGGER(INFO, "%s Flow test Finished.", cPumpToTest);
+
+        g_bTestIrrigationPump = false;
+        g_bTestPHReducerPump = false;
+        g_bTestVegetativeFertPump = false;
+        g_bTestFloweringFertPump = false;
+        g_nTestPumpStartTime = 0;
+      }
+    }
+    // ================================================== Fertilizers Application Section ================================================== //
+    if (g_bApplyFertilizers) {
+      if (PowerSupplyControl(true)) {
+        if (g_nFertilizersTimer == 0) {
+          g_nFertilizersTimer = nCurrentMillis;
+        } else {
+          static bool bWaitTime = false;
+
+          if (!bWaitTime && (nCurrentMillis - g_nFertilizersTimer) >= 1500) { // Wait 1.5 seconds to stabilize the voltage output just in case
+            bWaitTime = true;
+          } else if (bWaitTime) {
+            static uint8_t nStage = 0;
+
+            switch (nStage) {
+              case 0: // pH Reducer
+                {
+                  const char* cPump = "pH Reducer Pump";
+
+                  if (digitalRead(GetPinByName(cPump))) {
+                    digitalWrite(GetPinByName(cPump), RELAY_PIN_ON);
+
+                    g_nFertilizersTimer = nCurrentMillis;
+
+                    LOGGER(INFO, "%s Started.", cPump);
+                  } else {
+                    if ((nCurrentMillis - g_nFertilizersTimer) >= ((g_pProfileSettings[g_nCurrentProfile].PHReducerToApply * 60000) / g_nPHReducerFlowPerMinute)) {
+                      digitalWrite(GetPinByName(cPump), RELAY_PIN_OFF);
+
+                      LOGGER(INFO, "%s Stopped.", cPump);
+
+                      nStage++;
+                    }
+                  }
+                }
+                break;
+              case 1: // Vegetative Fertilizer
+                {
+                  const char* cPump = "Vegetative Fert Pump";
+
+                  if (digitalRead(GetPinByName(cPump))) {
+                    digitalWrite(GetPinByName(cPump), RELAY_PIN_ON);
+
+                    g_nFertilizersTimer = nCurrentMillis;
+
+                    LOGGER(INFO, "%s Started.", cPump);
+                  } else {
+                    if ((nCurrentMillis - g_nFertilizersTimer) >= ((g_pProfileSettings[g_nCurrentProfile].VegetativeFertilizerToApply * 60000) / g_nVegetativeFlowPerMinute)) {
+                      digitalWrite(GetPinByName(cPump), RELAY_PIN_OFF);
+
+                      LOGGER(INFO, "%s Stopped.", cPump);
+
+                      nStage++;
+                    }
+                  }
+                }
+                break;
+              case 2: // Flowering Fertilizer
+                {
+                  const char* cPump = "Flowering Fert Pump";
+
+                  if (digitalRead(GetPinByName(cPump))) {
+                    digitalWrite(GetPinByName(cPump), RELAY_PIN_ON);
+
+                    g_nFertilizersTimer = nCurrentMillis;
+
+                    LOGGER(INFO, "%s Started.", cPump);
+                  } else {
+                    if ((nCurrentMillis - g_nFertilizersTimer) >= ((g_pProfileSettings[g_nCurrentProfile].FloweringFertilizerToApply * 60000) / g_nFloweringFlowPerMinute)) {
+                      digitalWrite(GetPinByName(cPump), RELAY_PIN_OFF);
+
+                      LOGGER(INFO, "%s Stopped.", cPump);
+
+                      PowerSupplyControl(false);
+
+                      bWaitTime = false;
+                      nStage = 0;
+                      g_bApplyFertilizers = false;
+                    }
+                  }
+                }
+                break;
+            }
+          }
+        }
       }
     }
     // ================================================== Store Data for Graph Section ================================================== //
-    if ((ulCurrentMillis - ulLastStoreElapsedTime) >= GRAPH_MARKS_INTERVAL) {
-      ulLastStoreElapsedTime = ulCurrentMillis;
+    if ((nCurrentMillis - nLastStoreElapsedTime) >= g_nSamplingInterval) {
+      nLastStoreElapsedTime = nCurrentMillis;
 
       String strValues = String(timeNow) + "|" + String(g_nEnvironmentTemperature) + "|" + String(g_nEnvironmentHumidity) + "|" + String(g_fEnvironmentVPD, 2);
 
-      for (uint8_t i = 0; i < nSoilHumidityPinsCount; i++) {
+      for (uint8_t i = 0; i < nSoilMoisturePinsCount; i++) {
         g_nSoilsHumidity[i] = GetSoilHumidity(i);
 
         strValues += "|" + String(g_nSoilsHumidity[i]);
       }
 
-      WriteToSD("/metrics.log", strValues, true);
+      strValues += "|" + String((digitalRead(GetPinByName("Lights")) || (g_pProfileSettings[g_nCurrentProfile].LightBrightness < 401)) ? 0 // If digitalRead == true Or g_pProfileSettings[g_nCurrentProfile].LightBrightness is less than 401 equals to Relay OFF so: 0
+                                                                                                                                       : g_pProfileSettings[g_nCurrentProfile].LightBrightness); // If not is OFF, return the Brightness Level
 
-      for (uint8_t i = MAX_GRAPH_MARKS - 1; i > 0; i--) { // Shifts all values up one position
-        if (g_strArrayGraphData[i]) {
-          free(g_strArrayGraphData[i]);
-          g_strArrayGraphData[i] = nullptr; // Just in case...
-        }
+      WriteToSD("/metrics.log", strValues.c_str(), true);
 
-        g_strArrayGraphData[i] = g_strArrayGraphData[i - 1] ? strdup(g_strArrayGraphData[i - 1]) : nullptr; // If the previous position has a value, pass it to the current iteration position. Otherwise, set it to null.
+      for (int8_t i = MAX_GRAPH_MARKS - 1; i > 0; i--) { // Shifts all values up one position
+        strncpy(g_strArrayGraphData[i], g_strArrayGraphData[i - 1], MAX_GRAPH_MARKS_LENGTH - 1);
+        g_strArrayGraphData[i][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
       }
 
-      if (g_strArrayGraphData[0]) {
-        free(g_strArrayGraphData[0]);
-        g_strArrayGraphData[0] = nullptr; // Just in case...
-      }
-
-      g_strArrayGraphData[0] = strdup(strValues.c_str()); // Store the current value at the beginning of the array
-    }
-    // ================================================== Watering Pump Flow Test Section ================================================== //
-    if (g_bTestPump) {
-      g_ulTestWateringPumpStartTime = ulCurrentMillis;
-      g_bTestPump = false;
-    }
-
-    if (g_ulTestWateringPumpStartTime > 0 && (ulCurrentMillis - g_ulTestWateringPumpStartTime) >= 60000) { // Check if has been pass 60 seconds. If is, turn off the pump
-      if (!digitalRead(GetPinByName("Water Pump"))) {
-        digitalWrite(GetPinByName("Water Pump"), PIN_OFF);
-
-        LOGGER("Watering Pump Flow test Finished.", INFO);
-      }
-
-      g_ulTestWateringPumpStartTime = 0;
+      strncpy(g_strArrayGraphData[0], strValues.c_str(), MAX_GRAPH_MARKS_LENGTH - 1); // Store the current value at the beginning of the array
+      g_strArrayGraphData[0][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
     }
   }
 }

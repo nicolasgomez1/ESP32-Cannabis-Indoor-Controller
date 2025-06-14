@@ -6,29 +6,37 @@
 		<link rel='shortcut icon' href=data:,>
 		<title>ESP32 Indoor</title>
 		<style>
-			div{height:2;margin:5;background-color:#22262A}
-			button{background-color:#36A9AE;border:1px solid#2A8387;border-radius:4px;color:#FFF;cursor:pointer;font-size:17;padding:6 6 6}
+			table{text-align:left;background:rgba(32,32,32,.1);border-collapse:collapse}
+			div{height:1;margin:5;background-color:#22262A}
+			button{background-color:#36A9AE;border:1px solid#2A8387;border-radius:5px;color:#FFF;font-size:17;padding:2}
 			button:active{box-shadow:rgb(0 0 0/.15)0 2px 4px inset,rgb(0 0 0/.4)0 1px 1px}
-			input{cursor:pointer;background-color:#FFF;border:1px solid#2A8387;border-radius:4px;color:#22262A;padding:4;outline:none;width:50}
-			input:focus{border-color:red}
-			.slider{appearance:none;width:200;height:14;background:#2A8387;border-radius:10px}
-			.slider::-webkit-slider-thumb{appearance:none;width:40;height:20;border-radius:8px;background-color:#36A9AE}
-			.fan{animation:fan paused linear infinite 1s}
+			input{background-color:#FFF;border:1px solid#2A8387;border-radius:5px;padding:2;outline:none;width:50}
+			.slider{appearance:none;width:200;height:12;background:#2A8387;border-radius:5px}
+			.slider::-webkit-slider-thumb{appearance:none;width:40;height:18;border-radius:5px;background-color:#36A9AE}
+			.fan{animation:fan paused linear infinite.5s}
 			@keyframes fan{100%{transform:rotate(360deg)}}
-			.checkbox{visibility:hidden;display:none}
-			.toggle{border:1px solid transparent;position:relative;display:block;width:51;height:20;cursor:pointer}
-			.toggle:before{content:'';position:relative;top:3;width:50;height:14;display:block;background:#2A8387;border-radius:8px}
-			.toggle:focus{border:1px solid red;border-radius:8px}
-			.toggle span{position:absolute;top:0;left:0;width:20;height:20;display:block;background:#36A9AE;border-radius:10px;transition:all .2s ease}
-			.toggle span:before{display:block;width:56;height:56}
-			#wateringmode:checked+.toggle span{transform:translateX(30px);transition:all .2s cubic-bezier(.8,.4,.3,1.25)}
-			#chart,#chart2{width:100%;max-height:300px;background:rgba(32,32,32,.1);box-shadow:0 0 0 1px#22262A}
-			#legend{border-collapse:collapse;width:100%;background:rgba(32,32,32,.1)}
-			#legend th,#legend td{padding:5;border:1px solid#22262A;text-align:left}
-			.hide-line{text-decoration:line-through}
-			.show-line{cursor:pointer}
+			#chart,#chart2{width:100%;max-height:300px}
+			#legend{width:100%}
+			#legend tbody td{border-top:1px solid#22262A}
+			#legend tbody tr:hover{background:rgba(32,32,32,.5)}
+			.hideline{text-decoration:line-through}
+			.showline{cursor:pointer}
+
+			.time-circle{position:relative;width:150;height:150}
+			.base-circle{fill:none;stroke:#FFF;stroke-width:5}
+			.selected-range{fill:none;stroke:#2A8387;stroke-width:9}
+			.handle{fill:#36A9AE;stroke:#36A9AE;stroke-width:1}
+			.time-labels{user-select:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:14;width:80%}
+
+
+	.wheel-container{background-color:#FFF;border:1px solid#2A8387;border-radius:5px;width:50;padding:2;height:15}
+	.wheel{height:100%;overflow-y:scroll;scroll-snap-type:y mandatory}
+	.wheel::-webkit-scrollbar{display:none}
+	.hour{height:15;line-height:15px;color:#000;scroll-snap-align:center}
 		</style>
 		<script>
+			let hstart,hstop;
+
 			function CalcVPD(vpd){
 				let c='#FE7F96',s='Zona de Peligro';
 
@@ -47,9 +55,9 @@
 			}
 
 			function CalcDur(){
-				let start=parseInt(document.getElementById('lightstart').value),stop=parseInt(document.getElementById('lightstop').value);
-
-				document.getElementById('lightdur').innerText='Light Time: '+(stop-start+24)%24;
+				let start=Math.round(hstart.scrollTop/15)+1,stop=Math.round(hstop.scrollTop/15)+1;
+				//console.log("Start: " + start + "\r\nStop: " + stop);
+				document.getElementById('lightdur').innerText='Horas de Luz: '+(stop-start+24)%24;
 			}
 
 			function CalcIrrigation(cc){
@@ -78,15 +86,53 @@
 	</head>
 	<body bgcolor=#303841 style='font-family:Arial;color:#D8DEE9'>
 		<center>
+			<main class=wheel-container><main class=wheel id=hourstart></main></main>
+			<main class=wheel-container><main class=wheel id=hourstop></main></main>
+			<aside rowspan=2 id=lightdur></aside>
+			<script>
+				hstart=document.getElementById('hourstart');
+				hstop=document.getElementById('hourstop');
+
+				for(e of [hstart,hstop])for(i=1;i<=24;i++)e.appendChild(Object.assign(document.createElement('main'),{className:'hour',textContent:i+(i>=12?' PM':' AM')}));
+
+				hstart.scrollTop = 1 *15;
+				hstop.scrollTop = 2 *16;
+
+				[hstart,hstop].forEach(e=>e.addEventListener('wheel',ev=>{
+					ev.preventDefault();
+					e.scrollBy({top:Math.sign(ev.deltaY)*15});
+					CalcDur();
+				}));
+
+				window.onload = () => {CalcDur();};
+			</script>
 			<canvas id=chart></canvas>
-			<br><button id=toggle-text>Mostrar textos</button><br><br>
-			<table id=legend><thead><tr><th>Indicador</th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><td colspan=4>No hay información.</td><tbody></tbody></table><br>
-			<table style='width:100%;border-collapse:collapse'><tr><td>Start Lights<input id=lightstart value=10 oninput=CalcDur()></td><td>Stop Lights<input id=lightstop value=4 oninput=CalcDur()></td><td id=lightdur></td><td>Drip Per Minute<input id=dripperminute value=200>cc</td></tr><tr><td colspan=4><canvas id=chart2></canvas></td></tr></table>
+			<table id=legend><thead><tr><th>Historial de las últimas 48 muestras <button id=toggle-text>Mostrar textos</button></th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead><td colspan=4>No hay información.</td><tbody></tbody></table><br>
+			<table style='width:100%'><tr><td>Start Lights<input id=lightstart value=10 oninput=CalcDur()></td><td>Stop Lights<input id=lightstop value=4 oninput=CalcDur()></td><td>Drip Per Minute<input id=dripperminute value=200>cc</td></tr><tr><td colspan=4><canvas id=chart2></canvas></td></tr></table><br>
+			<table>
+				<tr>
+					<td colspan=3>
+						<center>
+							<main class=time-circle>
+								<svg viewBox="0 0 200 200">
+									<circle class=base-circle cx=100 cy=100 r=90 />
+									<path class=selected-range />
+									<circle id=startHandle class=handle r=8 />
+									<circle id=endHandle class=handle r=8 />
+								</svg>
+								<main class=time-labels>
+									Encendido: <span id=startTime>00</span><br>
+									Apagado: <span id=endTime>00</span><br>
+									<span id=lightdur2>Horas de Luz: 0</span>
+								</main>
+							</main>
+						</center>
+					</td>
+				</tr>
+			</table>
 		</center>
 	</body>
 	<script>
-		CalcDur();
-
 		let showTextOnLines=false;
 
 		Object.assign(Chart.defaults.datasets.line,{borderWidth:1.1,pointRadius:0/*,tension:.2*/});
@@ -100,7 +146,7 @@
 				let{ctx,data}=chart;
 
 				data.datasets.forEach((dataset,i)=>{
-					if(dataset.hidden)
+					if(dataset.hidden||i==5)
 						return;
 
 					chart.getDatasetMeta(i).data.forEach((point,index)=>{
@@ -125,35 +171,36 @@
 					{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'%',yAxisID:'1'},
 					{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa',yAxisID:'2'},
 					{label:'Humedad de Maceta 0',borderColor:'#B57165',backgroundColor:'#B57165',symbol:'%',yAxisID:'3'},
-					{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'%',yAxisID:'4'}
+					{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'%',yAxisID:'4'},
+					{label:'Luz',borderColor:'#D6B83B',backgroundColor:'#D6B83B',yAxisID:'5',stepped:1}
 				]
 			},
 			options:{
 				plugins:{
-					legend:{display:false},//legend:{labels:{color:'#D8DEE9',font:{size:12}}},
+					legend:{display:false},
 					tooltip:{
 						callbacks:{
-							//title:item=>`Hora: ${new Date(item[0].raw.x*1000).toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})}`,
-							title:item=>{let date=new Date(item[0].raw.x*1000);return`Fecha: ${date.toLocaleDateString('es-AR')} ${date.toLocaleTimeString('en-US',{timeZone:'UTC',hour12:false})}`;},
-							label:(item)=>`${item.dataset.label}: ${item.raw.string+item.dataset.symbol+(item.dataset.symbol=='kPa'?' ('+CalcVPD(item.raw.string)[1]+')':'')}`
+							title:item=>{let date=new Date(item[0].raw.x*1000);return`Fecha: ${date.toLocaleDateString('es-AR')} ${date.toLocaleTimeString('es-AR',{timeZone:'America/Argentina/Buenos_Aires'})}`;},
+							label:(item)=>`${item.dataset.label}: ${item.dataset.symbol?item.raw.string+item.dataset.symbol+(item.dataset.symbol=='kPa'?' ('+CalcVPD(item.raw.string)[1]+')':''):item.raw.string=='0'?'Apagada':'Encendida (Aproximadamente: '+(Math.round(item.raw.string/4095*100)/100*1008).toFixed(0)+'ppfd)'}`
 						}
 					}
 				},
 				animation:{duration:0},
 				interaction:{mode:'index',intersect:false},
 				scales:{
-					//y:{ticks:{color:'#D8DEE9'}},
-					//x:{type:'linear',min:0,max:86399,ticks:{stepSize:1800,display:false}}
 					x:{type:'linear',ticks:{stepSize:1000,display:false}}
 				}
 			},plugins:[textOnLine]
 		});
-		let val="1733851913|28|57|1.63|76|54,1733855514|29|55|1.80|69|43,1733859114|29|52|1.92|64|46,1733862715|29|50|2.00|56|48,1733866315|30|49|2.17|55|43,1733869916|30|52|2.04|54|42,1733873517|30|54|1.95|53|43,1733877117|30|62|1.61|52|45,1733880717|30|53|2.00|52|42,1733884318|30|53|2.00|50|41,1733887918|26|61|1.31|51|41,1733891519|26|61|1.31|50|41,1733895120|26|61|1.31|49|40,1733898720|25|60|1.27|48|40,1733902321|25|60|1.27|48|42,1733905921|25|60|1.27|47|40,1733909522|29|62|1.52|44|39,1733913122|29|57|1.72|45|39,1733916723|29|57|1.72|44|36,1733920324|29|57|1.72|44|36,1733923924|28|64|1.36|43|34,1733927525|28|62|1.44|43|34,1733931125|29|62|1.52|43|31,1733934726|29|61|1.56|41|35".split(','),val2;
+
+		let val="1749217226|15|96|0.07|53|34|0,1749220826|15|97|0.05|53|35|4095,1749224426|16|99|0.02|52|35|4095,1749228027|16|99|0.02|53|35|4095,1749231627|17|99|0.02|54|35|4095,1749235227|17|99|0.02|54|36|4095,1749238827|18|99|0.02|54|37|4095,1749242428|18|99|0.02|54|37|4095,1749246028|18|99|0.02|55|38|4095,1749249628|18|99|0.02|56|37|4095,1749253228|17|99|0.02|56|37|4095,1749256829|17|99|0.02|56|39|4095,1749260429|17|99|0.02|55|40|4095,1749264029|17|98|0.04|56|37|4095,1749267629|16|97|0.05|56|38|4095,1749271230|12|99|0.01|58|37|4095,1749274830|12|99|0.01|57|38|4095,1749278430|11|99|0.01|57|36|4095,1749282030|11|99|0.01|56|37|4095,1749285631|11|99|0.01|56|35|4095,1749289231|11|99|0.01|54|37|4095,1749292831|15|99|0.02|53|35|4095,1749296431|15|99|0.02|53|35|4095,1749300032|15|99|0.02|53|34|4095,1749303632|15|99|0.02|54|35|4095,1749307232|16|99|0.02|53|35|4095,1749310832|16|99|0.02|53|36|4095,1749314432|17|99|0.02|54|36|0,1749318033|17|99|0.02|54|37|0,1749321633|18|99|0.02|54|36|0,1749325233|18|99|0.02|54|38|0,1749332758|18|99|0.02|55|38|0,1749336358|18|99|0.02|55|39|0,1749339959|18|99|0.02|55|39|0,1749343559|17|99|0.02|55|37|0,1749347159|17|99|0.02|55|38|0,1749350759|17|99|0.02|56|37|0,1749354360|17|99|0.02|56|38|0,1749357960|13|99|0.01|58|37|0,1749361560|12|99|0.01|56|38|0,1749365161|12|99|0.01|57|36|0,1749368761|12|99|0.01|56|36|0,1749372361|12|99|0.01|56|35|0,1749375961|12|99|0.01|55|35|0,1749379562|16|99|0.02|54|37|0,1749383162|16|99|0.02|53|36|0,1749386762|16|99|0.02|54|35|0,1749390362|16|99|0.02|54|36|0".split(','),val2;
 
 		for(i=0;i<val.length;i++){
 			val2=val[i].split('|');
-			for(j=1;j<val2.length;j++)
-				chart.data.datasets[j-1].data[i]={x:val2[0]-(3*3600),y:parseFloat(val2[j]),string:val2[j]};
+			for(j=1;j<val2.length;j++){
+				let v=parseFloat(val2[j]);
+				chart.data.datasets[j-1].data[i]={x:val2[0],y:j==6?(v>0?1:0):v,string:val2[j]};
+			}
 		}
 
 		chart.update();
@@ -162,7 +209,7 @@
 
 		val2={};
 
-		val.querySelectorAll('td.show-line').forEach(td=>{val2[td.getAttribute('data-dataset-index')]=td.classList.contains('hide-line');});
+		val.querySelectorAll('td.showline').forEach(td=>{val2[td.getAttribute('data-dataset-index')]=td.classList.contains('hideline');});
 
 		val.innerHTML='';
 
@@ -174,7 +221,9 @@
 				let symbol=dataset.symbol;
 				let min=Math.min(...value),max=Math.max(...value),avg=value.reduce((sum,val)=>sum+val,0)/value.length;
 
-				if(i==2){
+				if(i==5){
+					min='-',max='-',avg='-';
+				}else if(i==2){
 					min+=symbol+' ('+CalcVPD(min)[1]+')';
 					max+=symbol+' ('+CalcVPD(max)[1]+')';
 					avg=avg.toFixed(2)+symbol+' ('+CalcVPD(avg.toFixed(2))[1]+')';
@@ -184,27 +233,27 @@
 					avg=avg.toFixed(0)+symbol;
 				}
 
-				row.innerHTML=`<td style='color:${dataset.borderColor}' class='show-line ${val2[i]?'hide-line':''}' data-dataset-index="${i}">${dataset.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
+				row.innerHTML=`<td style='color:${dataset.borderColor}' class='showline ${val2[i]?'hideline':''}' data-dataset-index="${i}">${dataset.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
 
 				val.appendChild(row);
 			}
 		});
 
-		document.querySelector('#legend').addEventListener('click',function(e){
-			if(e.target&&e.target.matches('td.show-line')){
+		document.querySelector('#legend').addEventListener('click',e=>{
+			if(e.target&&e.target.matches('td.showline')){
 				let dataset=chart.data.datasets[e.target.getAttribute('data-dataset-index')];
 				dataset.hidden=!dataset.hidden;
 
 				chart.update();
 
-				e.target.classList.toggle('hide-line',dataset.hidden);
+				e.target.classList.toggle('hideline',dataset.hidden);
 			}
 		});
 
-		document.getElementById('toggle-text').addEventListener('click',function(){
+		document.getElementById('toggle-text').addEventListener('click',e=>{
 			showTextOnLines=!showTextOnLines;
 
-			this.textContent=showTextOnLines?'Ocultar textos':'Mostrar textos';
+			e.textContent=showTextOnLines?'Ocultar textos':'Mostrar textos';
 
 			chart.update();
 		});
@@ -214,8 +263,6 @@
 				let{ctx,data}=chart;
 
 				data.datasets.forEach((dataset,i)=>{
-					let points=chart.getDatasetMeta(i).data;
-
 					chart.getDatasetMeta(i).data.forEach((point,index)=>{
 						ctx.save();
 
@@ -272,28 +319,142 @@
 		chart2.update();
 	}
 /////////////////////////
-document.getElementById('chart2').onclick=function(e){
-	let dots=chart2.getElementsAtEventForMode(e,'nearest',{intersect:true},true);
+	let touchStart=null;
 
-	if(dots.length){
-		if(confirm("¿Seguro que queres Eliminar este Riego?")){
-			chart2.data.datasets[dots[0].datasetIndex].data.splice(dots[0].index,1);
-			chart2.update();
-		}
-	}else{
-		let rect=chart2.canvas.getBoundingClientRect();
-		let day=prompt("Ingrese el Día:",Math.round(chart2.scales.x.getValueForPixel(e.clientX-rect.left)));
+		chart2.canvas.addEventListener('pointerdown',e=>{touchStart={x:e.clientX,y:e.clientY};});
+		chart2.canvas.addEventListener('pointerup',e=>{
+			if(!touchStart)
+				return;
 
-		if(day!==null&&!isNaN(day)){
-			let dur=prompt("Ingrese la Cantidad de cc a Regar:",Math.round(chart2.scales.y.getValueForPixel(e.clientY-rect.top)));
-
-			if(dur!==null&&!isNaN(dur)){
-				chart2.data.datasets[0].data.push({x:parseFloat(day),y:parseFloat(dur)});
-				chart2.data.datasets[0].data.sort((a,b)=>a.x-b.x);
-				chart2.update();
+			if(Math.abs(e.clientX-touchStart.x)>5||Math.abs(e.clientY-touchStart.y)>5){
+				touchStart=null;
+				return;
 			}
+
+			touchStart=null;
+
+			let dots=chart2.getElementsAtEventForMode(e,'nearest',{intersect:true},true);
+
+			if(dots.length){
+				if(confirm('¿Seguro que queres eliminar este Riego?')){
+					chart2.data.datasets[dots[0].datasetIndex].data.splice(dots[0].index,1);
+					chart2.update();
+				}
+			}else{
+				let rect=chart2.canvas.getBoundingClientRect();
+				let day=prompt('Día:',Math.round(chart2.scales.x.getValueForPixel(e.clientX-rect.left)));
+
+				if(day!==null&&!isNaN(day)&&day>=0){
+					let cc=prompt('Cantidad de cc a Regar:',Math.round(chart2.scales.y.getValueForPixel(e.clientY-rect.top)));
+
+					if(cc!==null&&!isNaN(cc)&&cc>=0){
+						chart2.data.datasets[0].data.push({x:parseFloat(day),y:parseFloat(cc)});
+						chart2.data.datasets[0].data.sort((a,b)=>a.x-b.x);
+						chart2.update();
+					}
+				}
+			}
+		});
+		/////////////////////////////////////////////
+		let svg=document.querySelector('svg');
+		let startHandle=document.getElementById('startHandle');
+		let endHandle=document.getElementById('endHandle');
+		let rangePath=document.querySelector('.selected-range');
+		let startTimeLabel=document.getElementById('startTime');
+		let endTimeLabel=document.getElementById('endTime');
+		let TimeDurLabel=document.getElementById('lightdur2');
+		let dragging=null,startAngle=1,endAngle=12;
+
+		function angleToCoords(deg,r=90){let rad=(deg-90)*Math.PI/180;return{x:100+r*Math.cos(rad),y:100+r*Math.sin(rad)};}
+		function hourToAngle(h){return(h%24)*15;}
+
+		function CalcDurOG(){
+			let start=angleToCoords(hourToAngle(startAngle));
+			let end=angleToCoords(hourToAngle(endAngle));
+
+			startHandle.setAttribute('cx',start.x);
+			startHandle.setAttribute('cy',start.y);
+			endHandle.setAttribute('cx',end.x);
+			endHandle.setAttribute('cy',end.y);
+
+			drawArc();
+
+			let StartHour=Math.round(hourToAngle(startAngle)/15)%24;
+			if(StartHour<0)
+				StartHour+=24;
+
+			let StopHour=Math.round(hourToAngle(endAngle)/15)%24;
+			if(StopHour<0)
+				StopHour+=24;
+
+			startTimeLabel.textContent=StartHour+' '+(StartHour>=12?'PM':'AM');
+			endTimeLabel.textContent=StopHour+' '+(StopHour>=12?'PM':'AM');
+			TimeDurLabel.innerText='Horas de Luz: '+(StopHour-StartHour+24)%24;
 		}
-	}
-};
+
+		function drawArc(){
+			let angleDiff=(hourToAngle(endAngle)-hourToAngle(startAngle)+360)%360,largeArc=angleDiff>180?1:0;
+			let start=angleToCoords(hourToAngle(startAngle)),end=angleToCoords(hourToAngle(endAngle));
+			rangePath.setAttribute('d',`M ${start.x} ${start.y} A 90 90 0 ${largeArc} 1 ${end.x} ${end.y}`);
+		}
+
+		function getAngleFromEvent(e){
+			let x,y;
+
+			if(e.touches&&e.touches.length>0){
+				x=e.touches[0].clientX;
+				y=e.touches[0].clientY;
+			}else{
+				x=e.clientX;
+				y=e.clientY;
+			}
+
+			let rect=svg.getBoundingClientRect();
+			let cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;
+			let dx=x-cx,dy=y-cy;
+			let a=Math.atan2(dy,dx)*180/Math.PI+90;
+
+			return(a+360)%360;
+		}
+
+		function onDrag(e){
+			if(!dragging)
+				return;
+
+			e.preventDefault();
+
+			let a=Math.round(getAngleFromEvent(e)/15)*15,h=(a/15)%24;
+
+			if(dragging==='start')
+				startAngle=h;
+			else if(dragging==='end')
+				endAngle=h;
+
+			CalcDurOG();
+		}
+
+		function onDragEnd(){dragging=null;}
+
+		svg.addEventListener("mousedown",e=>{
+			if(e.target===startHandle)
+				dragging='start';
+			else if(e.target===endHandle)
+				dragging='end';
+		});
+
+		window.addEventListener("mousemove",onDrag);
+		window.addEventListener("mouseup",onDragEnd);
+
+		svg.addEventListener("touchstart",e=>{
+			if(e.target===startHandle)
+				dragging='start';
+			else if(e.target===endHandle)
+				dragging='end';
+		},{passive:false});
+
+		window.addEventListener("touchmove",onDrag,{passive:false});
+		window.addEventListener("touchend",onDragEnd);
+
+		CalcDurOG();
 	</script>
 </html>
