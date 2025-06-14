@@ -104,6 +104,12 @@
 
 				if(args[0]=='all'){
 					let r=GetLightStartStop();
+
+					if(((r[1]-r[0]+24)%%24)<5){
+						alert("No se puede definir un fotoperíodo inferior a 5 Horas.");
+						return;
+					}
+
 					currentUrl.searchParams.set('lightstart',r[0]);
 					currentUrl.searchParams.set('lightstop',r[1]);
 
