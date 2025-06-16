@@ -19,8 +19,9 @@
 #include <SimpleDHT.h>
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
-// TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado.
+// TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado. Además podria ya almacenar cuando se hizo el último riego
 // TODO: Bajar el tiempo de intervalo para tomar muestras y almacenarlo en el graph a un minuto, y verificar que la horas del esp32 concuerdan con las horas del grafico. Además verificar que efectivamente si defino una hora de encendido de 0 a 24, se comporte como espero
+
 // TODO: Tanto en el esp32 como en la pagina, tengo que cambiar el algoritmo que calcula los pulsos de riego. Para el perfil de Floracion dividir los riegos entre 2 (La idea es espaciar mas los pulsos y asi tener mas dryback)
 struct RelayPin {
   const char* Name; // Channel name
@@ -33,7 +34,7 @@ struct SoilMoisturePin {
 };
 
 struct WateringData {
-  uint8_t Day;  // // WARNING: Maybe is too low, only 8 months
+  uint8_t Day;  // WARNING: Maybe is too low, only 8 months
   uint16_t TargetCC;
 
   bool operator==(const WateringData& other) const {  // Little overload but needed for compare
@@ -87,7 +88,7 @@ struct ProfileSettings {
 #define TIMEZONE "America/Argentina/Buenos_Aires"
 
 #define CALLMEBOT_APY_KEY TODO:...
-#define CALLME_BOT_PHONE_TO_SEND "TODO:..."
+#define CALLMEBOT_PHONE_TO_SEND "TODO:..."
 
 #define S8050_FREQUENCY 300   // https://www.mouser.com/datasheet/2/149/SS8050-117753.pdf
 #define S8050_RESOLUTION 12
@@ -202,9 +203,10 @@ bool g_bApplyFertilizers = false;
 char g_strArrayGraphData[MAX_GRAPH_MARKS][MAX_GRAPH_MARKS_LENGTH] = {};
 
 // Global Handles, Interface & Instances
-AsyncWebServer pWebServer(WEBSERVER_PORT);  // Asynchronous web server instance listening on WEBSERVER_PORT
-SimpleDHT11 pDHT11(DHT_DATA_PIN);           // Interface to DHT11 Temperature & Humidity sensor
-TaskHandle_t pWiFiReconnect;                // Task handle for Wifi reconnect logic running on core 0
+AsyncWebServer g_pWebServer(WEBSERVER_PORT);  // Asynchronous web server instance listening on WEBSERVER_PORT
+SimpleDHT11 g_pDHT11(DHT_DATA_PIN);           // Interface to DHT11 Temperature & Humidity sensor
+TaskHandle_t g_pWiFiReconnect;                // Task handle for Wifi reconnect logic running on core 0
+SemaphoreHandle_t g_SDMutex;                  // Mutex to synchronize concurrent access to the SD card across tasks
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Sets the system time and timezone based on a given Unix timestamp.
@@ -363,208 +365,259 @@ bool PowerSupplyControl(bool bState) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Tries to initialize the SD card file system if not already initialized.
-// If bShowSuccessLog is true, logs a success message when initialization succeeds.
-// Sets g_bIsSDInit to true if the SD card is ready.
-void ConnectSD(bool bShowSuccessLog) {
-  if (!SD.open("/")) {
-    SD.end();
+// Safely execute the provided function with exclusive access to the SD card.
+// Tries to acquire the SD card mutex within 100 ms; if not available, logs a warning and returns.
+// If the SD card is not initialized, attempts to initialize it, verifying card presence and filesystem integrity.
+// On failure, logs an error, releases the mutex, and returns.
+// If initialization succeeds and bShowSuccessLog is true, logs a success message.
+// After initialization (or if already initialized), executes the passed function callback.
+// Finally, releases the SD card mutex.
+void SafeSDAccess(std::function<void()> fn, bool bShowSuccessLog = false) {
+  if (!xSemaphoreTake(g_SDMutex, pdMS_TO_TICKS(100  /*ms*/))) {
+    LOGGER(WARN, "Could not acquire mutex.");
 
+    return;
+  }
+
+  if (!g_bIsSDInit) {
     g_bIsSDInit = SD.begin(SD_CS_PIN);
-    if (!g_bIsSDInit)
-      LOGGER(ERROR, "Failed to initialize SD Card File System.");
+
+    if (!g_bIsSDInit) {
+      LOGGER(ERROR, "Failed to Initialize SD.");
+
+      xSemaphoreGive(g_SDMutex);
+
+      return;
+    }
+
+    if (SD.cardType() == CARD_NONE) {
+      LOGGER(ERROR, "No SD Card detected.");
+
+      g_bIsSDInit = false;
+
+      SD.end();
+
+      xSemaphoreGive(g_SDMutex);
+
+      return;
+    }
+
+    File pRoot = SD.open("/");
+    if (!pRoot || !pRoot.isDirectory()) {
+      LOGGER(ERROR, "Filesystem not accessible or corrupted.");
+
+      g_bIsSDInit = false;
+
+      SD.end();
+
+      xSemaphoreGive(g_SDMutex);
+
+      return;
+    }
 
     if (bShowSuccessLog)
-      LOGGER(INFO, "SD Card File System initialized.");
-  } else {  // Just in case
-    g_bIsSDInit = true;
+      LOGGER(INFO, "SD Initialized.");
   }
+
+  fn();
+
+  xSemaphoreGive(g_SDMutex);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Writes a text line to a specified file on the SD card.
-// If bAppend is true, the text is appended; otherwise, the file is overwritten.
-// If the filename is "logging_", automatically generates a daily log filename with the current date.
-// Accepts the input text as a null-terminated C-string (const char*).
-// Ensures the SD card is initialized before attempting to write.
+// Writes a text line to a file on the SD card safely using SafeSDAccess for thread-safe access.
+// If cFileName is "logging_", the actual filename is generated dynamically based on the current date as "logging_YYYY_MM_DD.log".
+// Otherwise, uses the provided cFileName directly (truncated if longer than 63 chars).
+// Opens the file in append mode if bAppend is true, or overwrites it otherwise.
+// Writes the given cText line to the file followed by a newline.
+// Does nothing if SD card is not initialized or file open fails.
 void WriteToSD(const char* cFileName, const char* cText, bool bAppend) {
-  ConnectSD(false);
+  SafeSDAccess([&]() {
+    if (!g_bIsSDInit)
+      return;
 
-  if (!g_bIsSDInit)
-    return;
+    char cFinalFileName[64];
 
-  char cFinalFileName[64];
-
-  if (strcmp(cFileName, "logging_") == 0) {
-    struct tm currentTime = GetLocalTimeNow();
-    snprintf(cFinalFileName, sizeof(cFinalFileName), "logging_%04d_%02d_%02d.log", currentTime.tm_year + 1900, currentTime.tm_mon + 1, currentTime.tm_mday);
-  } else {
-    strncpy(cFinalFileName, cFileName, sizeof(cFinalFileName));
-    cFinalFileName[sizeof(cFinalFileName) - 1] = '\0';
-  }
-
-  File pFile = SD.open(cFinalFileName, bAppend ? FILE_APPEND : FILE_WRITE);
-  if (pFile) {
-    pFile.println(cText);
-
-    pFile.close();
-  }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Saves the current configuration of the specified profile to the SD card.
-// The profile index (0 = veg, 1 = flo, 2 = dry) determines the file path used.
-// Writes general configuration values (lighting and climate settings) to a main file (e.g., /veg).
-// Writes irrigation stage data (day and target cc values) to a separate file with "_watering" suffix (e.g., /veg_watering).
-void SaveProfile(uint8_t nProfile) {
-  ConnectSD(false);
-
-  if (!g_bIsSDInit)
-    return;
-
-  String strProfileName = ((nProfile == 0) ? "/veg" : ((nProfile == 1) ? "/flo" : "/dry"));
-  File pProfileFile = SD.open(strProfileName, FILE_WRITE);  // Save Current Profile Values
-  if (pProfileFile) {
-    pProfileFile.println(g_pProfileSettings[nProfile].StartLightTime);
-    pProfileFile.println(g_pProfileSettings[nProfile].StopLightTime);
-    pProfileFile.println(g_pProfileSettings[nProfile].LightBrightness);
-    pProfileFile.println(g_pProfileSettings[nProfile].StartInternalFanTemperature);
-    pProfileFile.println(g_pProfileSettings[nProfile].StartVentilationTemperature);
-    pProfileFile.println(g_pProfileSettings[nProfile].StartVentilationHumidity);
-    pProfileFile.println(g_pProfileSettings[nProfile].CurrentWateringDay);
-    pProfileFile.println(g_pProfileSettings[nProfile].PHReducerToApply);
-    pProfileFile.println(g_pProfileSettings[nProfile].VegetativeFertilizerToApply);
-    pProfileFile.println(g_pProfileSettings[nProfile].FloweringFertilizerToApply);
-
-    pProfileFile.close();
-
-    File pWateringProfileFile = SD.open(strProfileName + "_watering", FILE_WRITE);
-    if (pWateringProfileFile) {
-      for (const auto& Watering : g_pProfileSettings[nProfile].WateringStages)
-        pWateringProfileFile.printf("%u|%u\n", Watering.Day, Watering.TargetCC);
-
-      pWateringProfileFile.close();
+    if (strcmp(cFileName, "logging_") == 0) {
+      struct tm currentTime = GetLocalTimeNow();
+      snprintf(cFinalFileName, sizeof(cFinalFileName), "logging_%04d_%02d_%02d.log", currentTime.tm_year + 1900, currentTime.tm_mon + 1, currentTime.tm_mday);
+    } else {
+      strncpy(cFinalFileName, cFileName, sizeof(cFinalFileName));
+      cFinalFileName[sizeof(cFinalFileName) - 1] = '\0';
     }
 
-    LOGGER(INFO, "Profile: %s updated successfully.", strProfileName);
-  }
+    File pFile = SD.open(cFinalFileName, bAppend ? FILE_APPEND : FILE_WRITE);
+    if (pFile) {
+      pFile.println(cText);
+
+      pFile.close();
+    }
+  });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Saves Internals settings to the SD card.
-// This function ensures that the internal system behavior persists across reboots.
-void SaveSettings() {
-  ConnectSD(false);
+// Saves the profile settings of the given profile index (nProfile) to the SD card safely using SafeSDAccess.
+// Profile data is saved to a file named "/veg", "/flo", or "/dry" depending on the profile index (0, 1, or 2).
+// Writes all relevant profile parameters line by line.
+// Additionally, saves the watering stages to a separate file with the suffix "_watering".
+// Does nothing if the SD card is not initialized or file open fails.
+// Logs a success message upon successful save.
+void SaveProfile(uint8_t nProfile) {
+  SafeSDAccess([&]() {
+    if (!g_bIsSDInit)
+      return;
 
-  if (!g_bIsSDInit)
-    return;
-
-  File pSettingsFile = SD.open("/settings", FILE_WRITE);
-  if (pSettingsFile) {
-    pSettingsFile.println(g_cSSID);
-    pSettingsFile.println(g_cSSIDPWD);
-
-    pSettingsFile.println(g_nSamplingInterval);
-
-    pSettingsFile.println(g_nCurrentProfile);
-
-    pSettingsFile.println(g_nFansRestInterval);
-    pSettingsFile.println(g_nFansRestDuration);
-
-    pSettingsFile.println(g_nTemperatureStopHysteresis);
-    pSettingsFile.println(g_nHumidityStopHysteresis);
-
-    pSettingsFile.println(g_nIrrigationFlowPerMinute);
-    pSettingsFile.println(g_nPHReducerFlowPerMinute);
-    pSettingsFile.println(g_nVegetativeFlowPerMinute);
-    pSettingsFile.println(g_nFloweringFlowPerMinute);
-
-    pSettingsFile.println(g_nMixingPumpDuration);
-
-    pSettingsFile.println(g_nIrrigationReservoirLowerLevel);
-
-    pSettingsFile.close();
-
-    LOGGER(INFO, "Settings file updated successfully.");
-  }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Loads profile configuration data from SD card files (/veg, /flo, /dry) into the g_pProfileSettings array.
-// If the SD card is not initialized, attempts to initialize it by calling ConnectSD(false).
-// For the current active profile (g_nCurrentProfile), updates effective light start/stop times
-// by normalizing hour values (24 to 0 for start, 0 to 24 for stop).
-void LoadProfiles() {
-  ConnectSD(false);
-
-  if (!g_bIsSDInit)
-    return;
-
-  char cBuffer[64];
-
-  for (uint8_t i = 0; i < MAX_PROFILES; i++) {
-    String strProfileName = ((i == 0) ? "/veg" : ((i == 1) ? "/flo" : "/dry"));
-
-    File pProfileFile = SD.open(strProfileName, FILE_READ);
+    String strProfileName = ((nProfile == 0) ? "/veg" : ((nProfile == 1) ? "/flo" : "/dry"));
+    File pProfileFile = SD.open(strProfileName, FILE_WRITE);  // Save Current Profile Values
     if (pProfileFile) {
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // START LIGHT TIME
-      g_pProfileSettings[i].StartLightTime = atoi(cBuffer);
-
-      if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
-        g_nEffectiveStartLights = (g_pProfileSettings[g_nCurrentProfile].StartLightTime == 24) ? 0 : g_pProfileSettings[g_nCurrentProfile].StartLightTime;  // Stores the effective light start hour, converting 24 to 0 (midnight)
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // STOP LIGHT TIME
-      g_pProfileSettings[i].StopLightTime = atoi(cBuffer);
-
-      if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
-        g_nEffectiveStopLights = (g_pProfileSettings[g_nCurrentProfile].StopLightTime == 24) ? 0 : g_pProfileSettings[g_nCurrentProfile].StopLightTime; // Stores the effective light stop hour, converting 24 to 0 (midnight)
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // LIGHT BRIGHTNESS LEVEL
-      g_pProfileSettings[i].LightBrightness = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // INTERNAL FAN TEMPERATURE START
-      g_pProfileSettings[i].StartInternalFanTemperature = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VENTILATION TEMPERATURE START
-      g_pProfileSettings[i].StartVentilationTemperature = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VENTILATION HUMIDITY START
-      g_pProfileSettings[i].StartVentilationHumidity = atoi(cBuffer);
-      /////////////////////////////////////////////////// 
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CURRENT WATERING DAY
-      g_pProfileSettings[i].CurrentWateringDay = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CC OF PH REDUCER TO APPLY TO IRRIGATE SOLUTION
-      g_pProfileSettings[i].PHReducerToApply = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CC OF VEGETATIVE FERTILIZER TO APPLY TO IRRIGATE SOLUTION
-      g_pProfileSettings[i].VegetativeFertilizerToApply = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CC OF FLOWERING FERTILIZER TO APPLY TO IRRIGATE SOLUTION
-      g_pProfileSettings[i].FloweringFertilizerToApply = atoi(cBuffer);
+      pProfileFile.println(g_pProfileSettings[nProfile].StartLightTime);
+      pProfileFile.println(g_pProfileSettings[nProfile].StopLightTime);
+      pProfileFile.println(g_pProfileSettings[nProfile].LightBrightness);
+      pProfileFile.println(g_pProfileSettings[nProfile].StartInternalFanTemperature);
+      pProfileFile.println(g_pProfileSettings[nProfile].StartVentilationTemperature);
+      pProfileFile.println(g_pProfileSettings[nProfile].StartVentilationHumidity);
+      pProfileFile.println(g_pProfileSettings[nProfile].CurrentWateringDay);
+      pProfileFile.println(g_pProfileSettings[nProfile].PHReducerToApply);
+      pProfileFile.println(g_pProfileSettings[nProfile].VegetativeFertilizerToApply);
+      pProfileFile.println(g_pProfileSettings[nProfile].FloweringFertilizerToApply);
 
       pProfileFile.close();
-    }
+      ///////////////////////////////////////////////////
+      File pWateringProfileFile = SD.open(strProfileName + "_watering", FILE_WRITE);
+      if (pWateringProfileFile) {
+        for (const auto& Watering : g_pProfileSettings[nProfile].WateringStages)
+          pWateringProfileFile.printf("%u|%u\n", Watering.Day, Watering.TargetCC);
 
-    File pWateringProfileFile = SD.open(strProfileName + "_watering", FILE_READ);
-    if (pWateringProfileFile) {
-      g_pProfileSettings[i].WateringStages.clear();
-
-      while (pWateringProfileFile.available()) {
-        cBuffer[pWateringProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // CC OF SOLUTION TO IRRIGATE
-        TrimTrailingWhitespace(cBuffer);
-
-        char* cDivider = strchr(cBuffer, '|');
-        if (cDivider) {
-          *cDivider = '\0';
-
-          g_pProfileSettings[i].WateringStages.push_back({atoi(cBuffer), atoi(cDivider + 1)});
-        }
+        pWateringProfileFile.close();
       }
 
-      pWateringProfileFile.close();
+      LOGGER(INFO, "Profile: %s updated successfully.", strProfileName);
     }
-  }
+  });
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Saves current global configuration settings to the "/settings" file on the SD card using SafeSDAccess.
+// Writes one setting per line, including Wi-Fi credentials, sampling interval, current profile,
+// fan intervals, hysteresis values, flow rates, mixing pump duration, and irrigation reservoir level.
+// If the SD card is not initialized or the file fails to open, the function does nothing.
+// Logs a success message if the settings file is successfully written.
+void SaveSettings() {
+  SafeSDAccess([&]() {
+    if (!g_bIsSDInit)
+      return;
+
+    File pSettingsFile = SD.open("/settings", FILE_WRITE);
+    if (pSettingsFile) {
+      pSettingsFile.println(g_cSSID);
+      pSettingsFile.println(g_cSSIDPWD);
+
+      pSettingsFile.println(g_nSamplingInterval);
+
+      pSettingsFile.println(g_nCurrentProfile);
+
+      pSettingsFile.println(g_nFansRestInterval);
+      pSettingsFile.println(g_nFansRestDuration);
+
+      pSettingsFile.println(g_nTemperatureStopHysteresis);
+      pSettingsFile.println(g_nHumidityStopHysteresis);
+
+      pSettingsFile.println(g_nIrrigationFlowPerMinute);
+      pSettingsFile.println(g_nPHReducerFlowPerMinute);
+      pSettingsFile.println(g_nVegetativeFlowPerMinute);
+      pSettingsFile.println(g_nFloweringFlowPerMinute);
+
+      pSettingsFile.println(g_nMixingPumpDuration);
+
+      pSettingsFile.println(g_nIrrigationReservoirLowerLevel);
+
+      pSettingsFile.close();
+
+      LOGGER(INFO, "Settings file updated successfully.");
+    }
+  });
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Loads all defined profile settings from the SD card using SafeSDAccess.
+// For each profile (veg, flo, dry), reads configuration values from the corresponding file:
+// light schedule, brightness, fan/ventilation thresholds, irrigation day,
+// and nutrient quantities to apply. Also loads per-day irrigation volumes from
+// a secondary "_watering" file associated with each profile.
+// Trims trailing whitespace and ensures that effective light start/stop times are updated
+// for the current active profile.
+// If files are missing or malformed, partial data may be loaded; does nothing if SD is not initialized.
+void LoadProfiles() {
+  SafeSDAccess([&]() {
+    if (!g_bIsSDInit)
+      return;
+
+    char cBuffer[64];
+
+    for (uint8_t i = 0; i < MAX_PROFILES; i++) {
+      String strProfileName = ((i == 0) ? "/veg" : ((i == 1) ? "/flo" : "/dry"));
+
+      File pProfileFile = SD.open(strProfileName, FILE_READ);
+      if (pProfileFile) {
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // START LIGHT TIME
+        g_pProfileSettings[i].StartLightTime = atoi(cBuffer);
+
+        if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
+          g_nEffectiveStartLights = (g_pProfileSettings[g_nCurrentProfile].StartLightTime == 24) ? 0 : g_pProfileSettings[g_nCurrentProfile].StartLightTime;  // Stores the effective light start hour, converting 24 to 0 (midnight)
+        ///////////////////////////////////////////////////
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // STOP LIGHT TIME
+        g_pProfileSettings[i].StopLightTime = atoi(cBuffer);
+
+        if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
+          g_nEffectiveStopLights = (g_pProfileSettings[g_nCurrentProfile].StopLightTime == 24) ? 0 : g_pProfileSettings[g_nCurrentProfile].StopLightTime; // Stores the effective light stop hour, converting 24 to 0 (midnight)
+        ///////////////////////////////////////////////////
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // LIGHT BRIGHTNESS LEVEL
+        g_pProfileSettings[i].LightBrightness = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // INTERNAL FAN TEMPERATURE START
+        g_pProfileSettings[i].StartInternalFanTemperature = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VENTILATION TEMPERATURE START
+        g_pProfileSettings[i].StartVentilationTemperature = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VENTILATION HUMIDITY START
+        g_pProfileSettings[i].StartVentilationHumidity = atoi(cBuffer);
+        /////////////////////////////////////////////////// 
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CURRENT WATERING DAY
+        g_pProfileSettings[i].CurrentWateringDay = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CC OF PH REDUCER TO APPLY TO IRRIGATE SOLUTION
+        g_pProfileSettings[i].PHReducerToApply = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CC OF VEGETATIVE FERTILIZER TO APPLY TO IRRIGATE SOLUTION
+        g_pProfileSettings[i].VegetativeFertilizerToApply = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CC OF FLOWERING FERTILIZER TO APPLY TO IRRIGATE SOLUTION
+        g_pProfileSettings[i].FloweringFertilizerToApply = atoi(cBuffer);
+
+        pProfileFile.close();
+      }
+      ///////////////////////////////////////////////////
+      File pWateringProfileFile = SD.open(strProfileName + "_watering", FILE_READ);
+      if (pWateringProfileFile) {
+        g_pProfileSettings[i].WateringStages.clear();
+
+        while (pWateringProfileFile.available()) {
+          cBuffer[pWateringProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // CC OF SOLUTION TO IRRIGATE
+          TrimTrailingWhitespace(cBuffer);
+
+          char* cDivider = strchr(cBuffer, '|');
+          if (cDivider) {
+            *cDivider = '\0';
+
+            g_pProfileSettings[i].WateringStages.push_back({atoi(cBuffer), atoi(cDivider + 1)});
+          }
+        }
+
+        pWateringProfileFile.close();
+      }
+    }
+  });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -592,7 +645,7 @@ void SendNotification(const char* strMessage) {
   cEncodedMessage[j] = '\0';
 
   char cFinalUrl[512];
-  snprintf(cFinalUrl, sizeof(cFinalUrl), "https://api.callmebot.com/whatsapp.php?phone=%s&text=%s&apikey=%s", CALLME_BOT_PHONE_TO_SEND, cEncodedMessage, CALLMEBOT_APY_KEY);
+  snprintf(cFinalUrl, sizeof(cFinalUrl), "https://api.callmebot.com/whatsapp.php?phone=%s&text=%s&apikey=%s", CALLMEBOT_PHONE_TO_SEND, cEncodedMessage, CALLMEBOT_APY_KEY);
 
   http.begin(cFinalUrl);
   http.setTimeout(3000);
@@ -895,137 +948,139 @@ void setup() {
   pinMode(HCSR04_ECHO_PIN, INPUT);
   LOGGER(INFO, "Pins for Irrigation Solution Reservoir Level Done!");
 
-  ConnectSD(true);  // Try to init SD Card
+  g_SDMutex = xSemaphoreCreateMutex();
 
-  LOGGER(INFO, "Loading Settings & Time...");
+  SafeSDAccess([&]() {  // Try to init SD Card
+    LOGGER(INFO, "Loading Settings & Time...");
 
-  if (g_bIsSDInit) {
-    File pSettingsFile = SD.open("/settings", FILE_READ); // Read Settings File
-    if (pSettingsFile) {
-      char cBuffer[64];
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SSID
-      TrimTrailingWhitespace(cBuffer);
+    if (g_bIsSDInit) {
+      File pSettingsFile = SD.open("/settings", FILE_READ); // Read Settings File // NOTE: It is assumed that there will always be a settings file in the root
+      if (pSettingsFile) {
+        char cBuffer[64];
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SSID
+        TrimTrailingWhitespace(cBuffer);
 
-      strncpy(g_cSSID, cBuffer, sizeof(g_cSSID));
-      g_cSSID[sizeof(g_cSSID) - 1] = '\0';
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SSID PASSWORD
-      TrimTrailingWhitespace(cBuffer);
+        strncpy(g_cSSID, cBuffer, sizeof(g_cSSID));
+        g_cSSID[sizeof(g_cSSID) - 1] = '\0';
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SSID PASSWORD
+        TrimTrailingWhitespace(cBuffer);
 
-      strncpy(g_cSSIDPWD, cBuffer, sizeof(g_cSSIDPWD));
-      g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SAMPLING TAKE INTERVALS FOR GRAPH
-      g_nSamplingInterval = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SELECTED PROFILE
-      g_nCurrentProfile = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // FANS REST INTERVAL
-      g_nFansRestInterval = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // FANS REST DURATION
-      g_nFansRestDuration = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // TEMPERATURE HYSTERESIS TO STOP FANS
-      g_nTemperatureStopHysteresis = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // HUMIDITY HYSTERESIS TO STOP FANS
-      g_nHumidityStopHysteresis = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // IRRIGATION PUMP FLOW PER MINUTE
-      g_nIrrigationFlowPerMinute = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // PH REDUCER PUMP FLOW PER MINUTE
-      g_nPHReducerFlowPerMinute = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VEGETATIVE FERTILIZER PUMP FLOW PER MINUTE
-      g_nVegetativeFlowPerMinute = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // FLOWERING FERTILIZER PUMP FLOW PER MINUTE
-      g_nFloweringFlowPerMinute = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // MIXING PUMP DURATION
-      g_nMixingPumpDuration = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // LOWER POINT OF IRRIGATION SOLUTION RESERVOIR
-      g_nIrrigationReservoirLowerLevel = atoi(cBuffer);
-      ///////////////////////////////////////////////////
-      pSettingsFile.close();
-      ///////////////////////////////////////////////////
-      LoadProfiles();  // LOAD PROFILES VALUES
+        strncpy(g_cSSIDPWD, cBuffer, sizeof(g_cSSIDPWD));
+        g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SAMPLING TAKE INTERVALS FOR GRAPH
+        g_nSamplingInterval = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SELECTED PROFILE
+        g_nCurrentProfile = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // FANS REST INTERVAL
+        g_nFansRestInterval = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // FANS REST DURATION
+        g_nFansRestDuration = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // TEMPERATURE HYSTERESIS TO STOP FANS
+        g_nTemperatureStopHysteresis = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // HUMIDITY HYSTERESIS TO STOP FANS
+        g_nHumidityStopHysteresis = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // IRRIGATION PUMP FLOW PER MINUTE
+        g_nIrrigationFlowPerMinute = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // PH REDUCER PUMP FLOW PER MINUTE
+        g_nPHReducerFlowPerMinute = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VEGETATIVE FERTILIZER PUMP FLOW PER MINUTE
+        g_nVegetativeFlowPerMinute = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // FLOWERING FERTILIZER PUMP FLOW PER MINUTE
+        g_nFloweringFlowPerMinute = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // MIXING PUMP DURATION
+        g_nMixingPumpDuration = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // LOWER POINT OF IRRIGATION SOLUTION RESERVOIR
+        g_nIrrigationReservoirLowerLevel = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        pSettingsFile.close();
+        ///////////////////////////////////////////////////
+        LoadProfiles();  // LOAD PROFILES VALUES
 
-      ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - ((g_pProfileSettings[g_nCurrentProfile].LightBrightness < 401) ? 0 : g_pProfileSettings[g_nCurrentProfile].LightBrightness));  // WARNING: Hardcode offset
-    } else {
-      LOGGER(ERROR, "Failed to open Settings file.");
-    }
-    ///////////////////////////////////////////////////
-    File pTimeFile = SD.open("/time", FILE_READ); // Read Time file
-    if (pTimeFile) {
-      LOGGER(INFO, "Getting Datetime from SD Card...");
+        ledcWrite(S8050_PWM_PIN, S8050_MAX_VALUE - ((g_pProfileSettings[g_nCurrentProfile].LightBrightness < 401) ? 0 : g_pProfileSettings[g_nCurrentProfile].LightBrightness));  // WARNING: Hardcode offset
+      } else {
+        LOGGER(ERROR, "Failed to open Settings file.");
+      }
+      ///////////////////////////////////////////////////
+      File pTimeFile = SD.open("/time", FILE_READ); // Read Time file // NOTE: It is assumed that there will always be a time file in the root
+      if (pTimeFile) {
+        LOGGER(INFO, "Getting Datetime from SD Card...");
 
-      SetCurrentDatetime(pTimeFile.readStringUntil('\n').toInt());
+        SetCurrentDatetime(pTimeFile.readStringUntil('\n').toInt());
 
-      struct tm currentTime = GetLocalTimeNow();
-      LOGGER(INFO, "Current Datetime: %04d-%02d-%02d %02d:%02d:%02d.", currentTime.tm_year + 1900, currentTime.tm_mon + 1, currentTime.tm_mday, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
+        struct tm currentTime = GetLocalTimeNow();
+        LOGGER(INFO, "Current Datetime: %04d-%02d-%02d %02d:%02d:%02d.", currentTime.tm_year + 1900, currentTime.tm_mon + 1, currentTime.tm_mday, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
 
-      pTimeFile.close();
-    } else {
-      LOGGER(ERROR, "Failed to open Time file.");
-    }
-    ///////////////////////////////////////////////////
-    File pMetricsFile = SD.open("/metrics.log", FILE_READ);  // Read Time file
-    if (pMetricsFile) {
-      size_t sizeFile = pMetricsFile.size();
-      const size_t sizeBlock = 512;
-      char cChunkBuffer[sizeBlock];
-      int64_t nPos = sizeFile - sizeBlock;
-      uint8_t nLinesRead = 0;
+        pTimeFile.close();
+      } else {
+        LOGGER(ERROR, "Failed to open Time file.");
+      }
+      ///////////////////////////////////////////////////
+      File pMetricsFile = SD.open("/metrics.log", FILE_READ);  // Read Time file  // NOTE: It is assumed that there will always be a metrics.log file in the root
+      if (pMetricsFile) {
+        size_t sizeFile = pMetricsFile.size();
+        const size_t sizeBlock = 512;
+        char cChunkBuffer[sizeBlock];
+        int64_t nPos = sizeFile - sizeBlock;
+        uint8_t nLinesRead = 0;
 
-      while (nPos >= 0 && nLinesRead < MAX_GRAPH_MARKS) {
-        pMetricsFile.seek(nPos);
+        while (nPos >= 0 && nLinesRead < MAX_GRAPH_MARKS) {
+          pMetricsFile.seek(nPos);
 
-        size_t sizeBytesRead = pMetricsFile.read((uint8_t*)cChunkBuffer, (nPos < sizeBlock) ? nPos + 1 : sizeBlock);
-        if (sizeBytesRead == 0)
-          break;
+          size_t sizeBytesRead = pMetricsFile.read((uint8_t*)cChunkBuffer, (nPos < sizeBlock) ? nPos + 1 : sizeBlock);
+          if (sizeBytesRead == 0)
+            break;
 
-        for (int i = (int)sizeBytesRead - 1; i >= 0; i--) {
-          if (cChunkBuffer[i] == '\n' || (nPos == 0 && i == 0)) {
-            pMetricsFile.seek(nPos + i + 1);
+          for (int i = (int)sizeBytesRead - 1; i >= 0; i--) {
+            if (cChunkBuffer[i] == '\n' || (nPos == 0 && i == 0)) {
+              pMetricsFile.seek(nPos + i + 1);
 
-            char cBuffer[64];
-            size_t nBytesRead = pMetricsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1);
-            cBuffer[nBytesRead] = '\0';
+              char cBuffer[64];
+              size_t nBytesRead = pMetricsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1);
+              cBuffer[nBytesRead] = '\0';
 
-            if (nBytesRead > 0) {
-              while (nBytesRead > 0 && (cBuffer[nBytesRead - 1] == '\r' || cBuffer[nBytesRead - 1] == ' '))
-                cBuffer[--nBytesRead] = '\0';
+              if (nBytesRead > 0) {
+                while (nBytesRead > 0 && (cBuffer[nBytesRead - 1] == '\r' || cBuffer[nBytesRead - 1] == ' '))
+                  cBuffer[--nBytesRead] = '\0';
 
-              strncpy(g_strArrayGraphData[nLinesRead], cBuffer, MAX_GRAPH_MARKS_LENGTH - 1);
-              g_strArrayGraphData[nLinesRead][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
+                strncpy(g_strArrayGraphData[nLinesRead], cBuffer, MAX_GRAPH_MARKS_LENGTH - 1);
+                g_strArrayGraphData[nLinesRead][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
 
-              nLinesRead++;
+                nLinesRead++;
+              }
+
+              if (nLinesRead >= MAX_GRAPH_MARKS)
+                break;
             }
-
-            if (nLinesRead >= MAX_GRAPH_MARKS)
-              break;
           }
+
+          if (nLinesRead >= MAX_GRAPH_MARKS || nPos == 0)
+            break;
+
+          nPos -= sizeBlock;
+          if (nPos < 0)
+            nPos = 0;
         }
 
-        if (nLinesRead >= MAX_GRAPH_MARKS || nPos == 0)
-          break;
-
-        nPos -= sizeBlock;
-        if (nPos < 0)
-          nPos = 0;
+        pMetricsFile.close();
       }
-
-      pMetricsFile.close();
+    } else {
+      LOGGER(ERROR, "SD initialization failed. Settings & Time will not be loaded, but the system will not restart to avoid unexpected relay behavior.");
     }
-  } else {
-    LOGGER(ERROR, "SD initialization failed. Settings & Time will not be loaded, but the system will not restart to avoid unexpected relay behavior.");
-  }
+  }, true);
 
   LOGGER(INFO, "Initializing Wifi...");
 
@@ -1067,18 +1122,18 @@ void setup() {
 
   LOGGER(INFO, "Creating Wifi reconnect task thread...");
 
-  xTaskCreatePinnedToCore(Thread_WifiReconnect, "Wifi Reconnect Task", 4096, NULL, 1, &pWiFiReconnect, 0);
-  vTaskSuspend(pWiFiReconnect); // Suspend the task as it's not needed right now
+  xTaskCreatePinnedToCore(Thread_WifiReconnect, "Wifi Reconnect Task", 4096, NULL, 1, &g_pWiFiReconnect, 0);
+  vTaskSuspend(g_pWiFiReconnect); // Suspend the task as it's not needed right now
 
   LOGGER(INFO, "Setting up Web Server Paths & Commands...");
 
   for (uint8_t i = 0; i < sizeof(g_strWebServerFiles) / sizeof(g_strWebServerFiles[0]); i++) {
     String path = "/" + String(g_strWebServerFiles[i]);
 
-    pWebServer.serveStatic(path.c_str(), SD, path.c_str()).setCacheControl("max-age=86400");
+    g_pWebServer.serveStatic(path.c_str(), SD, path.c_str()).setCacheControl("max-age=86400");
   }
 
-  pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+  g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
     /*IPAddress pClientIP = request->client()->getRemoteAddress();
     LOGGER(INFO, "HTTP Request IP From: %d.%d.%d.%d.", pClientIP[0], pClientIP[1], pClientIP[2], pClientIP[3]);*/
 
@@ -1474,8 +1529,8 @@ void setup() {
 
             WiFi.disconnect(false); // First disconnect from current Network (Arg false to just disconnect the Station, not the AP)
 
-            if (eTaskGetState(pWiFiReconnect) == eRunning)  // Then check if task pWiFiReconnect is running. If it is, Suspend it to eventually Resume it with the new SSID and SSID Password
-              vTaskSuspend(pWiFiReconnect);
+            if (eTaskGetState(g_pWiFiReconnect) == eRunning)  // Then check if task g_pWiFiReconnect is running. If it is, Suspend it to eventually Resume it with the new SSID and SSID Password
+              vTaskSuspend(g_pWiFiReconnect);
           }
         }
       } else if (request->arg("action") == "restart") {
@@ -1561,20 +1616,20 @@ void setup() {
         request->send(response);
       }
     } else {  // Return Panel content
-      ConnectSD(false);
+      SafeSDAccess([&]() {
+        AsyncWebServerResponse* pResponse;
 
-      AsyncWebServerResponse* pResponse;
+        if (g_bIsSDInit)
+          pResponse = request->beginResponse(SD, "/index.html", "text/html", false, HTMLProcessor);
+        else
+          pResponse = request->beginResponse(500, "text/plain", "No hay una Tarjeta SD conectada.");
 
-      if (g_bIsSDInit)
-        pResponse = request->beginResponse(SD, "/index.html", "text/html", false, HTMLProcessor);
-      else
-        pResponse = request->beginResponse(500, "text/plain", "No hay una Tarjeta SD conectada.");
-
-      request->send(pResponse);
+        request->send(pResponse);
+      });
     }
   });
 
-  pWebServer.on("/ota", HTTP_POST, [](AsyncWebServerRequest* request) {
+  g_pWebServer.on("/ota", HTTP_POST, [](AsyncWebServerRequest* request) {
     bool bUpdate = !Update.hasError();
 
     String strMessage = bUpdate ? "Actualización cargada correctamente. Reiniciando..." : "Error al intentar Actualizar.";
@@ -1608,7 +1663,7 @@ void setup() {
     }
   });
 
-  pWebServer.begin();
+  g_pWebServer.begin();
 
   LOGGER(INFO, "Web Server Started at Port: %d.", WEBSERVER_PORT);
 }
@@ -1624,8 +1679,8 @@ void loop() {
     struct tm timeInfo;
     localtime_r(&timeNow, &timeInfo);
     // ================================================== Wifi Section ================================================== //
-    if (eTaskGetState(pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED) // If is not connected to Wifi and is not currently running a reconnect trask, start it
-      vTaskResume(pWiFiReconnect);
+    if (eTaskGetState(g_pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED) // If is not connected to Wifi and is not currently running a reconnect trask, start it
+      vTaskResume(g_pWiFiReconnect);
     // ================================================== Time Section ================================================== //
     {
       char cBuffer[12];
@@ -1639,7 +1694,7 @@ void loop() {
       byte bTemperature = 0, bHumidity = 0;
 
       do {  // Try read Temp & Humidity values from Environment
-        if ((nError = pDHT11.read(&bTemperature, &bHumidity, NULL)) != SimpleDHTErrSuccess) { // Get Environment Temperature and Humidity
+        if ((nError = g_pDHT11.read(&bTemperature, &bHumidity, NULL)) != SimpleDHTErrSuccess) { // Get Environment Temperature and Humidity
           nReadTrysCount++;
 
           LOGGER(ERROR, "Read DHT11 failed, Error=%d, Duration=%d.", SimpleDHTErrCode(nError), SimpleDHTErrDuration(nError));
