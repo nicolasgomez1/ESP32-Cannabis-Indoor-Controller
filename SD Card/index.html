@@ -11,37 +11,37 @@
 			let hstart,hstop;
 
 			function ProfileSelector(){
-				let val=parseInt(document.getElementById('profilesel').value);
+				let v=parseInt(document.getElementById('profilesel').value);
 
-				document.getElementById('profileind').innerText=val==0?'Vegetativo':val==1?'Floración':'Secado';
+				document.getElementById('profileind').innerText=v==0?'Vegetativo':v==1?'Floración':'Secado';
 
 				SendAction('reload');
 			}
 
 			function CalcVPD(vpd){
-				let col='#FE7F96',str='Zona de Peligro';
+				let c='#FE7F96',m='Zona de Peligro';
 
 				if(vpd>=0.4&&vpd<=0.8){
-					col='#6497C9';
-					str='Propagacíon/Inicio del Vegetativo';
+					c='#6497C9';
+					m='Propagacíon/Inicio del Vegetativo';
 				}else if(vpd>0.8&&vpd<=1.2){
-					col='#7FC794';
-					str='Vegetativo/Inicio de Floración';
+					c='#7FC794';
+					m='Vegetativo/Inicio de Floración';
 				}else if(vpd>1.2&&vpd<=1.6){
-					col='#F9AE54';
-					str='Floración';
+					c='#F9AE54';
+					m='Floración';
 				}
 
-				return[col,str];
+				return[c,m];
 			}
 
 			function CalcBright(v){return`(Aproximadamente: ${(Math.round(v/%MAXBRIGHT%*100)/100*1008).toFixed(0)}ppfd)`;}
 
 			function SetBright(send){
 				let v=parseInt(document.getElementById('lightbright').value);
-				let per=Math.round(v/%MAXBRIGHT%*100);
+				let p=Math.round(v/%MAXBRIGHT%*100);
 
-				document.getElementById('lightbrightind').innerText=per>0?per+'%% '+CalcBright(v):'Apagado';
+				document.getElementById('lightbrightind').innerText=p>0?p+'%% '+CalcBright(v):'Apagado';
 
 				if(send)
 					SendAction('update','lightbright',v);
@@ -51,7 +51,7 @@
 
 			function CalcDur(){
 				let r=GetLightStartStop();
-				document.getElementById('lightdur').innerText='Horas de Luz: '+(r[1]-r[0]+24)%%24
+				document.getElementById('lightdur').innerText='Horas de Luz: '+(r[1]-r[0]+24)%%24;
 			}
 
 			function CalcTime(s){
@@ -61,12 +61,12 @@
 					if(s<60){
 						r=s+' segundos';
 					}else{
-						let val=Math.floor(s/60);
-						r=val+(val==1?' minuto':' minutos');
-						val=s%%60;
+						let v=Math.floor(s/60);
+						r=v+(v==1?' minuto':' minutos');
+						v=s%%60;
 
-						if(val>0)
-							r+=' y '+val+' segundos';
+						if(v>0)
+							r+=' y '+v+' segundos';
 					}
 				}
 
@@ -75,22 +75,19 @@
 
 			function CalcIrrigation(cc){
 				let r=GetLightStartStop();
-				let dpm=parseFloat(document.getElementById('ifpm').value);
-				let effstart=r[0]==0?24:r[0],effstop=r[1]==0?24:r[1];
+				let dpm=parseInt(document.getElementById('ifpm').value);
+				let effstart=r[0]==24?0:r[0],effstop=r[1]==24?0:r[1];
 				let irrstart=(effstart+2)%%24;
-				let avai=(effstop-2+24)%%24-irrstart;
-
-				if(avai<0)
-					avai+=24;
-
-				let ccpp=avai>0?cc/avai:0;
-
+				let div=parseInt(document.getElementById('profilesel').value)==1?2:1;
+				let avai=(((effstop-2+24)-irrstart)%%24)/div;
+				let ccpp=cc/avai;
 				let hours=[];
-				for(i=0;i<avai;i++){
-					let hour=(irrstart+i)%%24;
-					let hourLabel=(hour%%12===0?12:hour%%12)+(hour>=12?'PM':'AM');
 
-					hours.push(hourLabel);
+				for(i=0;i<avai;i++){
+					let h=(irrstart+i*div)%%24;
+					let hl=(h%%12===0?12:h%%12)+(h>=12?'PM':'AM');
+
+					hours.push(hl);
 				}
 
 				return[avai,ccpp,dpm>0?(ccpp/dpm)*60:0,hours];
@@ -131,7 +128,7 @@
 							let e=data[i],v=data[i+1];
 
 							if(e!==undefined&&v!==undefined){
-								if(e=="wateringchart"){
+								if(e=='wateringchart'){
 									chart2.data.datasets=[{borderColor:'#87B4BC',backgroundColor:'#87B4BC',borderWidth:1.1,pointRadius:3,tension:.5}];
 									chart2.update();
 
@@ -142,17 +139,18 @@
 									}
 
 									chart2.update();
-								}else if(e=="lightstartstop"){
+								}else if(e=='lightstartstop'){
 									let s=v.split(',');
 									hstart.scrollTop=s[0]*15;
 									hstop.scrollTop=s[1]*15;
+
+									CalcDur();
 								}else{
 									document.getElementById(e).value=v;
 								}
 							}
 						}
 
-						CalcDur();
 						SetBright();
 					}else if(r.substring(0,3)=='MSG'){
 						if(args[0]!='lightbright')
@@ -230,19 +228,19 @@
 							let row=document.createElement('tr');
 
 							if(yvalues.length>0){
-								let symbol=dataset.symbol;
+								let s=dataset.symbol;
 								let min=Math.min(...yvalues),max=Math.max(...yvalues),avg=yvalues.reduce((sum,val)=>sum+val,0)/yvalues.length;
 
 								if(i==5){
 									min='-',max='-',avg='-';
 								}else if(i==2){
-									min+=symbol+' ('+CalcVPD(min)[1]+')';
-									max+=symbol+' ('+CalcVPD(max)[1]+')';
-									avg=avg.toFixed(2)+symbol+' ('+CalcVPD(avg.toFixed(2))[1]+')';
+									min+=s+' ('+CalcVPD(min)[1]+')';
+									max+=s+' ('+CalcVPD(max)[1]+')';
+									avg=avg.toFixed(2)+s+' ('+CalcVPD(avg.toFixed(2))[1]+')';
 								}else{
-									min+=symbol;
-									max+=symbol;
-									avg=avg.toFixed(0)+symbol;
+									min+=s;
+									max+=s;
+									avg=avg.toFixed(0)+s;
 								}
 
 								row.innerHTML=`<td style=color:${dataset.borderColor} class='showline ${tablechild[i]?'hideline':''}' ddi=${i}>${dataset.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
@@ -267,10 +265,7 @@
 				</tr>
 				<tr><td>Temperatura y Humedad Ambiente:</td><td><span id=temp>%ENVTEMP%°C</span> <span id=humi>%ENVHUM%&#37;</span></td></tr>
 				<tr><td>Déficit de Presión de Vapor:</td><td colspan=2>%VPDSECTION%</td></tr>
-				<tr>
-					<td>Nivel de Solución de Riego:</td><td id=level>%LEVEL%&#37;</td>
-					<td><button onclick=SendAction('cisl')>Calibrar</button></td>
-				</tr>
+				<tr><td>Nivel de Solución de Riego:</td><td id=level>%LEVEL%&#37;</td><td><button onclick=SendAction('cisl')>Calibrar</button></td></tr>
 				%SOILSECTION%
 				<tr>
 					<td>Selector de Perfil</td>
@@ -314,7 +309,7 @@
 				<tr><td>Contraseña Wifi</td><td><input id=ssidpwd value='%SSIDPWD%'style=width:100%%></td></tr>
 				<tr>
 					<td>Actualización de Firmware</td>
-					<form method=POST action=/ota enctype=multipart/form-data><td><input type=file name=firmware style=width:100%></td><td><button>Actualizar</button></td></form>
+					<form method=POST action=/ota enctype=multipart/form-data><td><input type=file name=firmware style=width:100%%></td><td><button>Actualizar</button></td></form>
 				</tr>
 				<tr>
 					<td colspan=3 align=center><div></div>
@@ -343,6 +338,9 @@
 		hstart=document.getElementById('hourstart'),hstop=document.getElementById('hourstop');
 
 		for(e of [hstart,hstop])for(i=1;i<=24;i++)e.appendChild(Object.assign(document.createElement('main'),{className:'hour',textContent:i+(i>=12?' PM':' AM')}));
+
+		hstart.scrollTop=%STARTLIGHT%*15;
+		hstop.scrollTop=%STOPLIGHT%*15;
 
 		[hstart,hstop].forEach(e=>e.addEventListener('wheel',ev=>{
 			ev.preventDefault();
@@ -459,7 +457,7 @@
 								let data=CalcIrrigation(item.raw.y);
 								return[
 									`Total de Pulsos: ${data[0]}`,
-									`Cantidad de Riego por Pulso: ${data[1].toFixed(1)}cc (${(data[1]/item.raw.y*100).toFixed(1)}% de ${item.raw.y}cc)`,
+									`Cantidad de Riego por Pulso: ${data[1].toFixed(1)}cc (${(data[1]/item.raw.y*100).toFixed(1)}%% de ${item.raw.y}cc)`,
 									`Duración de cada Pulso: ${data[2].toFixed(1)} segundos`,
 									`Horas de Riego: ${data[3].join(' ')}`
 								];
@@ -495,13 +493,13 @@
 				}
 			}else{
 				let rect=chart2.canvas.getBoundingClientRect();
-				let day=prompt('Día:',Math.round(chart2.scales.x.getValueForPixel(e.clientX-rect.left)));
+				let d=prompt('Día:',Math.round(chart2.scales.x.getValueForPixel(e.clientX-rect.left)));
 
-				if(day!==null&&!isNaN(day)&&day>=0){
+				if(d!==null&&!isNaN(d)&&d>=0){
 					let cc=prompt('Cantidad de cc a Regar:',Math.round(chart2.scales.y.getValueForPixel(e.clientY-rect.top)));
 
 					if(cc!==null&&!isNaN(cc)&&cc>=0){
-						chart2.data.datasets[0].data.push({x:parseFloat(day),y:parseFloat(cc)});
+						chart2.data.datasets[0].data.push({x:parseInt(d),y:parseInt(cc)});
 						chart2.data.datasets[0].data.sort((a,b)=>a.x-b.x);
 						chart2.update();
 					}
