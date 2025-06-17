@@ -12,9 +12,7 @@
 
 			function ProfileSelector(){
 				let v=parseInt(document.getElementById('profilesel').value);
-
 				document.getElementById('profileind').innerText=v==0?'Vegetativo':v==1?'Floración':'Secado';
-
 				SendAction('reload');
 			}
 
@@ -85,7 +83,7 @@
 
 				for(i=0;i<avai;i++){
 					let h=(irrstart+i*div)%%24;
-					let hl=(h%%12===0?12:h%%12)+(h>=12?'PM':'AM');
+					let hl=h+(h>=12?'PM':'AM');
 
 					hours.push(hl);
 				}
@@ -141,6 +139,7 @@
 									chart2.update();
 								}else if(e=='lightstartstop'){
 									let s=v.split(',');
+
 									hstart.scrollTop=s[0]*15;
 									hstop.scrollTop=s[1]*15;
 
@@ -259,10 +258,7 @@
 		<center>
 			<table>
 				<th>Parametros</th>
-				<tr>
-					<td>Hora Actual:</td><td id=currenttime>%CURRENTTIME%</td>
-					<td><button onclick=SendAction('update','settime',Math.floor(Date.now()/1000))>Sincronizar</button></td>
-				</tr>
+				<tr><td>Hora Actual:</td><td id=currenttime>%CURRENTTIME%</td><td><button onclick=SendAction('update','settime',Math.floor(Date.now()/1000))>Sincronizar</button></td></tr>
 				<tr><td>Temperatura y Humedad Ambiente:</td><td><span id=temp>%ENVTEMP%°C</span> <span id=humi>%ENVHUM%&#37;</span></td></tr>
 				<tr><td>Déficit de Presión de Vapor:</td><td colspan=2>%VPDSECTION%</td></tr>
 				<tr><td>Nivel de Solución de Riego:</td><td id=level>%LEVEL%&#37;</td><td><button onclick=SendAction('cisl')>Calibrar</button></td></tr>
@@ -272,8 +268,8 @@
 					<td colspan=2><input type=range class=slider id=profilesel min=0 max=2 step=1 value='%PROFILE%'oninput=ProfileSelector()><span id=profileind></span></td>
 				</tr>
 				<th colspan=3><div></div>Luz</th>
-				<tr><td>Hora de Encendido</td><td><main class=wheel-container><main class=wheel id=hourstart></main></main></td><td rowspan=2 id=lightdur></td></tr>
-				<tr><td>Hora de Apagado</td><td><main class=wheel-container><main class=wheel id=hourstop></main></main></td></tr>
+				<tr><td>Hora de Encendido</td><td><main class=wheelcontainer><main class=wheel id=hourstart></main></main></td><td rowspan=2 id=lightdur></td></tr>
+				<tr><td>Hora de Apagado</td><td><main class=wheelcontainer><main class=wheel id=hourstop></main></main></td></tr>
 				<tr>
 					<td>Intensidad</td>
 					<td colspan=2>
