@@ -19,8 +19,10 @@
 #include <SimpleDHT.h>
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
-// TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado. Además podria ya almacenar cuando se hizo el último riego. Además de almacenar g_nLastResetDay
-// TODO: TESTEAR: Bajar el tiempo de intervalo para tomar muestras y almacenarlo en el graph a un minuto, y verificar que la horas del esp32 concuerdan con las horas del grafico. Además verificar que efectivamente si defino una hora de encendido de 0 a 24, se comporte como espero
+// TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado.
+//      Además podria ya almacenar cuando se hizo el último riego.
+//      Además de almacenar g_nLastResetDay
+// TODO: A futuro podría reescribir toda la lógica para poder funcionar con días de mas de 24 horas (trabajar con marcas de tiempo transcurrido en lugar de horas y días).
 struct RelayPin {
   const char* Name; // Channel name
   uint8_t Pin;      // Pin number
@@ -35,9 +37,7 @@ struct WateringData {
   uint8_t Day;  // WARNING: Maybe is too low, only 8 months
   uint16_t TargetCC;
 
-  bool operator==(const WateringData& other) const {  // Little overload but needed for compare
-    return Day == other.Day && TargetCC == other.TargetCC;
-  }
+  bool operator==(const WateringData& other) const { return Day == other.Day && TargetCC == other.TargetCC; } // Little overload but needed for compare
 };
 
 struct ProfileSettings {
@@ -64,10 +64,11 @@ struct ProfileSettings {
 // If Light Start & Stop Times Is 0, the light never gonna start.
 // DHT11 have a pullup (between data and vcc)
 // HW080 have a pulldown (in return line to gnd)
+// All logics assume/is for Days of 24 Hours max
 
 // Definitions
 //#define ENABLE_SERIAL_LOGGER  // Use this when debugging
-//#define ENABLE_SD_LOGGING   // Use this to save logs to SD Card
+//#define ENABLE_SD_LOGGING     // Use this to save logs to SD Card
 //#define ENABLE_AP_ALWAYS      // Use this to enable always the Access Point. Else it just enable when have no internet connection
 
 #define MAX_PROFILES 3  // 0 Vegetative (Filename: veg), 1 Flowering (Filename: flo), 2 Drying (Filename: dry)
@@ -181,7 +182,7 @@ uint8_t g_nEffectiveStartLights = 0;
 uint8_t g_nEffectiveStopLights = 0;
 
 int8_t g_nLastResetDay = -1;
-bool g_bWateredHour[24] = { false };
+int8_t g_nLastWateredHour = -1;
 uint32_t g_nIrrigationDuration = 0;
 
 uint8_t g_nEnvironmentTemperature = 0;
@@ -269,10 +270,8 @@ uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60; }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Returns the name of the first pump that is marked for testing based on the current boolean test flags.
 // Only one pump can be tested at a time; the function returns the first active one in priority order.
-// NOTE: A bitmask-based version of this function was benchmarked and showed slightly better performance.
-//       Consider switching to bitmask logic in the future for improved efficiency and simplified state handling.
-const char* GetPumpToTest() {
-  if (g_bTestIrrigationPump)
+const char* GetPumpToTest() { // NOTE: A bitmask-based version of this function was benchmarked and showed slightly better performance.
+  if (g_bTestIrrigationPump)  //       Consider switching to bitmask logic in the future for improved efficiency and simplified state handling.
     return "Irrigation Pump";
   else if (g_bTestPHReducerPump)
     return "pH Reducer Pump";
@@ -636,6 +635,7 @@ void SendNotification(const char* strMessage) {
       cEncodedMessage[j++] = c;
     } else {
       snprintf(&cEncodedMessage[j], 4, "%%%02X", (unsigned char)c);
+
       j += 3;
     }
   }
@@ -691,6 +691,7 @@ int16_t GetIrrigationReservoirLevel() {
     return static_cast<uint16_t>(fCombinedValues / nValidReads);
   } else {
     LOGGER(ERROR, "All HCSR04 readings failed.");
+
     return 0;
   }
 }
@@ -723,8 +724,8 @@ uint8_t GetSoilHumidity(uint8_t nSensorNumber) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Handles automatic WiFi reconnection using the global SSID and password credentials.
 // If ENABLE_AP_ALWAYS is not defined:
-//   - Starts a temporary Access Point (ACCESSPOINT_NAME) to allow reconfiguration during reconnection attempts.
-//   - Once connected, the Access Point is shut down and the mode is switched to station-only.
+// - Starts a temporary Access Point (ACCESSPOINT_NAME) to allow reconfiguration during reconnection attempts.
+// - Once connected, the Access Point is shut down and the mode is switched to station-only.
 // Tries to reconnect up to WIFI_MAX_RETRYS times, with a 1-second delay between attempts.
 // Logs a success message with IP address upon connection, or an error message if all attempts fail.
 // After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
@@ -1245,8 +1246,8 @@ void setup() {
 
             // Reset Watering variables
             g_nLastResetDay = -1;
+            g_nLastWateredHour = -1;
             //g_nIrrigationDuration = 0;  // NOTE: Better let complete the Irrigation process. Cuz this can create problems related to race condition...
-            memset(g_bWateredHour, 0, sizeof(g_bWateredHour));
 
             strReturn += "Se cambió al Perfil de ";
             strReturn += (nSelectedProfile == 0) ? "Vegetativo" : ((nSelectedProfile == 1) ? "Floración" : "Secado");
@@ -1744,7 +1745,7 @@ void loop() {
     {
       static bool bIsTheLastPulse = false;
 
-      if (!g_bWateredHour[timeInfo.tm_hour] && !g_bApplyFertilizers && g_nTestPumpStartTime == 0) {
+      if (((timeInfo.tm_hour - g_nLastWateredHour + 24) % 24) > 0 && !g_bApplyFertilizers && g_nTestPumpStartTime == 0) {
         static uint8_t nCurrentPulse = 0;
         static bool bApplyIrrigation = false;
         static uint8_t nCurrentPulseHour = 0;
@@ -1834,7 +1835,7 @@ void loop() {
                             bWaitTime = false;
                             nStage = 0;
                             bApplyIrrigation = false;
-                            g_bWateredHour[nCurrentPulseHour] = true;
+                            g_nLastWateredHour = nCurrentPulseHour;
                           }
                         }
                       }
@@ -1849,12 +1850,11 @@ void loop() {
 
           SendNotification(String("El Esquema de Riego o el Caudal por Minuto de la Bomba de Riego, no fue definido, se saltará este Pulso.").c_str());
 
-          g_bWateredHour[nCurrentPulseHour] = true;  // NOTE: Dilemma: This Pulse will be marked as watered. All you have to do is reconfigure the parameters and wait for the next one to begin watering
+          g_nLastWateredHour = nCurrentPulseHour; // NOTE: Dilemma: This Pulse will be marked as watered. All you have to do is reconfigure the parameters and wait for the next one to begin watering
         }
-      } else if (g_bWateredHour[timeInfo.tm_hour] && bIsTheLastPulse && timeInfo.tm_mday != g_nLastResetDay) {
+      } else if (bIsTheLastPulse && timeInfo.tm_mday != g_nLastResetDay && timeInfo.tm_hour == g_nLastWateredHour) {
         g_nLastResetDay = timeInfo.tm_mday;
-
-        memset(g_bWateredHour, 0, sizeof(g_bWateredHour));
+        g_nLastWateredHour = -1;
 
         g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay++;
 
@@ -1876,6 +1876,7 @@ void loop() {
       if ((nCurrentMillis - nFansRestIntervalTime) >= g_nFansRestInterval) {  // First check if need go in Rest time
         nFansRestIntervalTime = nCurrentMillis;
         g_nFansRestElapsedTime = nCurrentMillis;
+
         // Force Fans stop
         digitalWrite(GetPinByName("Internal Fan"), RELAY_PIN_OFF);
         digitalWrite(GetPinByName("Ventilation"), RELAY_PIN_OFF);
