@@ -19,10 +19,8 @@
 #include <SimpleDHT.h>
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
-// TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado. Además podria ya almacenar cuando se hizo el último riego
-// TODO: Bajar el tiempo de intervalo para tomar muestras y almacenarlo en el graph a un minuto, y verificar que la horas del esp32 concuerdan con las horas del grafico. Además verificar que efectivamente si defino una hora de encendido de 0 a 24, se comporte como espero
-
-// TODO: Tanto en el esp32 como en la pagina, tengo que cambiar el algoritmo que calcula los pulsos de riego. Para el perfil de Floracion dividir los riegos entre 2 (La idea es espaciar mas los pulsos y asi tener mas dryback)
+// TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado. Además podria ya almacenar cuando se hizo el último riego. Además de almacenar g_nLastResetDay
+// TODO: TESTEAR: Bajar el tiempo de intervalo para tomar muestras y almacenarlo en el graph a un minuto, y verificar que la horas del esp32 concuerdan con las horas del grafico. Además verificar que efectivamente si defino una hora de encendido de 0 a 24, se comporte como espero
 struct RelayPin {
   const char* Name; // Channel name
   uint8_t Pin;      // Pin number
@@ -78,7 +76,7 @@ struct ProfileSettings {
 #define MAX_GRAPH_MARKS_LENGTH 36 // How long text is (Example: 1749390362|100|99|0.02|100|100|4095) If change from DHT11 to DHT22 can be 1 more byte more. For each extra soil moisture sensor is 4 bytes more. Remember add a extra byte for null terminator
 
 #define WIFI_MAX_RETRYS 5 // Max Wifi reconnection attempts
-#define WIFI_CHECK_INTERVAL 1000/*1 Second*/
+#define WIFI_CHECK_INTERVAL 1000  /*1 Second*/
 
 #define WEBSERVER_PORT 80
 
@@ -1744,13 +1742,16 @@ void loop() {
     }
     // ================================================== Irrigation Section ================================================== //
     {
+      static bool bIsTheLastPulse = false;
+
       if (!g_bWateredHour[timeInfo.tm_hour] && !g_bApplyFertilizers && g_nTestPumpStartTime == 0) {
         static uint8_t nCurrentPulse = 0;
-        static bool bLastPulseDone = false;
         static bool bApplyIrrigation = false;
+        static uint8_t nCurrentPulseHour = 0;
+        uint8_t nPulseInterval = g_nCurrentProfile == 1 /*Flowering*/ ? 2 : 1 /*Vegetative*/;
         uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 2) % 24;
         uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24;
-        uint8_t nTotalPulses = (nStopIrrigationHour - nStartIrrigationHour + 24) % 24;
+        uint8_t nTotalPulses = ((nStopIrrigationHour - nStartIrrigationHour + 24) % 24) / nPulseInterval;
 
         if (g_nIrrigationFlowPerMinute > 0 && nTotalPulses > 0) {
           if (!digitalRead(GetPinByName("Lights")) && !bApplyIrrigation) {
@@ -1764,9 +1765,14 @@ void loop() {
             }
 
             for (nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) {
-              if (((nStartIrrigationHour + nCurrentPulse) % 24) == timeInfo.tm_hour) {
+              nCurrentPulseHour = (nStartIrrigationHour + nCurrentPulse * nPulseInterval) % 24;
+
+              if (nCurrentPulseHour == timeInfo.tm_hour) {
                 bApplyIrrigation = true;
                 g_nIrrigationDuration = ((static_cast<float>(nLastKnownCC) / nTotalPulses) * 60000) / g_nIrrigationFlowPerMinute;
+
+                if (nCurrentPulse == (nTotalPulses - 1))
+                  bIsTheLastPulse = true;
 
                 break;
               }
@@ -1816,7 +1822,7 @@ void loop() {
 
                           nIrrigationTimer = nCurrentMillis;
 
-                          LOGGER(INFO, "%s Started. Irrigation Data: Pulse Number: %d/%d Current Hour: %d Pulse Duration: %d seconds.", cPump, (nCurrentPulse + 1), nTotalPulses, timeInfo.tm_hour, TicksToSeconds(g_nIrrigationDuration));
+                          LOGGER(INFO, "%s Started. Irrigation Data: Pulse Number: %d/%d Current Hour: %d Pulse Duration: %d seconds.", cPump, (nCurrentPulse + 1), nTotalPulses, nCurrentPulseHour, TicksToSeconds(g_nIrrigationDuration));
                         } else {
                           if ((nCurrentMillis - nIrrigationTimer) >= g_nIrrigationDuration /*Ticks*/) {
                             digitalWrite(GetPinByName(cPump), RELAY_PIN_OFF);
@@ -1828,28 +1834,7 @@ void loop() {
                             bWaitTime = false;
                             nStage = 0;
                             bApplyIrrigation = false;
-
-                            uint8_t nHour = (nStartIrrigationHour + nCurrentPulse) % 24;
-
-                            if (nCurrentPulse == (nTotalPulses - 1)) {
-                              if (timeInfo.tm_mday != g_nLastResetDay) {
-                                g_nLastResetDay = timeInfo.tm_mday;
-
-                                memset(g_bWateredHour, 0, sizeof(g_bWateredHour));
-
-                                g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay++;
-
-                                SaveProfile(g_nCurrentProfile);
-                              }
-                            }
-
-                            if (((nHour == (nStartIrrigationHour + nTotalPulses - 1) % 24)) && g_nIrrigationSolutionLevel <= 25) {  // Checks if the current hour is the last scheduled irrigation pulse hour of the day
-                              char cBuffer[41];
-                              snprintf(cBuffer, sizeof(cBuffer), "Reservorio de Solución de Riego al %d%.", g_nIrrigationSolutionLevel);
-                              SendNotification(cBuffer);
-                            }
-
-                            g_bWateredHour[nHour] = true;
+                            g_bWateredHour[nCurrentPulseHour] = true;
                           }
                         }
                       }
@@ -1864,12 +1849,28 @@ void loop() {
 
           SendNotification(String("El Esquema de Riego o el Caudal por Minuto de la Bomba de Riego, no fue definido, se saltará este Pulso.").c_str());
 
-          g_bWateredHour[timeInfo.tm_hour] = true;  // NOTE: Dilemma: This Pulse will be marked as watered. All you have to do is reconfigure the parameters and wait for the next one to begin watering
+          g_bWateredHour[nCurrentPulseHour] = true;  // NOTE: Dilemma: This Pulse will be marked as watered. All you have to do is reconfigure the parameters and wait for the next one to begin watering
         }
+      } else if (g_bWateredHour[timeInfo.tm_hour] && bIsTheLastPulse && timeInfo.tm_mday != g_nLastResetDay) {
+        g_nLastResetDay = timeInfo.tm_mday;
+
+        memset(g_bWateredHour, 0, sizeof(g_bWateredHour));
+
+        g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay++;
+
+        SaveProfile(g_nCurrentProfile);
+        
+        if (g_nIrrigationSolutionLevel <= 25) {
+          char cBuffer[41];
+          snprintf(cBuffer, sizeof(cBuffer), "Reservorio de Solución de Riego al %d%.", g_nIrrigationSolutionLevel);
+          SendNotification(cBuffer);
+        }
+
+        bIsTheLastPulse = false;
       }
     }
     // ================================================== Fans Section ================================================== //
-    if (!g_bFansRest && g_nFansRestInterval > 0) { // If is not Rest time for Fans & check if g_nFansRestInterval just in case of SD is not connected at Controller startup
+    if (!g_bFansRest && g_nFansRestInterval > 0) {  // If is not Rest time for Fans & check if g_nFansRestInterval just in case of SD is not connected at Controller startup
       static uint32_t nFansRestIntervalTime = 0;
 
       if ((nCurrentMillis - nFansRestIntervalTime) >= g_nFansRestInterval) {  // First check if need go in Rest time
