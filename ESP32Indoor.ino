@@ -20,8 +20,6 @@
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
 // TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado.
-//      Además podria ya almacenar cuando se hizo el último riego.
-//      Además de almacenar g_nLastResetDay
 // TODO: A futuro podría reescribir toda la lógica para poder funcionar con días de mas de 24 horas (trabajar con marcas de tiempo transcurrido en lugar de horas y días).
 struct RelayPin {
   const char* Name; // Channel name
@@ -54,7 +52,10 @@ struct ProfileSettings {
   uint16_t VegetativeFertilizerToApply;
   uint16_t FloweringFertilizerToApply;
 
-  uint16_t CurrentWateringDay;
+  uint16_t IrrigationDayCounter;
+  uint8_t LastWateredDay;
+  int8_t LastWateredHour;
+
   std::vector<WateringData> WateringStages;
 };
 
@@ -181,8 +182,6 @@ uint8_t g_nCurrentProfile = 0;
 uint8_t g_nEffectiveStartLights = 0;
 uint8_t g_nEffectiveStopLights = 0;
 
-int8_t g_nLastResetDay = -1;
-int8_t g_nLastWateredHour = -1;
 uint32_t g_nIrrigationDuration = 0;
 
 uint8_t g_nEnvironmentTemperature = 0;
@@ -470,13 +469,19 @@ void SaveProfile(uint8_t nProfile) {
       pProfileFile.println(g_pProfileSettings[nProfile].StartLightTime);
       pProfileFile.println(g_pProfileSettings[nProfile].StopLightTime);
       pProfileFile.println(g_pProfileSettings[nProfile].LightBrightness);
+
       pProfileFile.println(g_pProfileSettings[nProfile].StartInternalFanTemperature);
+
       pProfileFile.println(g_pProfileSettings[nProfile].StartVentilationTemperature);
       pProfileFile.println(g_pProfileSettings[nProfile].StartVentilationHumidity);
-      pProfileFile.println(g_pProfileSettings[nProfile].CurrentWateringDay);
+
       pProfileFile.println(g_pProfileSettings[nProfile].PHReducerToApply);
       pProfileFile.println(g_pProfileSettings[nProfile].VegetativeFertilizerToApply);
       pProfileFile.println(g_pProfileSettings[nProfile].FloweringFertilizerToApply);
+
+      pProfileFile.println(g_pProfileSettings[nProfile].IrrigationDayCounter);
+      pProfileFile.println(g_pProfileSettings[nProfile].LastWateredDay);
+      pProfileFile.println(g_pProfileSettings[nProfile].LastWateredHour);
 
       pProfileFile.close();
       ///////////////////////////////////////////////////
@@ -556,41 +561,47 @@ void LoadProfiles() {
 
       File pProfileFile = SD.open(strProfileName, FILE_READ);
       if (pProfileFile) {
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // START LIGHT TIME
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // START LIGHT TIME
         g_pProfileSettings[i].StartLightTime = atoi(cBuffer);
 
         if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
           g_nEffectiveStartLights = (g_pProfileSettings[g_nCurrentProfile].StartLightTime == 24) ? 0 : g_pProfileSettings[g_nCurrentProfile].StartLightTime;  // Stores the effective light start hour, converting 24 to 0 (midnight)
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // STOP LIGHT TIME
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // STOP LIGHT TIME
         g_pProfileSettings[i].StopLightTime = atoi(cBuffer);
 
         if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
           g_nEffectiveStopLights = (g_pProfileSettings[g_nCurrentProfile].StopLightTime == 24) ? 0 : g_pProfileSettings[g_nCurrentProfile].StopLightTime; // Stores the effective light stop hour, converting 24 to 0 (midnight)
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // LIGHT BRIGHTNESS LEVEL
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // LIGHT BRIGHTNESS LEVEL
         g_pProfileSettings[i].LightBrightness = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // INTERNAL FAN TEMPERATURE START
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // INTERNAL FAN TEMPERATURE START
         g_pProfileSettings[i].StartInternalFanTemperature = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VENTILATION TEMPERATURE START
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // VENTILATION TEMPERATURE START
         g_pProfileSettings[i].StartVentilationTemperature = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VENTILATION HUMIDITY START
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // VENTILATION HUMIDITY START
         g_pProfileSettings[i].StartVentilationHumidity = atoi(cBuffer);
-        /////////////////////////////////////////////////// 
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CURRENT WATERING DAY
-        g_pProfileSettings[i].CurrentWateringDay = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CC OF PH REDUCER TO APPLY TO IRRIGATE SOLUTION
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // CC OF PH REDUCER TO APPLY TO IRRIGATE SOLUTION
         g_pProfileSettings[i].PHReducerToApply = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CC OF VEGETATIVE FERTILIZER TO APPLY TO IRRIGATE SOLUTION
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // CC OF VEGETATIVE FERTILIZER TO APPLY TO IRRIGATE SOLUTION
         g_pProfileSettings[i].VegetativeFertilizerToApply = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // CC OF FLOWERING FERTILIZER TO APPLY TO IRRIGATE SOLUTION
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // CC OF FLOWERING FERTILIZER TO APPLY TO IRRIGATE SOLUTION
         g_pProfileSettings[i].FloweringFertilizerToApply = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // IRRIGATION DAYS COUNTER
+        g_pProfileSettings[i].IrrigationDayCounter = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // LAST IRRIGATION EXECUTE DAY
+        g_pProfileSettings[i].LastWateredDay = atoi(cBuffer);
+        ///////////////////////////////////////////////////
+        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // LAST IRRIGATION EXECUTE HOUR
+        g_pProfileSettings[i].LastWateredHour = atoi(cBuffer);
 
         pProfileFile.close();
       }
@@ -845,8 +856,8 @@ String HTMLProcessor(const String &var) {
     return String(g_pProfileSettings[g_nCurrentProfile].VegetativeFertilizerToApply);
   } else if (var == "FLOCC") {
     return String(g_pProfileSettings[g_nCurrentProfile].FloweringFertilizerToApply);
-  } else if (var == "CURRENTWATERINGDAY") {
-    return String(g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay);
+  } else if (var == "IDC") {
+    return String(g_pProfileSettings[g_nCurrentProfile].IrrigationDayCounter);
   } else if (var == "WATSTATE") {
     String strReturn;
 
@@ -1163,7 +1174,7 @@ void setup() {
           strReturn += ":vegcc:" + String(g_pProfileSettings[nSelectedProfile].VegetativeFertilizerToApply);
           strReturn += ":flocc:" + String(g_pProfileSettings[nSelectedProfile].FloweringFertilizerToApply);
           ///////////////////////////////////////////////////
-          strReturn += ":currentwateringday:" + String(g_pProfileSettings[nSelectedProfile].CurrentWateringDay);
+          strReturn += ":idc:" + String(g_pProfileSettings[nSelectedProfile].IrrigationDayCounter);
 
           bool bFirst = true;
           strReturn += ":wateringchart:";
@@ -1237,21 +1248,17 @@ void setup() {
 
             LoadProfiles();
 
-            // Check if currently are Watering, and stop it
-            //if (g_nIrrigationDuration > 0 && !digitalRead(GetPinByName("Irrigation Pump"))) { // NOTE: This disabled too
-            //  digitalWrite(GetPinByName("Irrigation Pump"), RELAY_PIN_OFF);
-
-            //  LOGGER(INFO, "Irrigation Finished because profile has been changed.");
-            //}
-
             // Reset Watering variables
-            g_nLastResetDay = -1;
-            g_nLastWateredHour = -1;
-            //g_nIrrigationDuration = 0;  // NOTE: Better let complete the Irrigation process. Cuz this can create problems related to race condition...
+            g_pProfileSettings[nSelectedProfile].IrrigationDayCounter = 0;
+
+            struct tm currentTime = GetLocalTimeNow();
+
+            g_pProfileSettings[nSelectedProfile].LastWateredDay = currentTime.tm_mday;
+            g_pProfileSettings[nSelectedProfile].LastWateredHour = currentTime.tm_hour;
 
             strReturn += "Se cambió al Perfil de ";
             strReturn += (nSelectedProfile == 0) ? "Vegetativo" : ((nSelectedProfile == 1) ? "Floración" : "Secado");
-            strReturn += ".\r\n";
+            strReturn += ".\r\nAdemás, se reinició el Contador de Días de Riegos transcurridos, se iniciará a Regar a partir de la siguiente hora.\r\n";
           }
         }
         // =============== Light Start =============== //
@@ -1349,11 +1356,11 @@ void setup() {
           }
         }
         // =============== Current Watering Day =============== //
-        if (request->hasArg("currentwateringday")) {
-          nNewValue = request->arg("currentwateringday").toInt();
+        if (request->hasArg("idc")) {
+          nNewValue = request->arg("idc").toInt();
 
-          if (nNewValue != g_pProfileSettings[nSelectedProfile].CurrentWateringDay) {
-            g_pProfileSettings[nSelectedProfile].CurrentWateringDay = nNewValue;
+          if (nNewValue != g_pProfileSettings[nSelectedProfile].IrrigationDayCounter) {
+            g_pProfileSettings[nSelectedProfile].IrrigationDayCounter = nNewValue;
 
             strReturn += "Se actualizó los Días de Riego transcurridos.\r\n";
           }
@@ -1579,7 +1586,7 @@ void setup() {
         // Ventilation
         strResponse += ":" + String(digitalRead(GetPinByName("Ventilation")));  // 1 = stopped, 0 turn on
         // ================================================== Irrigation Section ================================================== //
-        strResponse += ":" + String(g_pProfileSettings[nSelectedProfile].CurrentWateringDay);
+        strResponse += ":" + String(g_pProfileSettings[nSelectedProfile].IrrigationDayCounter);
         strResponse += ":" + String(g_nIrrigationDuration);  // Seconds
         // ================================================== Graph Section ================================================== //
         if (g_strArrayGraphData[0][0] != '\0') {
@@ -1597,7 +1604,7 @@ void setup() {
         // ========================================================================================================================= //
         AsyncWebServerResponse* response = request->beginResponse(200, "text/plain;charset=utf-8", "REFRESH" + strResponse);
         /*
-          Response structure example: each data[X] is divided by:
+          Response structure example: each data[X] is divided by ':'
           data[0] → Environment Temperature
           data[1] → Environment Humidity
           data[2] → Environment VPD
@@ -1608,7 +1615,7 @@ void setup() {
           data[7] → Fans Rest time Remaining
           data[8] → Internal Fan State
           data[9] → Ventilation Fan State
-          data[10] → Current Watering Day
+          data[10] → Irrigation Day Counter
           data[11] → Irrigation Time Remaining
           data[12] → <History Chart values Array> Example: Unix Timestamp|Environment Temperature|Environment Humidity|VPD|<Soil Moistures values Array>
         */
@@ -1745,7 +1752,7 @@ void loop() {
     {
       static bool bIsTheLastPulse = false;
 
-      if (((timeInfo.tm_hour - g_nLastWateredHour + 24) % 24) > 0 && !g_bApplyFertilizers && g_nTestPumpStartTime == 0) {
+      if (((timeInfo.tm_hour - g_pProfileSettings[g_nCurrentProfile].LastWateredHour + 24) % 24) > 0 && !g_bApplyFertilizers && g_nTestPumpStartTime == 0) {
         static uint8_t nCurrentPulse = 0;
         static bool bApplyIrrigation = false;
         static uint8_t nCurrentPulseHour = 0;
@@ -1759,7 +1766,7 @@ void loop() {
             uint16_t nLastKnownCC = 0;
 
             for (const auto& Watering : g_pProfileSettings[g_nCurrentProfile].WateringStages) {
-              if (g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay >= Watering.Day)
+              if (g_pProfileSettings[g_nCurrentProfile].IrrigationDayCounter >= Watering.Day)
                 nLastKnownCC = Watering.TargetCC;
               else
                 break;
@@ -1835,7 +1842,7 @@ void loop() {
                             bWaitTime = false;
                             nStage = 0;
                             bApplyIrrigation = false;
-                            g_nLastWateredHour = nCurrentPulseHour;
+                            g_pProfileSettings[g_nCurrentProfile].LastWateredHour = nCurrentPulseHour;
                           }
                         }
                       }
@@ -1850,16 +1857,15 @@ void loop() {
 
           SendNotification(String("El Esquema de Riego o el Caudal por Minuto de la Bomba de Riego, no fue definido, se saltará este Pulso.").c_str());
 
-          g_nLastWateredHour = nCurrentPulseHour; // NOTE: Dilemma: This Pulse will be marked as watered. All you have to do is reconfigure the parameters and wait for the next one to begin watering
+          g_pProfileSettings[g_nCurrentProfile].LastWateredHour = nCurrentPulseHour;  // NOTE: Dilemma, this Pulse will be marked as irrigated. All you have to do is reconfigure the parameters and wait for the next one to begin watering
         }
-      } else if (bIsTheLastPulse && timeInfo.tm_mday != g_nLastResetDay && timeInfo.tm_hour == g_nLastWateredHour) {
-        g_nLastResetDay = timeInfo.tm_mday;
-        g_nLastWateredHour = -1;
-
-        g_pProfileSettings[g_nCurrentProfile].CurrentWateringDay++;
+      } else if (bIsTheLastPulse && timeInfo.tm_mday != g_pProfileSettings[g_nCurrentProfile].LastWateredDay && timeInfo.tm_hour == g_pProfileSettings[g_nCurrentProfile].LastWateredHour) {
+        g_pProfileSettings[g_nCurrentProfile].IrrigationDayCounter++;
+        g_pProfileSettings[g_nCurrentProfile].LastWateredDay = timeInfo.tm_mday;
+        g_pProfileSettings[g_nCurrentProfile].LastWateredHour = -1;
 
         SaveProfile(g_nCurrentProfile);
-        
+
         if (g_nIrrigationSolutionLevel <= 25) {
           char cBuffer[41];
           snprintf(cBuffer, sizeof(cBuffer), "Reservorio de Solución de Riego al %d%.", g_nIrrigationSolutionLevel);
