@@ -13,7 +13,7 @@ input{background-color:#FFF;border:1px solid#2A8387;border-radius:5px;padding:2;
 #legend tbody tr:hover{background:rgba(32,32,32,.5)}
 .hideline{text-decoration:line-through}
 .showline{cursor:pointer}
-.wheel-container{background-color:#FFF;border:1px solid#2A8387;border-radius:5px;width:50;padding:2;height:15}
+.wheelcontainer{background-color:#FFF;border:1px solid#2A8387;border-radius:5px;width:50;padding:2;height:15}
 .wheel{height:100%;overflow-y:scroll;scroll-snap-type:y mandatory}
 .wheel::-webkit-scrollbar{display:none}
 .hour{height:15;line-height:15px;color:#000;scroll-snap-align:center}

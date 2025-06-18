@@ -108,7 +108,7 @@
 					currentUrl.searchParams.set('lightstart',r[0]);
 					currentUrl.searchParams.set('lightstop',r[1]);
 
-					let elementIds=['lightbright','intfansta','venttempstart','venthumstart','phcc','vegcc','flocc','currentwateringday','restint','restdur','temphys','humhys','ifpm','phfpm','vegfpm','flofpm','mixdur','saint','ssid','ssidpwd'];
+					let elementIds=['lightbright','intfansta','venttempstart','venthumstart','phcc','vegcc','flocc','idc','restint','restdur','temphys','humhys','ifpm','phfpm','vegfpm','flofpm','mixdur','saint','ssid','ssidpwd'];
 
 					elementIds.forEach(id=>{currentUrl.searchParams.set(id,document.getElementById(id).value)});
 
@@ -192,7 +192,7 @@
 						for(i=1;i<3;i++)
 							document.querySelector('.f'+i).style.animationPlayState=data[7+i]=='0'?'running':'paused';
 
-						document.getElementById('currentwateringday').value=data[10];
+						document.getElementById('idc').value=data[10];
 
 						let wattimerem=parseInt(data[11]);
 						result='';
@@ -286,7 +286,7 @@
 				<tr><td>Fertilizante de Vegetativo</td><td><input id=vegcc value='%VEGCC%'>cc</td></tr>
 				<tr><td>Fertilizante de Floración</td><td><input id=flocc value='%FLOCC%'>cc</td></tr>
 				<th colspan=3><div></div>Riego</th>
-				<tr><td>Días de Riego transcurridos</td><td><input id=currentwateringday value='%CURRENTWATERINGDAY%'></td><td rowspan=2 id=watstate>%WATSTATE%</td></tr>
+				<tr><td>Días de Riego transcurridos</td><td><input id=idc value='%IDC%'></td><td rowspan=2 id=watstate>%WATSTATE%</td></tr>
 				<tr><td>Esquema de Riego</td></tr>
 				<tr><td colspan=3><canvas id=chart2></canvas></td></tr>
 				<th colspan=3><div></div>Configuración Interna (Estos valores no cambian según el Perfil)</th>
