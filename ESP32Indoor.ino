@@ -246,13 +246,18 @@ uint8_t GetPinByName(const char* Name) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Removes trailing whitespace characters (spaces, tabs, newlines, etc.) from the end of the given null-terminated string.
-// Modifies the input string in place.
-void TrimTrailingWhitespace(char* str) {
-  uint16_t nLen = strlen(str);
+// Reads a line from the given file stream into the provided buffer.
+// Ensures the buffer is null-terminated and trims trailing whitespace (e.g., spaces, tabs, newlines).
+// - pFile: reference to the open File object.
+// - pBuffer: pointer to the destination character buffer (must be large enough to hold the line).
+// - nBufferSize: size of the destination buffer (including null terminator).
+void ReadFromStream(File& pFile, char* pBuffer, size_t nBufferSize) {
+  size_t sizeLength = pFile.readBytesUntil('\n', pBuffer, nBufferSize - 1);
 
-  while (nLen > 0 && isspace(str[nLen - 1]))
-    str[--nLen] = '\0';
+  pBuffer[sizeLength] = '\0';
+
+  while (sizeLength > 0 && isspace(pBuffer[sizeLength - 1]))
+    pBuffer[--sizeLength] = '\0';
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -561,46 +566,46 @@ void LoadProfiles() {
 
       File pProfileFile = SD.open(strProfileName, FILE_READ);
       if (pProfileFile) {
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // START LIGHT TIME
+        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // START LIGHT TIME
         g_pProfileSettings[i].StartLightTime = atoi(cBuffer);
 
         if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
           g_nEffectiveStartLights = (g_pProfileSettings[g_nCurrentProfile].StartLightTime == 24) ? 0 : g_pProfileSettings[g_nCurrentProfile].StartLightTime;  // Stores the effective light start hour, converting 24 to 0 (midnight)
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // STOP LIGHT TIME
+        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // STOP LIGHT TIME
         g_pProfileSettings[i].StopLightTime = atoi(cBuffer);
 
         if (g_nCurrentProfile == i) // Only if the current loop corresponds to the current profile
           g_nEffectiveStopLights = (g_pProfileSettings[g_nCurrentProfile].StopLightTime == 24) ? 0 : g_pProfileSettings[g_nCurrentProfile].StopLightTime; // Stores the effective light stop hour, converting 24 to 0 (midnight)
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // LIGHT BRIGHTNESS LEVEL
+        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // LIGHT BRIGHTNESS LEVEL
         g_pProfileSettings[i].LightBrightness = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // INTERNAL FAN TEMPERATURE START
+        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // INTERNAL FAN TEMPERATURE START
         g_pProfileSettings[i].StartInternalFanTemperature = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // VENTILATION TEMPERATURE START
+        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // VENTILATION TEMPERATURE START
         g_pProfileSettings[i].StartVentilationTemperature = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // VENTILATION HUMIDITY START
+        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // VENTILATION HUMIDITY START
         g_pProfileSettings[i].StartVentilationHumidity = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // CC OF PH REDUCER TO APPLY TO IRRIGATE SOLUTION
+        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // CC OF PH REDUCER TO APPLY TO IRRIGATE SOLUTION
         g_pProfileSettings[i].PHReducerToApply = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // CC OF VEGETATIVE FERTILIZER TO APPLY TO IRRIGATE SOLUTION
+        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // CC OF VEGETATIVE FERTILIZER TO APPLY TO IRRIGATE SOLUTION
         g_pProfileSettings[i].VegetativeFertilizerToApply = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // CC OF FLOWERING FERTILIZER TO APPLY TO IRRIGATE SOLUTION
+        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // CC OF FLOWERING FERTILIZER TO APPLY TO IRRIGATE SOLUTION
         g_pProfileSettings[i].FloweringFertilizerToApply = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // IRRIGATION DAYS COUNTER
+        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // IRRIGATION DAYS COUNTER
         g_pProfileSettings[i].IrrigationDayCounter = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // LAST IRRIGATION EXECUTE DAY
+        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // LAST IRRIGATION EXECUTE DAY
         g_pProfileSettings[i].LastWateredDay = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // LAST IRRIGATION EXECUTE HOUR
+        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // LAST IRRIGATION EXECUTE HOUR
         g_pProfileSettings[i].LastWateredHour = atoi(cBuffer);
 
         pProfileFile.close();
@@ -611,8 +616,7 @@ void LoadProfiles() {
         g_pProfileSettings[i].WateringStages.clear();
 
         while (pWateringProfileFile.available()) {
-          cBuffer[pWateringProfileFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0';  // CC OF SOLUTION TO IRRIGATE
-          TrimTrailingWhitespace(cBuffer);
+          ReadFromStream(pWateringProfileFile, cBuffer, sizeof(cBuffer)); // CC OF SOLUTION TO IRRIGATE
 
           char* cDivider = strchr(cBuffer, '|');
           if (cDivider) {
@@ -760,7 +764,7 @@ void Thread_WifiReconnect(void* parameter) {
 
     uint8_t nConnectTrysCount = 0;
 
-    while (WiFi.status() != WL_CONNECTED && nConnectTrysCount < WIFI_MAX_RETRYS) {
+    while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
       nConnectTrysCount++;
       vTaskDelay(WIFI_CHECK_INTERVAL / portTICK_PERIOD_MS);  // Wait before trying again
     }
@@ -968,52 +972,50 @@ void setup() {
       if (pSettingsFile) {
         char cBuffer[64];
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SSID
-        TrimTrailingWhitespace(cBuffer);
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // SSID
 
         strncpy(g_cSSID, cBuffer, sizeof(g_cSSID));
         g_cSSID[sizeof(g_cSSID) - 1] = '\0';
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SSID PASSWORD
-        TrimTrailingWhitespace(cBuffer);
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // SSID PASSWORD
 
         strncpy(g_cSSIDPWD, cBuffer, sizeof(g_cSSIDPWD));
         g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SAMPLING TAKE INTERVALS FOR GRAPH
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // SAMPLING TAKE INTERVALS FOR GRAPH
         g_nSamplingInterval = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // SELECTED PROFILE
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // SELECTED PROFILE
         g_nCurrentProfile = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // FANS REST INTERVAL
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // FANS REST INTERVAL
         g_nFansRestInterval = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // FANS REST DURATION
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // FANS REST DURATION
         g_nFansRestDuration = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // TEMPERATURE HYSTERESIS TO STOP FANS
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // TEMPERATURE HYSTERESIS TO STOP FANS
         g_nTemperatureStopHysteresis = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // HUMIDITY HYSTERESIS TO STOP FANS
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // HUMIDITY HYSTERESIS TO STOP FANS
         g_nHumidityStopHysteresis = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // IRRIGATION PUMP FLOW PER MINUTE
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // IRRIGATION PUMP FLOW PER MINUTE
         g_nIrrigationFlowPerMinute = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // PH REDUCER PUMP FLOW PER MINUTE
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // PH REDUCER PUMP FLOW PER MINUTE
         g_nPHReducerFlowPerMinute = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // VEGETATIVE FERTILIZER PUMP FLOW PER MINUTE
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // VEGETATIVE FERTILIZER PUMP FLOW PER MINUTE
         g_nVegetativeFlowPerMinute = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // FLOWERING FERTILIZER PUMP FLOW PER MINUTE
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // FLOWERING FERTILIZER PUMP FLOW PER MINUTE
         g_nFloweringFlowPerMinute = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // MIXING PUMP DURATION
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // MIXING PUMP DURATION
         g_nMixingPumpDuration = atoi(cBuffer);
         ///////////////////////////////////////////////////
-        cBuffer[pSettingsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1)] = '\0'; // LOWER POINT OF IRRIGATION SOLUTION RESERVOIR
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // LOWER POINT OF IRRIGATION SOLUTION RESERVOIR
         g_nIrrigationReservoirLowerLevel = atoi(cBuffer);
         ///////////////////////////////////////////////////
         pSettingsFile.close();
@@ -1041,46 +1043,42 @@ void setup() {
       ///////////////////////////////////////////////////
       File pMetricsFile = SD.open("/metrics.log", FILE_READ);  // Read Time file  // NOTE: It is assumed that there will always be a metrics.log file in the root
       if (pMetricsFile) {
-        size_t sizeFile = pMetricsFile.size();
-        const size_t sizeBlock = 512;
-        char cChunkBuffer[sizeBlock];
-        int64_t nPos = sizeFile - sizeBlock;
+        size_t nFileSize = pMetricsFile.size();
+        const size_t nBlockSize = 512;
+        char cChunkBuffer[nBlockSize];
+        int64_t nPos = nFileSize - nBlockSize;
         uint8_t nLinesRead = 0;
+        char cBuffer[64];
 
         while (nPos >= 0 && nLinesRead < MAX_GRAPH_MARKS) {
           pMetricsFile.seek(nPos);
 
-          size_t sizeBytesRead = pMetricsFile.read((uint8_t*)cChunkBuffer, (nPos < sizeBlock) ? nPos + 1 : sizeBlock);
-          if (sizeBytesRead == 0)
+          size_t nBytesReadSize = pMetricsFile.read((uint8_t*)cChunkBuffer, (nPos < nBlockSize) ? nPos + 1 : nBlockSize);
+          if (nBytesReadSize == 0)
             break;
 
-          for (int i = (int)sizeBytesRead - 1; i >= 0; i--) {
+          for (int i = (int)nBytesReadSize - 1; i >= 0; i--) {
             if (cChunkBuffer[i] == '\n' || (nPos == 0 && i == 0)) {
               pMetricsFile.seek(nPos + i + 1);
 
-              char cBuffer[64];
-              size_t nBytesRead = pMetricsFile.readBytesUntil('\n', cBuffer, sizeof(cBuffer) - 1);
-              cBuffer[nBytesRead] = '\0';
+              ReadFromStream(pMetricsFile, cBuffer, sizeof(cBuffer));
 
-              if (nBytesRead > 0) {
-                while (nBytesRead > 0 && (cBuffer[nBytesRead - 1] == '\r' || cBuffer[nBytesRead - 1] == ' '))
-                  cBuffer[--nBytesRead] = '\0';
-
+              if (cBuffer[0] != '\0') {
                 strncpy(g_strArrayGraphData[nLinesRead], cBuffer, MAX_GRAPH_MARKS_LENGTH - 1);
                 g_strArrayGraphData[nLinesRead][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
 
                 nLinesRead++;
-              }
 
-              if (nLinesRead >= MAX_GRAPH_MARKS)
-                break;
+                if (nLinesRead >= MAX_GRAPH_MARKS)
+                  break;
+              }
             }
           }
 
           if (nLinesRead >= MAX_GRAPH_MARKS || nPos == 0)
             break;
 
-          nPos -= sizeBlock;
+          nPos -= nBlockSize;
           if (nPos < 0)
             nPos = 0;
         }
@@ -1109,7 +1107,7 @@ void setup() {
 
     uint8_t nConnectTrysCount = 0;
 
-    while (WiFi.status() != WL_CONNECTED && nConnectTrysCount < WIFI_MAX_RETRYS) {
+    while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
       nConnectTrysCount++;
       delay(WIFI_CHECK_INTERVAL); // Wait before trying again
     }
