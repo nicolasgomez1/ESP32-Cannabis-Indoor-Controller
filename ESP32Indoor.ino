@@ -457,53 +457,6 @@ void WriteToSD(const char* cFileName, const char* cText, bool bAppend) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Saves the profile settings of the given profile index (nProfile) to the SD card safely using SafeSDAccess.
-// Profile data is saved to a file named "/veg", "/flo", or "/dry" depending on the profile index (0, 1, or 2).
-// Writes all relevant profile parameters line by line.
-// Additionally, saves the watering stages to a separate file with the suffix "_watering".
-// Does nothing if the SD card is not initialized or file open fails.
-// Logs a success message upon successful save.
-void SaveProfile(uint8_t nProfile) {
-  SafeSDAccess([&]() {
-    if (!g_bIsSDInit)
-      return;
-
-    String strProfileName = ((nProfile == 0) ? "/veg" : ((nProfile == 1) ? "/flo" : "/dry"));
-    File pProfileFile = SD.open(strProfileName, FILE_WRITE);  // Save Current Profile Values
-    if (pProfileFile) {
-      pProfileFile.println(g_pProfileSettings[nProfile].StartLightTime);
-      pProfileFile.println(g_pProfileSettings[nProfile].StopLightTime);
-      pProfileFile.println(g_pProfileSettings[nProfile].LightBrightness);
-
-      pProfileFile.println(g_pProfileSettings[nProfile].StartInternalFanTemperature);
-
-      pProfileFile.println(g_pProfileSettings[nProfile].StartVentilationTemperature);
-      pProfileFile.println(g_pProfileSettings[nProfile].StartVentilationHumidity);
-
-      pProfileFile.println(g_pProfileSettings[nProfile].PHReducerToApply);
-      pProfileFile.println(g_pProfileSettings[nProfile].VegetativeFertilizerToApply);
-      pProfileFile.println(g_pProfileSettings[nProfile].FloweringFertilizerToApply);
-
-      pProfileFile.println(g_pProfileSettings[nProfile].IrrigationDayCounter);
-      pProfileFile.println(g_pProfileSettings[nProfile].LastWateredDay);
-      pProfileFile.println(g_pProfileSettings[nProfile].LastWateredHour);
-
-      pProfileFile.close();
-      ///////////////////////////////////////////////////
-      File pWateringProfileFile = SD.open(strProfileName + "_watering", FILE_WRITE);
-      if (pWateringProfileFile) {
-        for (const auto& Watering : g_pProfileSettings[nProfile].WateringStages)
-          pWateringProfileFile.printf("%u|%u\n", Watering.Day, Watering.TargetCC);
-
-        pWateringProfileFile.close();
-      }
-
-      LOGGER(INFO, "Profile: %s updated successfully.", strProfileName);
-    }
-  });
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Saves current global configuration settings to the "/settings" file on the SD card using SafeSDAccess.
 // Writes one setting per line, including Wi-Fi credentials, sampling interval, current profile,
 // fan intervals, hysteresis values, flow rates, mixing pump duration, and irrigation reservoir level.
@@ -546,14 +499,9 @@ void SaveSettings() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Loads all defined profile settings from the SD card using SafeSDAccess.
-// For each profile (veg, flo, dry), reads configuration values from the corresponding file:
-// light schedule, brightness, fan/ventilation thresholds, irrigation day,
-// and nutrient quantities to apply. Also loads per-day irrigation volumes from
-// a secondary "_watering" file associated with each profile.
-// Trims trailing whitespace and ensures that effective light start/stop times are updated
-// for the current active profile.
-// If files are missing or malformed, partial data may be loaded; does nothing if SD is not initialized.
+// Loads all profile settings from a single file per profile (/veg, /flo, /dry).
+// Reads configuration values followed by irrigation schedule lines (in DAY|CC format).
+// Trims trailing whitespace, updates effective light times, and skips malformed lines.
 void LoadProfiles() {
   SafeSDAccess([&]() {
     if (!g_bIsSDInit)
@@ -562,9 +510,7 @@ void LoadProfiles() {
     char cBuffer[64];
 
     for (uint8_t i = 0; i < MAX_PROFILES; i++) {
-      String strProfileName = ((i == 0) ? "/veg" : ((i == 1) ? "/flo" : "/dry"));
-
-      File pProfileFile = SD.open(strProfileName, FILE_READ);
+      File pProfileFile = SD.open((i == 0) ? "/veg" : ((i == 1) ? "/flo" : "/dry"), FILE_READ);
       if (pProfileFile) {
         ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // START LIGHT TIME
         g_pProfileSettings[i].StartLightTime = atoi(cBuffer);
@@ -607,16 +553,11 @@ void LoadProfiles() {
         ///////////////////////////////////////////////////
         ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // LAST IRRIGATION EXECUTE HOUR
         g_pProfileSettings[i].LastWateredHour = atoi(cBuffer);
-
-        pProfileFile.close();
-      }
-      ///////////////////////////////////////////////////
-      File pWateringProfileFile = SD.open(strProfileName + "_watering", FILE_READ);
-      if (pWateringProfileFile) {
+        ///////////////////////////////////////////////////     READ IRRIGATION SCHEME DATA
         g_pProfileSettings[i].WateringStages.clear();
 
-        while (pWateringProfileFile.available()) {
-          ReadFromStream(pWateringProfileFile, cBuffer, sizeof(cBuffer)); // CC OF SOLUTION TO IRRIGATE
+        while (pProfileFile.available()) {
+          ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // DAY|CC
 
           char* cDivider = strchr(cBuffer, '|');
           if (cDivider) {
@@ -626,8 +567,45 @@ void LoadProfiles() {
           }
         }
 
-        pWateringProfileFile.close();
+        pProfileFile.close();
       }
+    }
+  });
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Saves the profile settings and irrigation scheme to a single file per profile.
+// Overwrites all existing data in the file (/veg, /flo, /dry). One line per value.
+void SaveProfile(uint8_t nProfile) {
+  SafeSDAccess([&]() {
+    if (!g_bIsSDInit)
+      return;
+
+    File pProfileFile = SD.open((nProfile == 0) ? "/veg" : ((nProfile == 1) ? "/flo" : "/dry"), FILE_WRITE);
+    if (pProfileFile) {
+      pProfileFile.println(g_pProfileSettings[nProfile].StartLightTime);
+      pProfileFile.println(g_pProfileSettings[nProfile].StopLightTime);
+      pProfileFile.println(g_pProfileSettings[nProfile].LightBrightness);
+
+      pProfileFile.println(g_pProfileSettings[nProfile].StartInternalFanTemperature);
+
+      pProfileFile.println(g_pProfileSettings[nProfile].StartVentilationTemperature);
+      pProfileFile.println(g_pProfileSettings[nProfile].StartVentilationHumidity);
+
+      pProfileFile.println(g_pProfileSettings[nProfile].PHReducerToApply);
+      pProfileFile.println(g_pProfileSettings[nProfile].VegetativeFertilizerToApply);
+      pProfileFile.println(g_pProfileSettings[nProfile].FloweringFertilizerToApply);
+
+      pProfileFile.println(g_pProfileSettings[nProfile].IrrigationDayCounter);
+      pProfileFile.println(g_pProfileSettings[nProfile].LastWateredDay);
+      pProfileFile.println(g_pProfileSettings[nProfile].LastWateredHour);
+      /////////////////////////////////////////////////// SAVE IRRIGATION SCHEME DATA
+      for (const auto& Watering : g_pProfileSettings[nProfile].WateringStages)
+        pProfileFile.printf("%u|%u\n", Watering.Day, Watering.TargetCC);
+
+      pProfileFile.close();
+
+      LOGGER(INFO, "Profile: %d updated successfully.", nProfile);
     }
   });
 }
@@ -896,7 +874,7 @@ String HTMLProcessor(const String &var) {
         uint32_t nMinutes = nTimeRemaining / 60000;
         uint32_t nSeconds = (nTimeRemaining % 60000) / 1000;
 
-        strReturn += String(nMinutes) + (nMinutes == 1 ? " minuto" : " minutos");
+        strReturn += String(nMinutes) + ((nMinutes == 1) ? " minuto" : " minutos");
 
         if (nSeconds > 0)
           strReturn += " y " + String(nSeconds) + " segundos";
@@ -1053,7 +1031,7 @@ void setup() {
         while (nPos >= 0 && nLinesRead < MAX_GRAPH_MARKS) {
           pMetricsFile.seek(nPos);
 
-          size_t nBytesReadSize = pMetricsFile.read((uint8_t*)cChunkBuffer, (nPos < nBlockSize) ? nPos + 1 : nBlockSize);
+          size_t nBytesReadSize = pMetricsFile.read((uint8_t*)cChunkBuffer, (nPos < nBlockSize) ? (nPos + 1) : nBlockSize);
           if (nBytesReadSize == 0)
             break;
 
@@ -1247,7 +1225,7 @@ void setup() {
             LoadProfiles();
 
             // Reset Watering variables
-            g_pProfileSettings[nSelectedProfile].IrrigationDayCounter = 0;
+            g_pProfileSettings[nSelectedProfile].IrrigationDayCounter = 1;
 
             struct tm currentTime = GetLocalTimeNow();
 
@@ -1358,7 +1336,7 @@ void setup() {
           nNewValue = request->arg("idc").toInt();
 
           if (nNewValue != g_pProfileSettings[nSelectedProfile].IrrigationDayCounter) {
-            g_pProfileSettings[nSelectedProfile].IrrigationDayCounter = nNewValue;
+            g_pProfileSettings[nSelectedProfile].IrrigationDayCounter = (nNewValue == 0) ? 1 : nNewValue;
 
             strReturn += "Se actualizó los Días de Riego transcurridos.\r\n";
           }
@@ -1754,7 +1732,7 @@ void loop() {
         static uint8_t nCurrentPulse = 0;
         static bool bApplyIrrigation = false;
         static uint8_t nCurrentPulseHour = 0;
-        uint8_t nPulseInterval = g_nCurrentProfile == 1 /*Flowering*/ ? 2 : 1 /*Vegetative*/;
+        uint8_t nPulseInterval = (g_nCurrentProfile == 1 /*Flowering*/) ? 2 : 1 /*Vegetative*/;
         uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 2) % 24;
         uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24;
         uint8_t nTotalPulses = ((nStopIrrigationHour - nStartIrrigationHour + 24) % 24) / nPulseInterval;
