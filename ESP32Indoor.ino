@@ -32,7 +32,7 @@ struct SoilMoisturePin {
 };
 
 struct WateringData {
-  uint8_t Day;  // WARNING: Maybe is too low, only 8 months
+  uint16_t Day;
   uint16_t TargetCC;
 
   bool operator==(const WateringData& other) const { return Day == other.Day && TargetCC == other.TargetCC; } // Little overload but needed for compare
@@ -1343,24 +1343,30 @@ void setup() {
         }
         // =============== Watering Chart =============== //
         if (request->hasArg("wateringchart")) {
-          String strValues = request->arg("wateringchart");
-          uint16_t nIndex = 0;
+          const String& refstrValues = request->arg("wateringchart");
+          const char* cBuffer = refstrValues.c_str();
           std::vector<WateringData> vecNewWateringStages;
 
-          while (nIndex < strValues.length()) {
-            int16_t nCommaIndex = strValues.indexOf(',', nIndex);
-            String strPair = (nCommaIndex == -1) ? strValues.substring(nIndex) : strValues.substring(nIndex, nCommaIndex);
+          while (*cBuffer) {
+            char* cEndBuffer;
+            long nDay = strtol(cBuffer, &cEndBuffer, 10);
 
-            int16_t nSepIndex = strPair.indexOf('|');
-            if (nSepIndex != -1)
-              vecNewWateringStages.push_back({ strPair.substring(0, nSepIndex).toInt(), strPair.substring(nSepIndex + 1).toInt() });
-
-            if (nCommaIndex == -1)
+            if (*cEndBuffer != '|')
               break;
 
-            nIndex = nCommaIndex + 1;
-          }
+            cBuffer = cEndBuffer + 1;
 
+            long TargetCC = strtol(cBuffer, &cEndBuffer, 10);
+
+            if ((nDay >= 0 && nDay <= UINT16_MAX) && (TargetCC >= 0 && TargetCC <= UINT16_MAX))
+              vecNewWateringStages.push_back({ static_cast<uint16_t>(nDay), static_cast<uint16_t>(TargetCC) });
+
+            if (*cEndBuffer == ',')
+              cBuffer = cEndBuffer + 1;
+            else
+              break;
+          }
+          
           if (vecNewWateringStages != g_pProfileSettings[nSelectedProfile].WateringStages) {
             g_pProfileSettings[nSelectedProfile].WateringStages = vecNewWateringStages;
 
