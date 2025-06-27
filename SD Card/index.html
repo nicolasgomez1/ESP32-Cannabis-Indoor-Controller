@@ -16,16 +16,16 @@
 				SendAction('reload');
 			}
 
-			function CalcVPD(vpd){
+			function CalcVPD(v){
 				let c='#FE7F96',m='Zona de Peligro';
 
-				if(vpd>=0.4&&vpd<=0.8){
+				if(v>=.4&&v<=.8){
 					c='#6497C9';
 					m='Propagacíon/Inicio del Vegetativo';
-				}else if(vpd>0.8&&vpd<=1.2){
+				}else if(v>.8&&v<=1.2){
 					c='#7FC794';
 					m='Vegetativo/Inicio de Floración';
-				}else if(vpd>1.2&&vpd<=1.6){
+				}else if(v>1.2&&v<=1.6){
 					c='#F9AE54';
 					m='Floración';
 				}
@@ -101,7 +101,7 @@
 					let r=GetLightStartStop();
 
 					if(((r[1]-r[0]+24)%%24)<5){
-						alert("No se puede definir un fotoperíodo inferior a 5 Horas.");
+						alert("No se puede definir un Fotoperiodo inferior a 5 Horas.");
 						return;
 					}
 
@@ -335,8 +335,8 @@
 
 		for(e of [hstart,hstop])for(i=1;i<=24;i++)e.appendChild(Object.assign(document.createElement('main'),{className:'hour',textContent:i+(i>=12?' PM':' AM')}));
 
-		hstart.scrollTop=%STARTLIGHT%*15;
-		hstop.scrollTop=%STOPLIGHT%*15;
+		hstart.scrollTop=%STARTLIGHT%+1*15;
+		hstop.scrollTop=%STOPLIGHT%+1*15;
 
 		[hstart,hstop].forEach(e=>e.addEventListener('wheel',ev=>{
 			ev.preventDefault();
@@ -491,10 +491,10 @@
 				let rect=chart2.canvas.getBoundingClientRect();
 				let d=prompt('Día:',Math.round(chart2.scales.x.getValueForPixel(e.clientX-rect.left)));
 
-				if(d!==null&&!isNaN(d)&&d>=0){
+				if(d!==null&&!isNaN(d)&&d>0){
 					let cc=prompt('Cantidad de cc a Regar:',Math.round(chart2.scales.y.getValueForPixel(e.clientY-rect.top)));
 
-					if(cc!==null&&!isNaN(cc)&&cc>=0){
+					if(cc!==null&&!isNaN(cc)&&cc>0){
 						chart2.data.datasets[0].data.push({x:parseInt(d),y:parseInt(cc)});
 						chart2.data.datasets[0].data.sort((a,b)=>a.x-b.x);
 						chart2.update();
