@@ -1,0 +1,11 @@
+build/
+
+SD Card/settings
+
+SD Card/logs/*
+!SD Card/logs/.gitkeep
+
+SD Card/metrics/*
+!SD Card/metrics/.gitkeep
+
+Secrets.h

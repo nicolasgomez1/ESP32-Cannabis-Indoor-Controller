@@ -1,0 +1,239 @@
+<html>
+	<head>
+		<meta name=viewport content=width=device-width,initial-scale=1.0>
+		<meta charset=utf-8>
+		<link rel=icon href=data:,>
+		<link rel='shortcut icon'href=data:,>
+		<title>ESP32 Indoor Panel</title>
+		<link rel=stylesheet type=text/css href=style.css>
+		<script src=chart.js></script>
+		<script>
+			let HTMLVersion='V420260310115416',MaxLightBright=4095,ElementsValues=[7,1,4,27,27,70,3,5,60,5,10,100,80,100,30,45];
+			let Chart2Labels=[
+				{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C'},
+				{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'%'},
+				{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa',yAxisID:'s'},
+				{label:'Humedad de Maceta 0',borderColor:'#B57165',backgroundColor:'#B57165',symbol:'%'},
+				{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'%'},
+				{label:'Luz',borderColor:'#D6B83B',backgroundColor:'#D6B83B',stepped:1,yAxisID:'s'}
+			];
+		</script>
+	</head>
+	<body>
+		<div id=updateflash></div>
+		<div id=loaderoverlay><span id=loader></span></div>
+		<div id=wrapper>
+			<card_header>
+				<div style=display:flex>
+					<div><div style=font-size:19 id=currenttime></div></div>
+					<div style=margin-left:auto>
+						<a href=logs.html><button>Ver Logs</button></a> <button onclick=SendAction('update','time',Math.floor(Date.now()/1000))>Sincronizar Fecha</button> <button onclick=SendAction('restart')>Reiniciar</button>
+					</div>
+				</div>
+			</card_header>
+			<card_header>Perfil:<input type=range class=slider id=profile min=0 max=2 step=1 value=%PROFILE% oninput=SetSelectedProfile(true)> <ind id=ind_profile></ind></card_header>
+			<card>
+				<div style=display:flex>
+					<div>
+						<ct>Fotoperiodo</ct>
+						<svg width=16 viewBox='0 0 64 64'>
+							<path id=ls d='M32 4C20 4 12 14 12 24C12 31 16 36 20 40C22 42 22 44 22 48H42C42 44 42 42 44 40C48 36 52 31 52 24C52 14 44 4 32 4Z' fill=#CFCFCF />
+							<rect x=22 y=48 width=20 height=25 fill=#555 />
+						</svg>
+						<container>Encendido:<wheelcontainer><div class=wheel id=lightstart></div></wheelcontainer><div id=ind_meri_start></div></container>
+						<container>Apagado:<wheelcontainer><div class=wheel id=lightstop></div></wheelcontainer><div id=ind_meri_stop></div></container>
+						<div class=state id=ind_ld></div>
+					</div>
+					<div style=min-width:200>
+						<ct>Intensidad de Luz</ct><br><br>
+						<container><input type=range class=slider id=lb min=0 max=%MAXBRIGHT% step=409.5 value=%BRIGHTLEVEL% oninput=SetLightBright(true)><div id=ind_lp></div></container>
+						<div class=state id=ind_lb></div>
+					</div>
+				</div>
+			</card>
+			<card>
+				<ct>Temperatura Ambiente</ct>
+				<canvas id=meter_temp></canvas>
+			</card>
+			<card>
+				<ct>Humedad Ambiente</ct>
+				<canvas id=meter_hum></canvas>
+			</card>
+			<card>
+				<ct>Déficit de Presión de Vapor</ct>
+				<canvas id=meter_vpd></canvas>
+			</card>
+			<card>
+				<ct>Humedad de Suelo</ct>
+				<ind id=ind_soil0>Maceta 0: 100%</ind>
+				<ind id=ind_soil1>Maceta 1: 0%</ind>
+			</card>
+			<card>
+				<ct>Nivel de Solución de Riego</ct>
+				<div style=display:flex>
+					<canvas id=reservoirlevel></canvas>
+					<button onclick=SendAction('cisl')>Calibrar</button>
+				</div>
+			</card>
+			<card>
+				<ct>Contador de Días</ct>
+				<container>Inicio de inicio Cultivo: <ind id=cb>09/07/2025</ind><button onclick=SetCropBegin()>Definir</button></container>
+				<container>Días de Cultivo transcurridos: <ind id=cdc>30</ind></container>
+				<container>Días de Riego transcurridos:<wheelcontainer><div class=wheel id=idc></div></wheelcontainer></container>
+				<div class=state id=ind_irrstate></div>
+			</card>
+			<card>
+				<div><ct>Ventilación Interna</ct> <img class='fan f0'src=fan.webp></div>
+				<container>Modo:<input type=range class=slider id=ifm min=0 max=2 step=1 value=0 oninput=SetFanMode('ifm',true)><ind id=ind_ifm></ind></container>
+				<container>Temperatura de Encendido:<wheelcontainer><div class=wheel id=ifts></div></wheelcontainer>°C</container>
+				<div><ct>Recirculación de Aire</ct> <img class='fan f1'src=fan.webp></div>
+				<container>Modo:<input type=range class=slider id=rfm min=0 max=2 step=1 value=2 oninput=SetFanMode('rfm',true)><ind id=ind_rfm></ind></container>
+				<container>Temperatura de Encendido:<wheelcontainer><div class=wheel id=rfts></div></wheelcontainer>°C</container>
+				<container>Humedad de Encendido:<wheelcontainer><div class=wheel id=rfhs></div></wheelcontainer>%</container>
+				<div class=state id=ind_fansrest></div>
+			</card>
+			<card>
+				<ct>Ferilización</ct>
+				<container>Modo de Incorporación: <input type=range class=slider id=fim min=0 max=1 step=1 value=0 oninput=SetFertsIncorporationMode(true)> <ind id=ind_fim></ind></container>
+				<ind id=fti></ind>
+				<button onclick=SendAction('applyferts')>Incorporar Fertilizantes</button>
+			</card>
+			<card_header>
+				<ct>Esquema de Riego y Fertilización</ct>
+				<canvas id=ichart></canvas>
+			</card_header>
+			<card>
+				<ct>Configuración Interna (Estos valores no cambian según el Perfil)</ct>
+				<container>Intervalo de Reposo de Ventiladores:<wheelcontainer><div class=wheel id=restint></div></wheelcontainer>Minutos</container>
+				<container>Duración de Reposo de Ventiladores:<wheelcontainer><div class=wheel id=restdur></div></wheelcontainer>Minutos</container>
+				<hr>
+				<container>Histéresis de Apagado por Temperatura:<wheelcontainer><div class=wheel id=temphys></div></wheelcontainer>°C</container>
+				<container>Histéresis de Apagado por Humedad:<wheelcontainer><div class=wheel id=humhys></div></wheelcontainer>%</container>
+				<hr>
+				<ct>Caudal en 10 segundos de cada Bomba</ct>
+				<container>Riego:<wheelcontainer><div class=wheel id=ifpm></div></wheelcontainer>cc<button onclick=SendAction('testpump4')>Probar</button></container>
+				<container>Reductor de pH:<wheelcontainer><div class=wheel id=pumpfpm0></div></wheelcontainer>cc<button onclick=SendAction('testpump5')>Probar</button></container>
+				<container>Fertilizante de Vegetativo:<wheelcontainer><div class=wheel id=pumpfpm1></div></wheelcontainer>cc<button onclick=SendAction('testpump6')>Probar</button></container>
+				<container>Fertilizante de Floración:<wheelcontainer><div class=wheel id=pumpfpm2></div></wheelcontainer>cc<button onclick=SendAction('testpump7')>Probar</button></container>
+				<hr>
+				<container>Duración de Mezclado de Solución de Riego:<wheelcontainer><div class=wheel id=mixdur></div></wheelcontainer>Segundos<button onclick=SendAction('mixis')>Mezclar</button></container>
+				<hr>
+				<container>Intervalo de toma de Muestras:<wheelcontainer><div class=wheel id=saint></div></wheelcontainer>Minutos</container>
+				<hr>
+				<div style=display:flex>
+					<div>
+						<container>SSID Wifi:<input id=ssid value='Spoon'></container>
+						<container>Contraseña Wifi:<input id=ssidpwd value='feed'></container>
+					</div>
+					&nbsp;<button onclick=SendAction('update','ssid',document.getElementById('ssid').value,'ssidpwd',document.getElementById('ssidpwd').value)>Actualizar</button>
+				</div>
+				<hr>
+				<ct>Firmware Update</ct>
+				<container>Firmware Version: V420260311144517</container>
+				<form id=otaform>
+					<container>Firmware:<input type=file id=otafile name=firmware required><button type=submit>Subir</button></container>
+				</form>
+				<hr>
+				<ct>Web Software Update</ct>
+				<container>HTML Version: <ind id=htmlver></ind></container>
+				<container>CSS Version: <ind id=cssver></ind></container>
+				<container>JS Version: <ind id=jsver></ind></container>
+				<form id=softwareform><container>Software:<input type=file id=softwarefile multiple required><button type=submit>Subir</button></container></form>
+			</card>
+			<card_header>
+				<ct>Historial de las últimas 48 muestras</ct>
+				<table id=legend>
+					<thead><tr><th>Indicadores<div style=float:right><button id=tt>Mostrar Valores</button></div></th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead>
+					<tbody></tbody>
+				</table>
+				<canvas id=hchart></canvas>
+			</card_header>
+		</div>
+	</body>
+	<script src=script.js></script>
+	<script>
+		GetElement('currenttime').innerText='Fecha: '+new Date(1773349553*1000).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+		SetSelectedProfile();
+		CalcLightDur();
+		let e=GetElement('lb'),v=401,p=Math.round(v/MaxLightBright*100);
+		GetElement('ind_lp').innerText=p+'%';
+		GetElement('ind_lb').innerText=p>0?CalcBright(v):'Apagado';
+		['ifm','rfm'].forEach(e=>SetFanMode(e));
+		SetEnvValues(24,50);
+		TrapezoidIndicator('reservoirlevel',50);
+		document.querySelector('.f1').style.animationPlayState='running';
+		for(i=0;i<Chart1Labels.length;i++)
+			ichart.data.datasets[i].data=[];
+
+		let s="1|20|2.5|1.0|1.5,5|40|0|0|0,10|60|0|0|0,15|0|0|0|0".split(',');
+		for(j=0;j<s.length;j++){
+			let n=s[j].split('|');
+
+			for(k=1;k<n.length;k++)
+				ichart.data.datasets[k-1].data[j]={x:n[0],y:n[k]};
+		}
+		ichart.update();
+
+		SetFertsIncorporationMode();
+
+		let cd="1754418391|21|64|75|55|0,1754421991|21|66|30|25|0,1754425592|21|69|75|55|0,1754429192|21|68|30|25|0,1754432792|20|64|75|55|0,1754436392|20|68|30|25|0,1754439993|20|69|75|55|0,1754443593|20|68|30|25|0,1754447193|20|69|75|55|0,1754450793|20|69|30|25|0,1754454394|12|74|75|55|0,1754457994|12|78|30|25|0,1754461594|11|79|75|55|0,1754465194|11|79|30|25|0,1754468795|11|79|75|55|0,1754472395|10|79|30|25|0,1754475995|18|65|75|55|0,1754479595|18|66|30|25|0,1754483196|18|68|75|55|0,1754486796|19|66|30|25|0,1754490396|20|68|75|55|0,1754493996|20|68|30|25|0,1754497597|21|65|75|55|0,1754501197|21|67|30|25|0,1754504797|22|65|75|55|4095,1754508397|23|65|30|25|4095,1754511998|23|66|75|55|4095,1754515598|22|69|30|25|4095,1754519198|22|68|75|55|4095,1754522798|22|68|30|25|4095,1754526398|22|69|75|55|4095,1754529999|21|68|30|25|4095,1754533599|21|68|75|55|4095,1754537199|21|68|30|25|4095,1754540800|14|75|75|55|4095,1754544400|13|79|30|25|4095,1754548000|13|79|75|55|4095,1754551600|12|80|30|25|4095,1754555201|12|81|75|55|4095,1754558801|12|81|30|25|4095,1754562401|19|67|75|55|4095,1754566001|19|69|30|25|4095,1754569602|19|67|75|55|4095,1754573202|19|68|30|25|4095,1754576802|20|67|75|55|4095,1754580402|20|69|30|25|4095,1754584003|20|68|75|55|4095,1754587603|21|69|30|25|4095".split(',');
+		for(i=0;i<cd.length;i++){
+			let v=cd[i].split('|');
+
+			for(j=1;j<v.length;j++){
+				let f=parseFloat(v[j]);
+				hchart.data.datasets[j>2?j:j-1].data[i]={x:v[0],y:j==5?(f>0?1:0):f,string:v[j]};
+
+				if(j==2){
+					let r=CalcVPD(v[1],v[2]).toFixed(2);
+					hchart.data.datasets[j].data[i]={x:v[0],y:r,string:r};
+				}
+			}
+		}
+		hchart.update();
+
+		let tablechild={},table=document.querySelector('#legend tbody');
+
+		table.querySelectorAll('td.sl').forEach(td=>{tablechild[td.getAttribute('ddi')]=td.classList.contains('hl')});
+		table.innerHTML='';
+
+		hchart.data.datasets.forEach((ds,i)=>{
+			let v=ds.data.map(point=>point.y),r=document.createElement('tr'),s=ds.symbol,min,max,avg;
+
+			if(i==5){
+				return;
+			}else if(i==2){
+				let t=hchart.data.datasets[0].data.map(point=>point.y),h=hchart.data.datasets[1].data.map(point=>point.y),vpds=[];
+
+				for(j=0;j<t.length;j++)
+					vpds.push(CalcVPD(t[j],h[j]));
+
+				min=Math.min(...vpds).toFixed(2);
+				max=Math.max(...vpds).toFixed(2);
+				avg=(vpds.reduce((s,v)=>s+v,0)/vpds.length).toFixed(2);
+				min+=s+` (${GetStateOfVPD(min)})`;
+				max+=s+` (${GetStateOfVPD(max)})`;
+				avg+=s+` (${GetStateOfVPD(avg)})`;
+			}else{
+				min=Math.min(...v)+s;
+				max=Math.max(...v)+s;
+				avg=(v.reduce((s,v)=>s+v,0)/v.length).toFixed()+s;
+			}
+
+			r.innerHTML=`<td style=color:${ds.borderColor} class='sl ${tablechild[i]?'hl':''}'ddi=${i}>${ds.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
+
+			table.appendChild(r);
+		});
+
+		setInterval(()=>{
+			GetElement('loaderoverlay').style.display='none';
+			Flash();
+
+			let idc=20;
+
+			if(GetElement('idc')!==document.activeElement){
+				GetElement('idc').scrollTop=idc*15;
+			}
+		},1000);
+	</script>
+</html>

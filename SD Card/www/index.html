@@ -1,0 +1,150 @@
+<html>
+	<head>
+		<meta name=viewport content=width=device-width,initial-scale=1.0>
+		<meta charset=utf-8>
+		<link rel=icon href=data:,>
+		<link rel='shortcut icon'href=data:,>
+		<title>ESP32 Indoor Panel</title>
+		<link rel=stylesheet type=text/css href=www/style.css>
+		<script src=www/chart.js></script>
+		<script>
+			let HTMLVersion='V420260313_135030',MaxLightBright=%MAXBRIGHT%,ElementsValues=[%ELEMENTVALUES%];
+			let Chart2Labels=[
+				{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C'},
+				{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'%%'},
+				{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa',yAxisID:'s'},
+				%SOILLABELS%
+				{label:'Luz',borderColor:'#D6B83B',backgroundColor:'#D6B83B',stepped:1,yAxisID:'s'}
+			];
+		</script>
+	</head>
+	<body>
+		<div id=updateflash></div>
+		<div id=loaderoverlay><span id=loader></span></div>
+		<div id=wrapper>
+			<card_header>
+				<div style=display:flex>
+					<div><div style=font-size:19 id=currenttime></div></div>
+					<div style=margin-left:auto>
+						<a href=www/logs.html><button>Ver Logs</button></a> <button onclick=SendAction('update','time',Math.floor(Date.now()/1000))>Sincronizar Fecha</button> <button onclick=SendAction('restart')>Reiniciar</button>
+					</div>
+				</div>
+			</card_header>
+			<card_header>Perfil:<input type=range class=slider id=profile min=0 max=2 step=1 value=%PROFILE% oninput=SetSelectedProfile(true)> <ind id=ind_profile></ind></card_header>
+			<card>
+				<div style=display:flex>
+					<div>
+						<ct>Fotoperiodo</ct>
+						<svg width=16 viewBox='0 0 64 64'>
+							<path id=ls d='M32 4C20 4 12 14 12 24C12 31 16 36 20 40C22 42 22 44 22 48H42C42 44 42 42 44 40C48 36 52 31 52 24C52 14 44 4 32 4Z' fill=#CFCFCF />
+							<rect x=22 y=48 width=20 height=25 fill=#555 />
+						</svg>
+						<container>Encendido:<wheelcontainer><div class=wheel id=lightstart></div></wheelcontainer><div id=ind_meri_start></div></container>
+						<container>Apagado:<wheelcontainer><div class=wheel id=lightstop></div></wheelcontainer><div id=ind_meri_stop></div></container>
+						<div class=state id=ind_ld></div>
+					</div>
+					<div style=min-width:200>
+						<ct>Intensidad de Luz</ct><br><br>
+						<container><input type=range class=slider id=lb min=0 max=%MAXBRIGHT% step=409.5 value=%BRIGHTLEVEL% oninput=SetLightBright(true)><div id=ind_lp></div></container>
+						<div class=state id=ind_lb></div>
+					</div>
+				</div>
+			</card>
+			<card>
+				<ct>Temperatura Ambiente</ct>
+				<canvas id=meter_temp></canvas>
+			</card>
+			<card>
+				<ct>Humedad Ambiente</ct>
+				<canvas id=meter_hum></canvas>
+			</card>
+			<card>
+				<ct>Déficit de Presión de Vapor</ct>
+				<canvas id=meter_vpd></canvas>
+			</card>
+			<card>
+				<ct>Humedad de Suelo</ct>
+				%SOILINDICATORS%
+			</card>
+			<card>
+				<ct>Nivel de Solución de Riego</ct>
+				<div style=display:flex>
+					<canvas id=reservoirlevel></canvas>
+					<button onclick=SendAction('cisl')>Calibrar</button>
+				</div>
+			</card>
+			<card>
+				<ct>Contador de Días</ct>
+				<container>Inicio de inicio Cultivo: <ind id=cb>%CROPBEGIN%</ind><button onclick=SetCropBegin()>Definir</button></container>
+				<container>Días de Cultivo transcurridos: <ind id=cdc>%CROPDAYCOUNTER%</ind></container>
+				<container>Días de Riego transcurridos:<wheelcontainer><div class=wheel id=idc></div></wheelcontainer></container>
+				<div class=state id=ind_irrstate></div>
+			</card>
+			<card>
+				<div><ct>Ventilación Interna</ct> <img class='fan f0'src=www/fan.webp></div>
+				<container>Modo:<input type=range class=slider id=ifm min=0 max=2 step=1 value=%INTERNALFANMODE% oninput=SetFanMode('ifm',true)><ind id=ind_ifm></ind></container>
+				<container>Temperatura de Encendido:<wheelcontainer><div class=wheel id=ifts></div></wheelcontainer>°C</container>
+				<div><ct>Recirculación de Aire</ct> <img class='fan f1'src=www/fan.webp></div>
+				<container>Modo:<input type=range class=slider id=rfm min=0 max=2 step=1 value=%RECIRCULATIONFANSMODE% oninput=SetFanMode('rfm',true)><ind id=ind_rfm></ind></container>
+				<container>Temperatura de Encendido:<wheelcontainer><div class=wheel id=rfts></div></wheelcontainer>°C</container>
+				<container>Humedad de Encendido:<wheelcontainer><div class=wheel id=rfhs></div></wheelcontainer>%%</container>
+				<div class=state id=ind_fansrest></div>
+			</card>
+			<card>
+				<ct>Ferilización</ct>
+				<container>Modo de Incorporación: <input type=range class=slider id=fim min=0 max=1 step=1 value=%FERTILIZERSINCORPORATIONMODE% oninput=SetFertsIncorporationMode(true)> <ind id=ind_fim></ind></container>
+				<ind id=fti></ind>
+				<button onclick=SendAction('applyferts')>Incorporar Fertilizantes</button>
+			</card>
+			<card_header>
+				<ct>Esquema de Riego y Fertilización</ct>
+				<canvas id=ichart></canvas>
+			</card_header>
+			<card>
+				<ct>Configuración Interna (Estos valores no cambian según el Perfil)</ct>
+				<container>Intervalo de Reposo de Ventiladores:<wheelcontainer><div class=wheel id=restint></div></wheelcontainer>Minutos</container>
+				<container>Duración de Reposo de Ventiladores:<wheelcontainer><div class=wheel id=restdur></div></wheelcontainer>Minutos</container>
+				<hr>
+				<container>Histéresis de Apagado por Temperatura:<wheelcontainer><div class=wheel id=temphys></div></wheelcontainer>°C</container>
+				<container>Histéresis de Apagado por Humedad:<wheelcontainer><div class=wheel id=humhys></div></wheelcontainer>%%</container>
+				<hr>
+				<ct>Caudal en %FLOWTESTDURATION% segundos de cada Bomba</ct>
+				<container>Riego:<wheelcontainer><div class=wheel id=ifpm></div></wheelcontainer>cc<button onclick=SendAction('testpump4')>Probar</button></container>
+				<container>Reductor de pH:<wheelcontainer><div class=wheel id=pumpfpm0></div></wheelcontainer>cc<button onclick=SendAction('testpump5')>Probar</button></container>
+				<container>Fertilizante de Vegetativo:<wheelcontainer><div class=wheel id=pumpfpm1></div></wheelcontainer>cc<button onclick=SendAction('testpump6')>Probar</button></container>
+				<container>Fertilizante de Floración:<wheelcontainer><div class=wheel id=pumpfpm2></div></wheelcontainer>cc<button onclick=SendAction('testpump7')>Probar</button></container>
+				<hr>
+				<container>Duración de Mezclado de Solución de Riego:<wheelcontainer><div class=wheel id=mixdur></div></wheelcontainer>Segundos<button onclick=SendAction('mixis')>Mezclar</button></container>
+				<hr>
+				<container>Intervalo de toma de Muestras:<wheelcontainer><div class=wheel id=saint></div></wheelcontainer>Minutos</container>
+				<hr>
+				<div style=display:flex>
+					<div>
+						<container>SSID Wifi:<input id=ssid value='%SSID%'></container>
+						<container>Contraseña Wifi:<input id=ssidpwd value='%SSIDPWD%'></container>
+					</div>
+					&nbsp;<button onclick=SendAction('update','ssid',document.getElementById('ssid').value,'ssidpwd',document.getElementById('ssidpwd').value)>Actualizar</button>
+				</div>
+				<hr>
+				<ct>Firmware Update</ct>
+				<container>Firmware Version: <ind id=firmver>%FIRMWAREVERSION%</ind></container>
+				<form id=otaform><container>Firmware:<input type=file id=otafile required><button type=submit>Subir</button></container></form>
+				<hr>
+				<ct>Web Software Update</ct>
+				<container>HTML Version: <ind id=htmlver></ind></container>
+				<container>CSS Version: <ind id=cssver></ind></container>
+				<container>JS Version: <ind id=jsver></ind></container>
+				<form id=softwareform><container>Software:<input type=file id=softwarefile multiple required><button type=submit>Subir</button></container></form>
+			</card>
+			<card_header>
+				<ct>Historial de las últimas 48 muestras</ct>
+				<table id=legend>
+					<thead><tr><th>Indicadores<div style=float:right><button id=tt>Mostrar Valores</button></div></th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead>
+					<tbody></tbody>
+				</table>
+				<canvas id=hchart></canvas>
+			</card_header>
+		</div>
+	</body>
+	<script src=www/script.js></script>
+</html>

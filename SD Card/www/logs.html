@@ -1,0 +1,31 @@
+<html>
+	<head>
+		<meta name=viewport content=width=device-width,initial-scale=1.0>
+		<meta charset=utf-8>
+		<link rel=icon href=data:,>
+		<link rel='shortcut icon'href=data:,>
+		<title>ESP32 Indoor Logs</title>
+		<link rel=stylesheet type=text/css href=style.css>
+		<style>a{color:inherit;text-decoration:underline}</style>
+	</head>
+	<body>
+		<card><ct>Logs disponibles</ct><a href=/><button>Volver al Panel</button></a><br></card>
+		<ul id=list></ul>
+		<script>
+			fetch('/?action=logslist').then(r=>r.text()).then(t=>{
+				let e=document.getElementById('list'),f=t.split(':'),d=new Date(),p=n=>n.toString().padStart(2,'0'),today=`logging_${p(d.getDate())}_${p(d.getMonth()+1)}_${d.getFullYear().toString().slice(-2)}.log`;
+
+				const parseDate=n=>{let m=n.match(/(\d+)_(\d+)_(\d+)/);return m?new Date(2000+parseInt(m[3]),parseInt(m[2])-1,parseInt(m[1])):new Date(0);};
+
+				f.sort((a,b)=>parseDate(b)-parseDate(a)).forEach(n=>{
+					let i=document.createElement('li'),l=document.createElement('a');
+					l.href='../logs/'+n+(n==today?'#'+Date.now():'');
+					l.textContent=n;
+					l.target='_blank';
+					i.appendChild(l);
+					e.appendChild(i);
+				});
+			});
+		</script>
+	</body>
+</html>

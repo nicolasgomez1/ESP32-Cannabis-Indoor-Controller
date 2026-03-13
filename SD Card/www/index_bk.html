@@ -1,0 +1,34 @@
+<html>
+	<head>
+		<meta name=viewport content=width=device-width,initial-scale=1.0>
+		<meta charset=utf-8>
+		<link rel=icon href=data:,>
+		<link rel='shortcut icon'href=data:,>
+		<title>ESP32 Indoor Panel</title>
+		<link rel=stylesheet type=text/css href=style.css>
+	</head>
+	<body>
+		<div id=wrapper>
+			<card>
+				<ct>Web Software Update Backup</ct>
+				<form id=softwareform><container>Software:<input type=file id=softwarefile required><button type=submit>Subir</button></container></form>
+			</card>
+		</div>
+	</body>
+	<script>
+		function GetElement(n){return document.getElementById(n);}
+
+		GetElement('softwareform').addEventListener('submit',ev=>{
+			ev.preventDefault();
+
+			let file=GetElement('softwarefile').files[0];
+			if(!file)
+				return;
+
+			let formData=new FormData();
+			formData.append('file',file);
+
+			fetch('/upload',{method:'POST',body:formData}).then(response=>response.text()).then(r=>{alert(r);});
+		});
+	</script>
+</html>
