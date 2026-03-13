@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260313_135030"
+#define FIRMWAREVERSION "V420260313_182255"
 
 #include <map>
 #include <Secrets.h>
@@ -163,8 +163,7 @@ const char* g_strWebServerFiles[] = { // Add here files to be server by the webs
   "fan.webp",
   "style.css",
   "script.js",
-  "logs.html",
-  "index_bk.html"
+  "logs.html"
 };
 
 // DO NOT TOUCH IT!
@@ -228,7 +227,6 @@ int8_t g_nLastWateredHour = -1;
 uint8_t g_nFertilizerIncorporationMode = 0;
 std::vector<WateringData> g_vecWateringStages;
 ///////////////////////////////////////////
-bool g_bUploadCompleteSuccessfully = false; // NOTE: This is for index_bk.html
 static std::map<String, File> g_mapUploadFiles;
 bool g_bIsSDInit = false;
 uint8_t g_nCurrentProfile = 0;
@@ -1415,15 +1413,16 @@ void setup() {
         // =============== Irrigation Pump CC Flow Per Minute =============== //
         CheckNSetValue(request, "ifpm", g_nIrrigationFlowPerMinute, F("el Caudal por Minuto de Bomba de Riego"), strReturn);
         // =============== Each Fertilizer Pump CC Flow Per Minute =============== //
-        if (request->arg("action").startsWith("pumpfpm")) {
-          uint8_t nFertilizerPumpID = request->arg("action").substring(7).toInt();
+        for (uint8_t i = 0; i < MAX_FERTILIZER_PUMPS; i++) {
+          String strArg = "pumpfpm" + String(i);
+          if (request->hasArg(strArg)) {
+            nNewValue = request->arg(strArg).toInt();
 
-          nNewValue = request->arg("pumpfpm" + nFertilizerPumpID).toInt();
+            if (nNewValue != g_nFertilizersPumpsFlowPerMinute[i]) {
+              g_nFertilizersPumpsFlowPerMinute[i] = nNewValue;
 
-          if (nNewValue != g_nFertilizersPumpsFlowPerMinute[nFertilizerPumpID]) {
-            g_nFertilizersPumpsFlowPerMinute[nFertilizerPumpID] = nNewValue;
-
-            strReturn += "Se actualizó el Caudal por Minuto de Bomba de " + String((nFertilizerPumpID == 0) ? "Reductor de pH" : ((nFertilizerPumpID == 1) ? "Fertilizante de Vegetativo" : "Fertilizante de Floración")) + ".\r\n";  // WARNING: Hardcode names
+              strReturn += "Se actualizó el Caudal por Minuto de Bomba de " + String((i == 0) ? "Reductor de pH" : (i == 1 ? "Fertilizante de Vegetativo" : "Fertilizante de Floración")) + ".\r\n";
+            }
           }
         }
         // =============== Mixing Pump Duration =============== //
@@ -1659,6 +1658,8 @@ void setup() {
     if (!nIndex) {
       bUpdateError = false;
 
+      Update.abort();
+
       LOGGER(INFO, true, "Updating Firmware. File: %s", strFileName.c_str());
 
       if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
@@ -1672,6 +1673,8 @@ void setup() {
       bUpdateError = true;
 
       LOGGER(ERROR, true, "Firmware update failed. Error: %s", Update.errorString());
+    } else {
+      LOGGER(INFO, true, "Written: %d/%d bytes.", Update.progress(), Update.size());
     }
 
     if (bFinal) {
@@ -1680,36 +1683,6 @@ void setup() {
       else
         LOGGER(ERROR, true, "Firmware update failed. Error: %s", Update.errorString());
     }
-  });
-
-  // NOTE: This is for index_bk.html
-  g_pWebServer.on("/upload", HTTP_POST, [](AsyncWebServerRequest* request) {
-    request->send(200, "text/plain", (g_bUploadCompleteSuccessfully ? "Archivo subido correctamente." : "No se pudo subir el archivo."));
-  }, [](AsyncWebServerRequest* request, String strFileName, size_t nIndex, uint8_t* nData, size_t nLen, bool bFinal) {
-    static File pUploadFile;
-
-    SafeSDAccess([&]() {
-      if (!nIndex) {
-        g_bUploadCompleteSuccessfully = false;
-
-        pUploadFile = SD.open(String("/www/") + strFileName, FILE_WRITE);
-      }
-
-      if (pUploadFile)
-        pUploadFile.write(nData, nLen);
-
-      if (bFinal) {
-        if (pUploadFile) {
-          pUploadFile.close();
-
-          g_bUploadCompleteSuccessfully = true;
-
-          LOGGER(INFO, false, "File: %s upload complete.", strFileName.c_str());
-        } else {
-          LOGGER(ERROR, false, "File: %s upload failed.", strFileName.c_str());
-        }
-      }
-    });
   });
 
   g_pWebServer.on("/upload_new", HTTP_POST, [](AsyncWebServerRequest* request) {
