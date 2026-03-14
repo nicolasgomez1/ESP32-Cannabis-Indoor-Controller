@@ -776,10 +776,11 @@ ichart.canvas.addEventListener('pointerup',e=>{
 			}
 
 			if(c){
-				ichart.update();
+				if(confirm('¿Querés aplicar los cambios?')){
+					ichart.update();
 
-				if(confirm('¿Querés aplicar los cambios?'))
 					Apply();
+				}
 			}
 		}
 	}
