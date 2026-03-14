@@ -1,4 +1,4 @@
-const JSVersion='V420260313_135030';
+const JSVersion='V420260314_162312';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -743,8 +743,7 @@ ichart.canvas.addEventListener('pointerup',e=>{
 	let d=ichart.getElementsAtEventForMode(e,'nearest',{intersect:true},true);
 
 	let Apply=()=>{
-		if(confirm('¿Querés aplicar los cambios?'))
-			SendAction('update','ichart',ichart.data.datasets[0].data.map((_,i)=>ichart.data.datasets[0].data[i].x+'|'+ichart.data.datasets.map(ds=>ds.data[i].y).join('|')).join(','));
+		SendAction('update','ichart',ichart.data.datasets[0].data.map((_,i)=>ichart.data.datasets[0].data[i].x+'|'+ichart.data.datasets.map(ds=>ds.data[i].y).join('|')).join(','));
 	};
 
 	if(d.length){
@@ -778,7 +777,9 @@ ichart.canvas.addEventListener('pointerup',e=>{
 
 			if(c){
 				ichart.update();
-				Apply();
+
+				if(confirm('¿Querés aplicar los cambios?'))
+					Apply();
 			}
 		}
 	}

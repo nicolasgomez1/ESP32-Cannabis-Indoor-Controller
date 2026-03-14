@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260314_143408" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260314_162312" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -86,6 +86,8 @@ Notes:
 #define CALLMEBOT_PHONE_TO_SEND SECRET_CALLMEBOT_PHONE_TO_SEND
 
 #define TIME_SAVE_INTERVAL 10000  // 10 Seconds
+
+#define CHECK_RESERVOIR_LEVEL_INTERVAL 60000
 
 #define SECONDS_WAIT_AFTER_TURN_ON_POWER_SUPPLY 1500  // Wait 1.5 seconds to stabilize the
 
@@ -1813,8 +1815,10 @@ void loop() {
     struct tm currentTime;
     localtime_r(&pTimeNow, &currentTime);
     // ================================================== Wifi Section ================================================== //
-    if (eTaskGetState(g_pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED) // If is not connected to Wifi and is not currently running a reconnect trask, start it
-      vTaskResume(g_pWiFiReconnect);
+    {
+      if (eTaskGetState(g_pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED) // If is not connected to Wifi and is not currently running a reconnect trask, start it
+        vTaskResume(g_pWiFiReconnect);
+    }
     // ================================================== Time Section ================================================== //
     {
       static uint64_t nLastWriteTick = 0;
@@ -1843,7 +1847,10 @@ void loop() {
     }
     // ================================================== Irrigation Solution Level Section ================================================== //
     {
-      if (g_nIrrigationReservoirLowerLevel > 0) {
+      static uint64_t nLastReservoirLevelCheck = 0;
+
+      if (g_nIrrigationReservoirLowerLevel > 0 && (g_nIrrigationSolutionLevel == 0 || (nCurrentMillis - nLastReservoirLevelCheck) >= CHECK_RESERVOIR_LEVEL_INTERVAL)) {
+        nLastReservoirLevelCheck = nCurrentMillis;
         int16_t nLowerLevel = GetIrrigationReservoirLevel();
         if (nLowerLevel != -1) 
           g_nIrrigationSolutionLevel = std::clamp(static_cast<uint8_t>(100.0f * (g_nIrrigationReservoirLowerLevel - nLowerLevel) / g_nIrrigationReservoirLowerLevel), static_cast<uint8_t>(0), static_cast<uint8_t>(100));
@@ -1857,122 +1864,126 @@ void loop() {
       }
     }
     // ================================================== Lights Sections ================================================== //
-    if ((g_nStartLightTime > 0 || g_nStopLightTime > 0) &&  // Check if either the light start time or stop time is set (greater than 0)
-        (g_nEffectiveStartLights < g_nEffectiveStopLights && currentTime.tm_hour >= g_nEffectiveStartLights && currentTime.tm_hour < g_nEffectiveStopLights) || // Normal case: light start time is before stop time (e.g., from 7 AM to 7 PM)
-        (g_nEffectiveStartLights >= g_nEffectiveStopLights && (currentTime.tm_hour >= g_nEffectiveStartLights || currentTime.tm_hour < g_nEffectiveStopLights))) {  // Special case: light schedule crosses midnight (e.g., from 8 PM to 6 AM)
-      if (digitalRead(RELAYS_MAP[LIGHTS].Pin)) {
-        digitalWrite(RELAYS_MAP[LIGHTS].Pin, RELAY_PIN_ON);
+    {
+      if ((g_nStartLightTime > 0 || g_nStopLightTime > 0) &&  // Check if either the light start time or stop time is set (greater than 0)
+          (g_nEffectiveStartLights < g_nEffectiveStopLights && currentTime.tm_hour >= g_nEffectiveStartLights && currentTime.tm_hour < g_nEffectiveStopLights) || // Normal case: light start time is before stop time (e.g., from 7 AM to 7 PM)
+          (g_nEffectiveStartLights >= g_nEffectiveStopLights && (currentTime.tm_hour >= g_nEffectiveStartLights || currentTime.tm_hour < g_nEffectiveStopLights))) {  // Special case: light schedule crosses midnight (e.g., from 8 PM to 6 AM)
+        if (digitalRead(RELAYS_MAP[LIGHTS].Pin)) {
+          digitalWrite(RELAYS_MAP[LIGHTS].Pin, RELAY_PIN_ON);
 
-        LOGGER(INFO, true, "Lights Started.");
-      }
-    } else {  // If Current Time is out of ON range, turn it OFF
-      if (!digitalRead(RELAYS_MAP[LIGHTS].Pin)) {
-        digitalWrite(RELAYS_MAP[LIGHTS].Pin, RELAY_PIN_OFF);
+          LOGGER(INFO, true, "Lights Started.");
+        }
+      } else {  // If Current Time is out of ON range, turn it OFF
+        if (!digitalRead(RELAYS_MAP[LIGHTS].Pin)) {
+          digitalWrite(RELAYS_MAP[LIGHTS].Pin, RELAY_PIN_OFF);
 
-        LOGGER(INFO, true, "Lights Stopped.");
+          LOGGER(INFO, true, "Lights Stopped.");
+        }
       }
     }
     // ================================================== Fertilizers Incorporation Section ================================================== //
-    if (g_bApplyFertilizers) {
-      static FertilizerIncorporationStage Stages[MAX_FERTILIZER_PUMPS] = {};
-      static uint8_t nMaxStages = 0;
+    {
+      if (g_bApplyFertilizers) {
+        static FertilizerIncorporationStage Stages[MAX_FERTILIZER_PUMPS] = {};
+        static uint8_t nMaxStages = 0;
 
-      if (nMaxStages == 0) {
-        bool bCanIncorporateFerts = false;
+        if (nMaxStages == 0) {
+          bool bCanIncorporateFerts = false;
 
-        for (int8_t i = g_vecWateringStages.size() - 1; i >= 0; --i) {
-          const auto& Watering = g_vecWateringStages[i];
+          for (int8_t i = g_vecWateringStages.size() - 1; i >= 0; --i) {
+            const auto& Watering = g_vecWateringStages[i];
 
-          if (!bCanIncorporateFerts && g_nIrrigationDayCounter >= Watering.Day && Watering.TargetCC > 0) {
-            if (g_nFertilizerIncorporationMode == 0) {  // Permissive mode: Incorporate ferts from last known day with ferts values
-              bCanIncorporateFerts = true;
-            } else if (g_nFertilizerIncorporationMode == 1) { // Strict mode: Incorporate ferts from current day (If have defined)
-              for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {
-                if (Watering.FertilizerToApply[j] > 0.001f) {
-                  bCanIncorporateFerts = true;
+            if (!bCanIncorporateFerts && g_nIrrigationDayCounter >= Watering.Day && Watering.TargetCC > 0) {
+              if (g_nFertilizerIncorporationMode == 0) {  // Permissive mode: Incorporate ferts from last known day with ferts values
+                bCanIncorporateFerts = true;
+              } else if (g_nFertilizerIncorporationMode == 1) { // Strict mode: Incorporate ferts from current day (If have defined)
+                for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {
+                  if (Watering.FertilizerToApply[j] > 0.001f) {
+                    bCanIncorporateFerts = true;
 
-                  break;
+                    break;
+                  }
                 }
               }
             }
-          }
 
-          if (!bCanIncorporateFerts && g_nIrrigationDayCounter >= Watering.Day)
-            break;
+            if (!bCanIncorporateFerts && g_nIrrigationDayCounter >= Watering.Day)
+              break;
 
-          bool bFertilizerFound = false;
+            bool bFertilizerFound = false;
 
-          for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {  // Check if really have values of ferts to be incorporated
-            if (Watering.FertilizerToApply[j] > 0.001f) {
-              bFertilizerFound = true;
+            for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {  // Check if really have values of ferts to be incorporated
+              if (Watering.FertilizerToApply[j] > 0.001f) {
+                bFertilizerFound = true;
+
+                break;
+              }
+            }
+
+            if (bCanIncorporateFerts && bFertilizerFound) {
+              for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {
+                float fCCToApply = Watering.FertilizerToApply[j];
+
+                if (fCCToApply > 0.001f) {
+                  uint64_t nDuration = static_cast<uint64_t>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j] + 0.5f); // WARNING: Hardcode offset for round
+                  if (nDuration == 0)
+                    nDuration = 1;
+
+                  Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), nDuration };
+
+                  LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
+                }
+              }
 
               break;
             }
           }
 
-          if (bCanIncorporateFerts && bFertilizerFound) {
-            for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {
-              float fCCToApply = Watering.FertilizerToApply[j];
+          if (nMaxStages == 0) {
+            g_bApplyFertilizers = false;
 
-              if (fCCToApply > 0.001f) {
-                uint64_t nDuration = static_cast<uint64_t>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j] + 0.5f); // WARNING: Hardcode offset for round
-                if (nDuration == 0)
-                  nDuration = 1;
-
-                Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), nDuration };
-
-                LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
-              }
-            }
-
-            break;
+            LOGGER(WARN, true, "An attempt was made to incorporate Fertilizers, but the conditions were not met.");
           }
-        }
+        } else {
+          if (PowerSupplyControl(true)) {
+            static uint64_t nFertilizersTimer = 0;
 
-        if (nMaxStages == 0) {
-          g_bApplyFertilizers = false;
+            if (nFertilizersTimer == 0) {
+              nFertilizersTimer = nCurrentMillis;
+            } else {
+              static bool bPowerStabilized = false;
 
-          LOGGER(WARN, true, "An attempt was made to incorporate Fertilizers, but the conditions were not met.");
-        }
-      } else {
-        if (PowerSupplyControl(true)) {
-          static uint64_t nFertilizersTimer = 0;
+              if (!bPowerStabilized && (nCurrentMillis - nFertilizersTimer) >= SECONDS_WAIT_AFTER_TURN_ON_POWER_SUPPLY) {
+                bPowerStabilized = true;
+              } else if (bPowerStabilized) {
+                static uint8_t nStage = 0;
 
-          if (nFertilizersTimer == 0) {
-            nFertilizersTimer = nCurrentMillis;
-          } else {
-            static bool bPowerStabilized = false;
+                if (digitalRead(Stages[nStage].Pin)) {
+                  digitalWrite(Stages[nStage].Pin, RELAY_PIN_ON);
 
-            if (!bPowerStabilized && (nCurrentMillis - nFertilizersTimer) >= SECONDS_WAIT_AFTER_TURN_ON_POWER_SUPPLY) {
-              bPowerStabilized = true;
-            } else if (bPowerStabilized) {
-              static uint8_t nStage = 0;
+                  nFertilizersTimer = nCurrentMillis;
 
-              if (digitalRead(Stages[nStage].Pin)) {
-                digitalWrite(Stages[nStage].Pin, RELAY_PIN_ON);
+                  LOGGER(INFO, true, "%s Started.", RELAYS_MAP[Stages[nStage].Pin].Name);
+                } else {
+                  if ((nCurrentMillis - nFertilizersTimer) >= Stages[nStage].Duration) {
+                    digitalWrite(Stages[nStage].Pin, RELAY_PIN_OFF);
 
-                nFertilizersTimer = nCurrentMillis;
+                    LOGGER(INFO, true, "%s Stopped.", RELAYS_MAP[Stages[nStage].Pin].Name);
 
-                LOGGER(INFO, true, "%s Started.", RELAYS_MAP[Stages[nStage].Pin].Name);
-              } else {
-                if ((nCurrentMillis - nFertilizersTimer) >= Stages[nStage].Duration) {
-                  digitalWrite(Stages[nStage].Pin, RELAY_PIN_OFF);
+                    nStage++;
 
-                  LOGGER(INFO, true, "%s Stopped.", RELAYS_MAP[Stages[nStage].Pin].Name);
+                    if (nStage == nMaxStages) {
+                      LOGGER(INFO, true, "Fertilizers Incorporation completed.");
 
-                  nStage++;
+                      PowerSupplyControl(false);
 
-                  if (nStage == nMaxStages) {
-                    LOGGER(INFO, true, "Fertilizers Incorporation completed.");
-
-                    PowerSupplyControl(false);
-
-                    bPowerStabilized = false;
-                    nStage = 0;
-                    memset(Stages, 0, sizeof(Stages));
-                    nMaxStages = 0;
-                    nFertilizersTimer = 0;
-                    g_bApplyFertilizers = false;
+                      bPowerStabilized = false;
+                      nStage = 0;
+                      memset(Stages, 0, sizeof(Stages));
+                      nMaxStages = 0;
+                      nFertilizersTimer = 0;
+                      g_bApplyFertilizers = false;
+                    }
                   }
                 }
               }
