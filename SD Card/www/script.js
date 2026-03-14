@@ -1,4 +1,4 @@
-const JSVersion='V420260314_162312';
+const JSVersion='V420260314_163535';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -758,15 +758,17 @@ ichart.canvas.addEventListener('pointerup',e=>{
 			Apply();
 		}
 	}else{
-		let d=prompt('Día',Math.round(ichart.scales.x.getValueForPixel(e.clientX-r.left))),c=false;
+		let d=prompt('Día',Math.round(ichart.scales.x.getValueForPixel(e.clientX-r.left)));
 
 		if(d!==null&&!isNaN(d)&&d>0){
+			// TODO: Problema, esto va a agregar los datos al ichart.data.datasets de por más que no haga el ichart.update();. Así que en caso de que no sea confirm, tengo que borrar los agregados.
+			let c=false,td=[];
+
 			for(let i=0;i<Chart1Labels.length;i++){
 				let cc=prompt(`Cantidad de CC de ${Chart1Labels[i].label} a ${i==0?'Regar':'Incorporar'}`,Math.round(ichart.scales.y.getValueForPixel(e.clientY-r.top)));
 
 				if(cc!==null&&!isNaN(cc)){
-					ichart.data.datasets[i].data.push({x:parseInt(d),y:parseFloat(cc)});
-					ichart.data.datasets[i].data.sort((a,b)=>a.x-b.x);
+					td.push({dsi:i,p:{x:parseInt(d),y:parseFloat(cc)}});
 
 					if(i+1==Chart1Labels.length)
 						c=true;
@@ -776,7 +778,13 @@ ichart.canvas.addEventListener('pointerup',e=>{
 			}
 
 			if(c){
-				if(confirm('¿Querés aplicar los cambios?')){
+				if(confirm('¿Querés aplicar los cambios?'))
+				{
+					for(let t of td){
+						ichart.data.datasets[t.dsi].data.push(t.p);
+						ichart.data.datasets[t.dsi].data.sort((a,b)=>a.x-b.x);
+					}
+
 					ichart.update();
 
 					Apply();
