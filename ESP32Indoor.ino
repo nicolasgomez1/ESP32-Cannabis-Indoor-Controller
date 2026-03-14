@@ -760,6 +760,25 @@ uint8_t GetSoilHumidity(uint8_t nSensorNumber) {
   return constrain(map(nCombinedValues / HW080_MAX_READS, HW080_MIN, HW080_MAX, 0, 100), 0, 100);
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Reads the irrigation reservoir sensor and updates the global reservoir level percentage.
+// The level is calculated relative to the configured lower reference level and clamped to 0–100%.
+// The update occurs only if the reference level is valid (>0) and the sensor reading is valid (-1 indicates an error).
+// In TEST_MODE, the current level percentage is printed to the serial monitor for debugging.
+void CheckReservoirLevel() {
+  if (g_nIrrigationReservoirLowerLevel > 0) {
+    int16_t nLowerLevel = GetIrrigationReservoirLevel();
+    if (nLowerLevel != -1) 
+      g_nIrrigationSolutionLevel = std::clamp(static_cast<uint8_t>(100.0f * (g_nIrrigationReservoirLowerLevel - nLowerLevel) / g_nIrrigationReservoirLowerLevel), static_cast<uint8_t>(0), static_cast<uint8_t>(100));
+  }
+
+#ifdef TEST_MODE
+  char cBuffer[37];
+  snprintf(cBuffer, sizeof(cBuffer), "[INFO] Current Reservoir Level: %u%%", g_nIrrigationSolutionLevel);
+
+  Serial.println(cBuffer);
+#endif
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Checks for the presence of a specified argument in the web request and updates a destination variable.
 // Compares the provided value from the request with the current one. If they differ, the destination is updated.
 // Appends a feedback message to the return string if an update occurs, using a flash-resident message to save RAM.
@@ -1849,18 +1868,10 @@ void loop() {
     {
       static uint64_t nLastReservoirLevelCheck = 0;
 
-      if (g_nIrrigationReservoirLowerLevel > 0 && (g_nIrrigationSolutionLevel == 0 || (nCurrentMillis - nLastReservoirLevelCheck) >= CHECK_RESERVOIR_LEVEL_INTERVAL)) {
+      if (g_nIrrigationSolutionLevel == 0 || (nCurrentMillis - nLastReservoirLevelCheck) >= CHECK_RESERVOIR_LEVEL_INTERVAL) {
         nLastReservoirLevelCheck = nCurrentMillis;
-        int16_t nLowerLevel = GetIrrigationReservoirLevel();
-        if (nLowerLevel != -1) 
-          g_nIrrigationSolutionLevel = std::clamp(static_cast<uint8_t>(100.0f * (g_nIrrigationReservoirLowerLevel - nLowerLevel) / g_nIrrigationReservoirLowerLevel), static_cast<uint8_t>(0), static_cast<uint8_t>(100));
 
-#ifdef TEST_MODE
-        char cBuffer[37];
-        snprintf(cBuffer, sizeof(cBuffer), "[INFO] Current Reservoir Level: %u%%", g_nIrrigationSolutionLevel);
-
-        Serial.println(cBuffer);
-#endif
+        CheckReservoirLevel();
       }
     }
     // ================================================== Lights Sections ================================================== //
@@ -2132,6 +2143,8 @@ void loop() {
 
                         for (uint8_t i = 0; i < nSoilMoisturePinsCount; i++)  // Refresh soil moisture values after complete irrigation
                           g_nSoilsHumidity[i] = GetSoilHumidity(i);
+
+                        CheckReservoirLevel();
 
                         bPowerStabilized = false;
                         nStage = 0;
