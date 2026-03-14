@@ -761,7 +761,6 @@ ichart.canvas.addEventListener('pointerup',e=>{
 		let d=prompt('Día',Math.round(ichart.scales.x.getValueForPixel(e.clientX-r.left)));
 
 		if(d!==null&&!isNaN(d)&&d>0){
-			// TODO: Problema, esto va a agregar los datos al ichart.data.datasets de por más que no haga el ichart.update();. Así que en caso de que no sea confirm, tengo que borrar los agregados.
 			let c=false,td=[];
 
 			for(let i=0;i<Chart1Labels.length;i++){

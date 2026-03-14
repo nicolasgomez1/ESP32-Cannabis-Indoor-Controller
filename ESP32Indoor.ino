@@ -1797,7 +1797,7 @@ void setup() {
       LOGGER(INFO, false, "Cancelled: %d temporary files removed.", vecTmpFiles.size());
     });
 
-    request->send(200, "text/plain", "Cancelado.");
+    request->send(200, "text/plain", "OK.");
   });
 
   g_pWebServer.begin();
