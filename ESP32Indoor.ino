@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260314_162312" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260314_190318" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -87,7 +87,7 @@ Notes:
 
 #define TIME_SAVE_INTERVAL 10000  // 10 Seconds
 
-#define CHECK_RESERVOIR_LEVEL_INTERVAL 60000
+#define CHECK_RESERVOIR_LEVEL_INTERVAL 3600000  // 1 Hour
 
 #define SECONDS_WAIT_AFTER_TURN_ON_POWER_SUPPLY 1500  // Wait 1.5 seconds to stabilize the
 
@@ -2030,6 +2030,8 @@ void loop() {
           uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24;
 
           nTotalPulses = ((nStopIrrigationHour - nStartIrrigationHour + 24) % 24) / nPulseInterval;
+
+          CheckReservoirLevel();
 
           // Permitir regar si: se están incorporando los fertilizantes. Ni si se está haciendo una prueba de flujo de las Bombas. Ni si se está mezclando la solución de Riego. Ó se está ejecutando un riego.
           // NOTE: Estos checks son livianos así que por esa parte no hay Drama. En cambio, el check para verificar si TargetCC es > 0 es algo más pesado; Así que lo pongo por separado luego de hacer estos checks livianos.
