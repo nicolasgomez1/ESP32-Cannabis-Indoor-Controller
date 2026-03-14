@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260313_182255"
+#define FIRMWAREVERSION "V420260314_143408" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -1633,16 +1633,13 @@ void setup() {
     bool bUpdate = !Update.hasError();
 
     if (bUpdate) {
-      SaveSettings();
-
       time_t pTimeNow = time(nullptr);
-      struct tm currentTime;
-      localtime_r(&pTimeNow, &currentTime);
-
       char cBuffer[12];
       snprintf(cBuffer, sizeof(cBuffer), "%lu", (long)pTimeNow);
 
       WriteToSD("/time", cBuffer, false); // Write current time to SD Card
+
+      SaveSettings();
 
       SaveProfile(g_nCurrentProfile);
 
@@ -2182,7 +2179,14 @@ void loop() {
 
       bool bGeneralTurnOn = g_nEnvironmentTemperature > 0 && g_nEnvironmentHumidity > 0;
       // =============== Internal Fan control by Temperature =============== //
-      bool bInternalFan = g_nInternalFanMode == 2 /*always ON*/ || (bGeneralTurnOn && g_nFansRestTimeStartedAt == 0 && g_nInternalFanMode == 1 /*automatic*/ && g_nEnvironmentTemperature >= g_nStartInternalFanTemperature && !(g_nEnvironmentTemperature <= (g_nStartInternalFanTemperature - g_nTemperatureStopHysteresis)));
+      static bool bInternalFanByTemperature = false;
+
+      if (g_nEnvironmentTemperature >= g_nStartInternalFanTemperature)
+        bInternalFanByTemperature = true;
+      else if (g_nEnvironmentTemperature <= (g_nStartInternalFanTemperature - g_nTemperatureStopHysteresis))
+        bInternalFanByTemperature = false;
+
+      bool bInternalFan = g_nInternalFanMode == 2 || (bGeneralTurnOn && g_nFansRestTimeStartedAt == 0 && g_nInternalFanMode == 1 && bInternalFanByTemperature);
       if (bInternalFan) {
         if (digitalRead(RELAYS_MAP[INTERNAL_FAN].Pin)) {
           digitalWrite(RELAYS_MAP[INTERNAL_FAN].Pin, RELAY_PIN_ON);
@@ -2197,7 +2201,20 @@ void loop() {
         }
       }
       // =============== Ventilation Fans control by Temperature & Humidity =============== //
-      bool bVentilationFans = g_nVentilationMode == 2 /*always ON*/ || (bGeneralTurnOn && g_nFansRestTimeStartedAt == 0 && g_nVentilationMode == 1 /*automatic*/ && (g_nEnvironmentTemperature >= g_nStartVentilationTemperature && !(g_nEnvironmentTemperature <= (g_nStartVentilationTemperature - g_nTemperatureStopHysteresis)) || g_nEnvironmentHumidity >= g_nStartVentilationHumidity && !(g_nEnvironmentHumidity <= (g_nStartVentilationHumidity - g_nHumidityStopHysteresis))));
+      static bool bVentilationByTemperature = false;
+      static bool bVentilationByHumidity = false;
+
+      if (g_nEnvironmentTemperature >= g_nStartVentilationTemperature)
+        bVentilationByTemperature = true;
+      else if (g_nEnvironmentTemperature <= (g_nStartVentilationTemperature - g_nTemperatureStopHysteresis))
+        bVentilationByTemperature = false;
+
+      if (g_nEnvironmentHumidity >= g_nStartVentilationHumidity)
+        bVentilationByHumidity = true;
+      else if (g_nEnvironmentHumidity <= (g_nStartVentilationHumidity - g_nHumidityStopHysteresis))
+        bVentilationByHumidity = false;
+
+      bool bVentilationFans = g_nVentilationMode == 2 || (bGeneralTurnOn && g_nFansRestTimeStartedAt == 0 && g_nVentilationMode == 1 && (bVentilationByTemperature || bVentilationByHumidity));
       if (bVentilationFans) {
         if (digitalRead(RELAYS_MAP[VENTILATION_FANS].Pin)) {
           digitalWrite(RELAYS_MAP[VENTILATION_FANS].Pin, RELAY_PIN_ON);
