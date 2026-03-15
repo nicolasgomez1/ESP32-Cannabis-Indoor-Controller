@@ -16,29 +16,29 @@ let elements=[
 	'mixdur','saint'
 ];
 
-let c=['#EC6066','#6699CC','#99C794','#F9AE58'];
+let rc=['#EC6066','#6699CC','#99C794','#F9AE58'];
 
 let vpdranges=[
-	{min:0,max:.3,c:c[0],s:'Peligro, Muy Húmedo'},
-	{min:.3,max:.6,c:c[1],s:'Propagación'},
-	{min:.6,max:1.0,c:c[2],s:'Vegetativo'},
-	{min:1.0,max:1.6,c:c[3],s:'Floración'},
-	{min:1.6,max:6.27,c:c[0],s:'Peligro, Muy Seco'}
+	{min:0,max:.3,c:rc[0],s:'Peligro, Muy Húmedo'},
+	{min:.3,max:.6,c:rc[1],s:'Propagación'},
+	{min:.6,max:1.0,c:rc[2],s:'Vegetativo'},
+	{min:1.0,max:1.6,c:rc[3],s:'Floración'},
+	{min:1.6,max:6.27,c:rc[0],s:'Peligro, Muy Seco'}
 ];
 
 let tempranges=[
-	{min:0,max:18,c:c[1]},
-	{min:18,max:26,c:c[2]},
-	{min:26,max:30,c:c[3]},
-	{min:30,max:60,c:c[0]}
+	{min:0,max:18,c:rc[1]},
+	{min:18,max:26,c:rc[2]},
+	{min:26,max:30,c:rc[3]},
+	{min:30,max:60,c:rc[0]}
 ];
 
 let humranges=[
-	{min:0,max:40,c:c[0]},
-	{min:40,max:50,c:c[1]},
-	{min:50,max:70,c:c[2]},
-	{min:70,max:85,c:c[3]},
-	{min:85,max:100,c:c[0]}
+	{min:0,max:40,c:rc[0]},
+	{min:40,max:50,c:rc[1]},
+	{min:50,max:70,c:rc[2]},
+	{min:70,max:85,c:rc[3]},
+	{min:85,max:100,c:rc[0]}
 ];
 
 let Chart1Labels=[
