@@ -161,11 +161,12 @@ const uint8_t nSoilMoisturePinsCount = sizeof(pSoilMoisturePins) / sizeof(pSoilM
 
 // Global Variables
 const char* g_strWebServerFiles[] = { // Add here files to be server by the webserver
-  "chart.js",
-  "fan.webp",
-  "style.css",
-  "script.js",
-  "logs.html"
+  "/www/chart.js",
+  "/www/fan.webp",
+  "/www/style.css",
+  "/www/script.js",
+  "/www/logs.html",
+  "/www/metrics.html"
 };
 
 // DO NOT TOUCH IT!
@@ -1055,12 +1056,18 @@ void setup() {
         pTimeFile.close();
       }
       ///////////////////////////////////////////////////
-      char cBuffer[29];
-      snprintf(cBuffer, sizeof(cBuffer), "/metrics/metrics_%02d_%04d.txt", currentTime.tm_mon + 1, currentTime.tm_year + 1900);
+      char cBufferFilePath[29];
+      snprintf(cBufferFilePath, sizeof(cBufferFilePath), "/metrics/metrics_%02d_%04d.txt", currentTime.tm_mon + 1, currentTime.tm_year + 1900);
 
-      File pMetricsFile = SD.open(cBuffer, FILE_READ);  // Read Mstrics file (For Chart history)
+      // TODO: Fix this↓: No se carga la info al iniciar. no se si el tiempo aun no se definió o que carajos pasa...
+      LOGGER(INFO, false, "Loading metrics from: %s", cBufferFilePath); // TODO: REMOVE, DEBUG
+
+      File pMetricsFile = SD.open(cBufferFilePath, FILE_READ);  // Read Mstrics file (For Chart history)
       if (pMetricsFile) {
         size_t nFileSize = pMetricsFile.size();
+
+        LOGGER(INFO, false, "Metrics file opened. Size: %d bytes.", pMetricsFile.size()); // TODO: REMOVE, DEBUG
+
         const size_t nBlockSize = 512 /*MAX_GRAPH_MARKS_LENGTH * MAX_GRAPH_MARKS maybe this cause to much stack usage, so better back to 512*/;
         char cChunkBuffer[nBlockSize];
         int64_t nPos = nFileSize - nBlockSize;
@@ -1100,8 +1107,15 @@ void setup() {
             nPos = 0;
         }
 
+        LOGGER(INFO, false, "Metrics loaded: %d lines.", nLinesRead); // TODO: REMOVE, DEBUG
+
         pMetricsFile.close();
       }
+      // TODO: REMOVE, DEBUG START
+      else {
+        LOGGER(ERROR, false, "Metrics file not found or failed to open.");
+      }
+      // TODO: REMOVE, DEBUG END
     } else {
       LOGGER(ERROR, false, "SD initialization failed. Settings & Time will not be loaded, but the system will not restart to avoid unexpected relay behavior.");
     }
@@ -1150,14 +1164,15 @@ void setup() {
   vTaskSuspend(g_pWiFiReconnect); // Suspend the task as it's not needed right now
 
   LOGGER(INFO, true, "Setting up Web Server...");
-  // Static files server
-  for (uint8_t i = 0; i < (sizeof(g_strWebServerFiles) / sizeof(g_strWebServerFiles[0])); i++) {
-    String strPath = "/www/" + String(g_strWebServerFiles[i]);
 
-    g_pWebServer.serveStatic(strPath.c_str(), SD, strPath.c_str()).setCacheControl("max-age=2592000");  // Cache it by 1 month
-  }
-  // Static serving of the logs folder and all the files inside it
+  // Static files server
+  for (uint8_t i = 0; i < (sizeof(g_strWebServerFiles) / sizeof(g_strWebServerFiles[0])); i++)
+    g_pWebServer.serveStatic(g_strWebServerFiles[i], SD, g_strWebServerFiles[i]).setCacheControl("max-age=2592000");  // Cache it by 1 month
+
+  // Static serving of the logs & metrics folder and all the files inside it
   g_pWebServer.serveStatic("/logs", SD, "/logs").setCacheControl("max-age=2592000, immutable"); // Cache it by 1 month
+  g_pWebServer.serveStatic("/metrics", SD, "/metrics").setCacheControl("max-age=2592000, immutable"); // Cache it by 1 month
+
   // Index.html server & Request handler
   g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
     if (request->hasArg("action")) {  // Process the request
@@ -1591,42 +1606,45 @@ void setup() {
         */
         request->send(200, "text/plain", "REFRESH" + strResponse);
         return;
-      } else if (request->arg("action") == "logslist") {  // This returns the file list in logs folder
-        SafeSDAccess([&]() {
-          if (g_bIsSDInit) {
-            bool bFirst = true;
-            String strFileName, strResponse;
-            File pLogsDir = SD.open("/logs");
-            File pFile = pLogsDir.openNextFile();
+      } else if (request->arg("action") == "list") {  // This returns the file list in logs folder
+        if (request->hasArg("logs") || request->hasArg("metrics")) {
+          SafeSDAccess([&]() {
+            if (g_bIsSDInit) {
+              bool bFirst = true;
+              String strFileName, strResponse;
+              String strFolder = request->hasArg("logs") ? "logs" : "metrics";
+              File pLogsDir = SD.open("/" + strFolder);
+              File pFile = pLogsDir.openNextFile();
 
-            while (pFile) {
-              strFileName = String(pFile.name());
+              while (pFile) {
+                strFileName = String(pFile.name());
 
-              if (!pFile.isDirectory()) {
-                if (!bFirst)
-                  strResponse += ":";
-                else
-                  bFirst = false;
+                if (!pFile.isDirectory()) {
+                  if (!bFirst)
+                    strResponse += ":";
+                  else
+                    bFirst = false;
 
-                int nLastSlash = strFileName.lastIndexOf('/');
-                if (nLastSlash >= 0)
-                  strResponse += strFileName.substring(nLastSlash + 1);
-                else
-                  strResponse += strFileName;
+                  int nLastSlash = strFileName.lastIndexOf('/');
+                  if (nLastSlash >= 0)
+                    strResponse += strFileName.substring(nLastSlash + 1);
+                  else
+                    strResponse += strFileName;
+                }
+
+                pFile.close();
+
+                pFile = pLogsDir.openNextFile();
               }
 
-              pFile.close();
+              pLogsDir.close();
 
-              pFile = pLogsDir.openNextFile();
+              request->send(200, "text/plain", strResponse);
+            } else {
+              request->send(500, "text/plain", "No hay una Tarjeta SD conectada.");
             }
-
-            pLogsDir.close();
-
-            request->send(200, "text/plain", strResponse);
-          } else {
-            request->send(500, "text/plain", "No hay una Tarjeta SD conectada.");
-          }
-        });
+          });
+        }
 
         return;
       }
