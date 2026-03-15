@@ -165,8 +165,7 @@ const char* g_strWebServerFiles[] = { // Add here files to be server by the webs
   "/www/fan.webp",
   "/www/style.css",
   "/www/script.js",
-  "/www/logs.html",
-  "/www/metrics.html"
+  "/www/logs.html"
 };
 
 // DO NOT TOUCH IT!
