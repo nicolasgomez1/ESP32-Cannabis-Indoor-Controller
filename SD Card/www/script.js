@@ -1,4 +1,4 @@
-const JSVersion='V420260314_163535';
+const JSVersion='V420260314_213852';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -832,16 +832,16 @@ GetElement('softwareform').addEventListener('submit',async ev=>{
 	if(!f.length)
 		return;
 
-	await fetch('/upload-cleancancel',{method:'POST'});
+	await fetch('/upload-clean',{method:'POST'});
 
 	for(let file of f){
 		let fd=new FormData();
 		fd.append('file',file);
 
-		let r=await fetch('/upload_new',{method:'POST',body:fd});
+		let r=await fetch('/upload',{method:'POST',body:fd});
 		if(!r.ok){
 			alert('Error al subir: '+file.name);
-			await fetch('/upload-cleancancel',{method:'POST'});
+			await fetch('/upload-clean',{method:'POST'});
 			return;
 		}
 	}

@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260314_190318" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260314_234133" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -73,8 +73,9 @@ Notes:
 #define MAX_GRAPH_MARKS 48  // How much logs show in Web Panel Graph
 #define MAX_GRAPH_MARKS_LENGTH 32 // How long text is (Example: 1749390362|100|100|100|100|4095) If change from DHT11 to DHT22 can be 1 more byte more. For each extra soil moisture sensor is 4 bytes more. Remember add a extra byte for null terminator
 
+#define WIFI_RETRY_CONNECT_INTERVAL 300000  // 5 Minutes
 #define WIFI_MAX_RETRYS 5 // Max Wifi reconnection attempts
-#define WIFI_CHECK_INTERVAL 1000  // 1 second
+#define WIFI_RETRY_INTERVAL 1000  // 1 second
 
 #define WEBSERVER_PORT SECRET_WEBSERVER_PORT
 
@@ -832,7 +833,8 @@ void Thread_WifiReconnect(void* parameter) {
 
     while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
       nConnectTrysCount++;
-      vTaskDelay(WIFI_CHECK_INTERVAL / portTICK_PERIOD_MS);  // Wait before trying again
+
+      vTaskDelay(WIFI_RETRY_INTERVAL / portTICK_PERIOD_MS);  // Wait before trying again
     }
 
     if (WiFi.status() == WL_CONNECTED) {
@@ -1148,7 +1150,8 @@ void setup() {
 
       while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
         nConnectTrysCount++;
-        delay(WIFI_CHECK_INTERVAL); // Wait before trying again
+
+        delay(WIFI_RETRY_INTERVAL); // Wait before trying again
       }
 
       if (WiFi.status() == WL_CONNECTED)
@@ -1720,7 +1723,7 @@ void setup() {
     }
   });
 
-  g_pWebServer.on("/upload_new", HTTP_POST, [](AsyncWebServerRequest* request) {
+  g_pWebServer.on("/upload", HTTP_POST, [](AsyncWebServerRequest* request) {
     if (request->_tempObject)
       request->send(500, "text/plain", "SD open failed.");
     else
@@ -1810,7 +1813,7 @@ void setup() {
     request->send(200, "text/plain", bAllOk ? "Actualización completa." : "Error en el reemplazo.");
   });
 
-  g_pWebServer.on("/upload-cleancancel", HTTP_POST, [](AsyncWebServerRequest* request) {
+  g_pWebServer.on("/upload-clean", HTTP_POST, [](AsyncWebServerRequest* request) {
     SafeSDAccess([&]() {
       File pWWW = SD.open("/www");
       std::vector<String> vecTmpFiles;
@@ -1852,8 +1855,13 @@ void loop() {
     localtime_r(&pTimeNow, &currentTime);
     // ================================================== Wifi Section ================================================== //
     {
-      if (eTaskGetState(g_pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED) // If is not connected to Wifi and is not currently running a reconnect trask, start it
+      static uint64_t nLastReconnectAttempt = 0;
+
+      if (eTaskGetState(g_pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED && (nCurrentMillis - nLastReconnectAttempt) >= WIFI_RETRY_CONNECT_INTERVAL) { // If is not connected to Wifi and is not currently running a reconnect trask, start it
+        nLastReconnectAttempt = nCurrentMillis;
+
         vTaskResume(g_pWiFiReconnect);
+      }
     }
     // ================================================== Time Section ================================================== //
     {
