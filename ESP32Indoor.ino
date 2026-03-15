@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260314_234133" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260315_083502" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -1060,31 +1060,25 @@ void setup() {
       char cBufferFilePath[29];
       snprintf(cBufferFilePath, sizeof(cBufferFilePath), "/metrics/metrics_%02d_%04d.txt", currentTime.tm_mon + 1, currentTime.tm_year + 1900);
 
-      // TODO: Fix this↓: No se carga la info al iniciar. no se si el tiempo aun no se definió o que carajos pasa...
-      LOGGER(INFO, false, "Loading metrics from: %s", cBufferFilePath); // TODO: REMOVE, DEBUG
-
       File pMetricsFile = SD.open(cBufferFilePath, FILE_READ);  // Read Mstrics file (For Chart history)
       if (pMetricsFile) {
         size_t nFileSize = pMetricsFile.size();
-
-        LOGGER(INFO, false, "Metrics file opened. Size: %d bytes.", pMetricsFile.size()); // TODO: REMOVE, DEBUG
-
         const size_t nBlockSize = 512 /*MAX_GRAPH_MARKS_LENGTH * MAX_GRAPH_MARKS maybe this cause to much stack usage, so better back to 512*/;
         char cChunkBuffer[nBlockSize];
-        int64_t nPos = nFileSize - nBlockSize;
+        int64_t nPos = (nFileSize > nBlockSize) ? nFileSize - nBlockSize : 0;
         uint8_t nLinesRead = 0;
         char cBuffer[MAX_GRAPH_MARKS_LENGTH];
 
         while (nPos >= 0 && nLinesRead < MAX_GRAPH_MARKS) {
           pMetricsFile.seek(nPos);
 
-          size_t nBytesReadSize = pMetricsFile.read((uint8_t*)cChunkBuffer, (nPos < nBlockSize) ? (nPos + 1) : nBlockSize);
+          size_t nBytesReadSize = pMetricsFile.read((uint8_t*)cChunkBuffer, (nFileSize < nBlockSize) ? nFileSize : nBlockSize);
           if (nBytesReadSize == 0)
             break;
 
           for (int i = (int)nBytesReadSize - 1; i >= 0; i--) {
             if (cChunkBuffer[i] == '\n' || (nPos == 0 && i == 0)) {
-              pMetricsFile.seek(nPos + i + 1);
+              pMetricsFile.seek((nPos == 0 && i == 0) ? 0 : nPos + i + 1);
 
               ReadFromStream(pMetricsFile, cBuffer, MAX_GRAPH_MARKS_LENGTH);
 
@@ -1108,15 +1102,8 @@ void setup() {
             nPos = 0;
         }
 
-        LOGGER(INFO, false, "Metrics loaded: %d lines.", nLinesRead); // TODO: REMOVE, DEBUG
-
         pMetricsFile.close();
       }
-      // TODO: REMOVE, DEBUG START
-      else {
-        LOGGER(ERROR, false, "Metrics file not found or failed to open.");
-      }
-      // TODO: REMOVE, DEBUG END
     } else {
       LOGGER(ERROR, false, "SD initialization failed. Settings & Time will not be loaded, but the system will not restart to avoid unexpected relay behavior.");
     }
@@ -2049,7 +2036,7 @@ void loop() {
           nLastKnownCurrentProfile = g_nCurrentProfile;
         }
 
-        if (((currentTime.tm_hour - g_nLastWateredHour + 24) % 24) > 0 && !bIsTheLastPulse) {  // Cada Hora en punto verificar si se puede Aplicar un Pulso de Riego
+        if (((currentTime.tm_hour - g_nLastWateredHour + 24) % 24) > 0 && !bIsTheLastPulse && !digitalRead(RELAYS_MAP[LIGHTS].Pin)) {  // Cada Hora en punto verificar si se puede Aplicar un Pulso de Riego
           uint8_t nPulseInterval = (g_nCurrentProfile == 1 /*Flowering*/) ? 2 : 1 /*Vegetative*/;
           uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 2) % 24;
           uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24;
@@ -2065,8 +2052,7 @@ void loop() {
                             g_nTestPumpID == 0 && // Si no se está probando ninguna Bomba.
                             !g_bManualMixing && // Si no se está mezclando la Solución de Riego.
                             g_nIrrigationFlowPerMinute > 0 && // Si se definipo el Flujo por minutos de la Bomba de Riego.
-                            g_nIrrigationSolutionLevel > 0 && // Si el nivel de Solución de Riego es mayor que 0
-                            !digitalRead(RELAYS_MAP[LIGHTS].Pin); // Si el panel LED está prendido
+                            g_nIrrigationSolutionLevel > 0;  // Si el nivel de Solución de Riego es mayor que 0
 
           if (bApplyIrrigation) { // Si hasta ahora si se puede aplicar un Pulso de Riego; Verificar si hay definido un TargetCC de Riego > 0
             uint16_t nLastKnownCC = 0;
@@ -2104,7 +2090,8 @@ void loop() {
             if (g_nIrrigationSolutionLevel == 0 || g_nIrrigationFlowPerMinute == 0) {  // No hay Solución de Riego, Avisar por Whatsapp
               if (g_nIrrigationSolutionLevel == 0)
                 SendNotification(String("No hay suficiente Solución de Riego para hacer este Pulso.").c_str());
-              else if (g_nIrrigationFlowPerMinute == 0)
+
+              if (g_nIrrigationFlowPerMinute == 0)
                 SendNotification(String("No se definió el Caudal de la Bomba de Riego.").c_str());
 
               // Estos 2 casos son bastante críticos, así que marcar la Hora cómo Regada. Además si no lo hiciera, SendNotification spamearía.
