@@ -1,4 +1,4 @@
-const JSVersion='V420260316_031119';
+const JSVersion='V420260316_045605';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -324,7 +324,7 @@ function GetStateOfVPD(v){
 }
 
 function CalcVPD(t,h){
-	t=parseInt(t),h=parseInt(h);
+	t=parseFloat(t),h=parseFloat(h);
 
 	let e=6.112*Math.exp((17.67*t)/(243.5+t)),r=(e-(h/100)*e)/10;
 
@@ -512,9 +512,11 @@ function SemiCircleGauge(e,ranges,p,...t){
 	ctx.textAlign='center';
 	ctx.textBaseline='middle';
 
-	if(p%1!==0){
+	if(e.id=='meter_vpd'){
 		ty-=18;
 		p=p.toFixed(2);
+	}else{
+		p=p.toFixed(1);
 	}
 
 	ctx.fillText(p+t[0],cx,ty-4);
