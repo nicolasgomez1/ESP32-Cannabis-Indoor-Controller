@@ -1,4 +1,4 @@
-const JSVersion='V420260316_052653';
+const JSVersion='V420260316_184008';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -509,15 +509,19 @@ function SemiCircleGauge(e,ranges,p,...t){
 	ctx.fillStyle='#2A8387';
 	ctx.fill();
 
-	ctx.font='14px Arial';
 	ctx.fillStyle='#D8DEE9';
 	ctx.textAlign='center';
 	ctx.textBaseline='middle';
 
 	if(e.id=='meter_vpd'){
+		ctx.font='14px Arial';
+
 		ty-=18;
+
 		p=p.toFixed(2);
 	}else{
+		ctx.font='16px Arial';
+
 		p=p.toFixed(1);
 	}
 
