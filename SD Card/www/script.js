@@ -1,4 +1,4 @@
-const JSVersion='V420260316_045605';
+const JSVersion='V420260316_052653';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -472,6 +472,8 @@ function SemiCircleGauge(e,ranges,p,...t){
 	e=GetElement(e);
 	e.height=66;
 	e.width=e.height*2;
+
+	p=parseFloat(p);
 
 	let h=e.height-4,ctx=e.getContext('2d'),cx=e.width/2,apr=Math.PI/ranges.length,sa=Math.PI,a=Math.PI,pw=.06,ty=h;
 
