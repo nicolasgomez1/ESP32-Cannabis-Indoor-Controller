@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260316_045605" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260316_153755" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -75,9 +75,9 @@ Notes:
 #define MAX_GRAPH_MARKS 48  // How much logs show in Web Panel Graph
 
 #ifdef USE_DHT11
-#define MAX_GRAPH_MARKS_LENGTH 32 // How long text is (Example: 1749390362|100|100|100|100|4095) For each extra soil moisture sensor is 4 bytes more. Remember add a extra byte for null terminator
+  #define MAX_GRAPH_MARKS_LENGTH 32 // How long text is (Example: 1749390362|100|100|100|100|4095) For each extra soil moisture sensor is 4 bytes more. Remember add a extra byte for null terminator
 #elif defined(USE_DHT22)
-#define MAX_GRAPH_MARKS_LENGTH 36 // How long text is (Example: 1749390362|100.0|100.0|100|100|4095)
+  #define MAX_GRAPH_MARKS_LENGTH 36 // How long text is (Example: 1749390362|100.0|100.0|100|100|4095)
 #endif
 
 #define WIFI_RETRY_CONNECT_INTERVAL 300000  // 5 Minutes
@@ -1199,7 +1199,6 @@ void setup() {
         delay(1000);
 
         ESP.restart();
-
 #ifdef TEST_MODE
       } else if (request->arg("action") == "nexthour") {
         time_t pTimeNow = time(nullptr);
@@ -1731,7 +1730,16 @@ void setup() {
 
       LOGGER(ERROR, true, "Firmware update failed. Error: %s", Update.errorString());
     } else {
-      LOGGER(INFO, true, "Written: %d/%d bytes.", Update.progress(), Update.size());
+      // TODO: Acá podría poner una variable static para saber el ultimo % rpinteado y así no repetirlos
+      // 16/03/2026 03:19:27 [INFO] Written: 53248/1310720 bytes.
+      // 16/03/2026 03:19:27 [INFO] Written: 53248/1310720 bytes.
+      // 16/03/2026 03:19:27 [INFO] Written: 53248/1310720 bytes.
+      // 16/03/2026 03:19:27 [INFO] Written: 57344/1310720 bytes.
+      // 16/03/2026 03:19:27 [INFO] Written: 57344/1310720 bytes.
+      // 16/03/2026 03:19:27 [INFO] Written: 61440/1310720 bytes.
+      // 16/03/2026 03:19:27 [INFO] Written: 61440/1310720 bytes.
+      // 16/03/2026 03:19:27 [INFO] Written: 61440/1310720 bytes.
+      LOGGER(INFO, true, "Firmware update Written: %d/%d bytes.", Update.progress(), Update.size());
     }
 
     if (bFinal) {
@@ -1921,8 +1929,8 @@ void loop() {
       if (nError == SimpleDHTErrSuccess) {
         g_nEnvironmentTemperature = static_cast<uint8_t>(bTemperature);
         g_nEnvironmentHumidity = static_cast<uint8_t>(bHumidity);
-      } else {
 #ifdef TEST_MODE
+      } else {
         Serial.println("[ERROR] Failed to read DHT11 after max retries.");
 #endif
       }
@@ -1938,8 +1946,8 @@ void loop() {
         if (nError == SimpleDHTErrSuccess) {
           g_fEnvironmentTemperature = fTemperature;
           g_fEnvironmentHumidity = fHumidity;
-        } else {
 #ifdef TEST_MODE
+        } else {
           Serial.println("[ERROR] Failed to read DHT22 after max retries.");
 #endif
         }
