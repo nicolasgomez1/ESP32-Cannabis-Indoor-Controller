@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260316_031119" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260316_034101" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -778,6 +778,14 @@ void CheckReservoirLevel() {
 
   Serial.println(cBuffer);
 #endif
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Reads all configured soil moisture sensors and updates the global humidity array.
+// Each sensor is queried sequentially using its index, and the measured value is stored
+// in the corresponding position of g_nSoilsHumidity.
+void CheckSoilHumidity() {
+  for (uint8_t i = 0; i < nSoilMoisturePinsCount; i++)
+    g_nSoilsHumidity[i] = GetSoilHumidity(i);
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Checks for the presence of a specified argument in the web request and updates a destination variable.
@@ -1800,7 +1808,7 @@ void setup() {
             if (pFile)
               pFile.close();
           } else {
-            LOGGER(WARN, false, "Temporary file saved (no size check): %s", strFileName.c_str());
+            LOGGER(WARN, false, "Temporary file: %s saved, but missing File-Size Header.", strFileName.c_str());
           }
         }
       }
@@ -1892,6 +1900,16 @@ void loop() {
 #ifdef TEST_MODE
         Serial.println("[ERROR] Failed to read DHT11 after max retries.");
 #endif
+      }
+    }
+    // ================================================== Soil Section ================================================== //
+    {
+      static bool bFirstCheck = false;
+
+      if (!bFirstCheck) {
+        bFirstCheck = true;
+
+        CheckSoilHumidity();
       }
     }
     // ================================================== Irrigation Solution Level Section ================================================== //
@@ -2173,10 +2191,9 @@ void loop() {
 
                         PowerSupplyControl(false);
 
-                        for (uint8_t i = 0; i < nSoilMoisturePinsCount; i++)  // Refresh soil moisture values after complete irrigation
-                          g_nSoilsHumidity[i] = GetSoilHumidity(i);
-
                         CheckReservoirLevel();
+
+                        CheckSoilHumidity();
 
                         bPowerStabilized = false;
                         nStage = 0;
