@@ -317,6 +317,75 @@ inline uint32_t SecondsToTicks(uint32_t nSeconds) { return nSeconds * 1000; }
 inline uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60; }
 //inline uint32_t HoursToTicks(uint32_t nHours) { return nHours * 1000 * 60 * 60; }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Executes the provided function (`fn`) with safe, exclusive access to the SD card.
+// - Tries to acquire the SD card mutex within 100 ms to ensure thread-safe access.
+//   If the mutex cannot be acquired, prints a warning via Serial (only in TEST_MODE & ENABLE_SERIAL_LOGGER) and exits.
+// - Once the mutex is acquired, it is automatically released when the function scope ends,
+//   using RAII via the ScopedMutexUnlock helper.
+// - If the SD card is not yet initialized (`g_bIsSDInit` is false), attempts initialization via SD.begin().
+//   If initialization fails, logs the failure (only in TEST_MODE & ENABLE_SERIAL_LOGGER), and returns.
+// - After initialization, checks whether a valid SD card is inserted (cardType != CARD_NONE).
+//   If not present, logs an error (TEST_MODE & ENABLE_SERIAL_LOGGER only), resets internal SD state, calls SD.end(), and exits.
+// - Verifies filesystem access by attempting to open the root directory.
+//   If the directory is invalid or inaccessible, logs an error (TEST_MODE & ENABLE_SERIAL_LOGGER only),
+//   resets internal SD state, calls SD.end(), and exits.
+// - If all checks pass, the user-provided function `fn()` is executed while the mutex is held.
+void SafeSDAccess(std::function<void()> fn) {
+  if (!xSemaphoreTake(g_pSDMutex, pdMS_TO_TICKS(100 /*ms*/))) {
+#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
+    Serial.println("[WARN] SD Mutex TimeOut.");
+#endif
+
+    return;
+  }
+
+  struct ScopedMutexUnlock {
+    SemaphoreHandle_t& mutex;
+    ~ScopedMutexUnlock() { xSemaphoreGive(mutex); }
+  } unlocker{g_pSDMutex};
+
+  if (!g_bIsSDInit) {
+    g_bIsSDInit = SD.begin(SD_CS_PIN);
+
+    if (!g_bIsSDInit) {
+#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
+      Serial.println("[ERROR] Failed to initialize SD.");
+#endif
+
+      return;
+    }
+  }
+
+  if (SD.cardType() == CARD_NONE) {
+#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
+    Serial.println("[ERROR] No SD card detected.");
+#endif
+
+    g_bIsSDInit = false;
+
+    SD.end();
+
+    return;
+  }
+
+  File pRoot = SD.open("/");
+  if (!pRoot || !pRoot.isDirectory()) {
+#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
+    Serial.println("[ERROR] Filesystem not accessible or corrupted.");
+#endif
+
+    g_bIsSDInit = false;
+
+    SD.end();
+
+    return;
+  } else {
+    pRoot.close();
+  }
+
+  fn();
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Writes a line of text to a file on the SD card.
 // - strFileName: Path of the file to write to.
 // - strText: Text string to be written.
@@ -394,116 +463,6 @@ void LOGGER(ERR_TYPE nType, bool bUseSafeSDAccess, const char* strFormat, ...) {
 #endif
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Controls the relay channel associated with the Power Supply by setting its state.
-// If bState is true, attempts to turn the relay ON (only if it was previously OFF).
-// If bState is false, attempts to turn the relay OFF, but only if no dependent relays are currently active.
-// Dependent relays include: Mixing Pump, Irrigation Pump, Pump0, Pump1, and Pump2.
-// Returns true if the state change was successful or already in the desired state; false if blocked or failed.
-bool PowerSupplyControl(bool bState) {
-  int8_t nState = -1;
-
-  if (bState) {
-    if (digitalRead(RELAYS_MAP[POWER_SUPPLY].Pin))
-      nState = RELAY_PIN_ON;
-    else
-      return true;
-  } else {
-    for (uint8_t i = MIXING_PUMP; i <= FERTILIZER_PUMP_2; i++) { // WARNING: Hardcode check
-      if (!digitalRead(RELAYS_MAP[i].Pin)) {
-        LOGGER(INFO, true, "The Power Supply cannot turn OFF because is used by other Process.");
-
-        return false;
-      }
-    }
-
-    if (!digitalRead(RELAYS_MAP[POWER_SUPPLY].Pin))
-      nState = RELAY_PIN_OFF;
-    else
-      return true;
-  }
-
-  if (nState != -1) {
-    digitalWrite(RELAYS_MAP[POWER_SUPPLY].Pin, nState);
-
-    LOGGER(INFO, true, "The Power Supply was turned %s.", bState ? "ON" : "OFF");
-
-    return true;
-  }
-
-  LOGGER(ERROR, true, "Was not possible to turn %s The Power Supply.", bState ? "ON" : "OFF");
-
-  return false;
-}
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Executes the provided function (`fn`) with safe, exclusive access to the SD card.
-// - Tries to acquire the SD card mutex within 100 ms to ensure thread-safe access.
-//   If the mutex cannot be acquired, prints a warning via Serial (only in TEST_MODE & ENABLE_SERIAL_LOGGER) and exits.
-// - Once the mutex is acquired, it is automatically released when the function scope ends,
-//   using RAII via the ScopedMutexUnlock helper.
-// - If the SD card is not yet initialized (`g_bIsSDInit` is false), attempts initialization via SD.begin().
-//   If initialization fails, logs the failure (only in TEST_MODE & ENABLE_SERIAL_LOGGER), and returns.
-// - After initialization, checks whether a valid SD card is inserted (cardType != CARD_NONE).
-//   If not present, logs an error (TEST_MODE & ENABLE_SERIAL_LOGGER only), resets internal SD state, calls SD.end(), and exits.
-// - Verifies filesystem access by attempting to open the root directory.
-//   If the directory is invalid or inaccessible, logs an error (TEST_MODE & ENABLE_SERIAL_LOGGER only),
-//   resets internal SD state, calls SD.end(), and exits.
-// - If all checks pass, the user-provided function `fn()` is executed while the mutex is held.
-void SafeSDAccess(std::function<void()> fn) {
-  if (!xSemaphoreTake(g_pSDMutex, pdMS_TO_TICKS(100 /*ms*/))) {
-#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
-    Serial.println("[WARN] SD Mutex TimeOut.");
-#endif
-
-    return;
-  }
-
-  struct ScopedMutexUnlock {
-    SemaphoreHandle_t& mutex;
-    ~ScopedMutexUnlock() { xSemaphoreGive(mutex); }
-  } unlocker{g_pSDMutex};
-
-  if (!g_bIsSDInit) {
-    g_bIsSDInit = SD.begin(SD_CS_PIN);
-
-    if (!g_bIsSDInit) {
-#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
-      Serial.println("[ERROR] Failed to initialize SD.");
-#endif
-
-      return;
-    }
-  }
-
-  if (SD.cardType() == CARD_NONE) {
-#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
-    Serial.println("[ERROR] No SD card detected.");
-#endif
-
-    g_bIsSDInit = false;
-
-    SD.end();
-
-    return;
-  }
-
-  File pRoot = SD.open("/");
-  if (!pRoot || !pRoot.isDirectory()) {
-#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
-    Serial.println("[ERROR] Filesystem not accessible or corrupted.");
-#endif
-
-    g_bIsSDInit = false;
-
-    SD.end();
-
-    return;
-  } else {
-    pRoot.close();
-  }
-
-  fn();
-}
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Saves current global configuration settings to the "/settings" file on the SD card using SafeSDAccess.
 // Writes one setting per line, including Wi-Fi credentials, sampling interval, current profile,
 // fan intervals, hysteresis values, flow rates, mixing pump duration, and irrigation reservoir level.
@@ -547,7 +506,7 @@ void SaveSettings() {
   });
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Loads a profile from the SD card, updating light, fan, ventilation, fertilization, and watering settings
+// Loads a profile from the SD card.
 void LoadProfile(uint8_t nProfile) {
   SafeSDAccess([&]() {
     if (!g_bIsSDInit)
@@ -623,7 +582,7 @@ void LoadProfile(uint8_t nProfile) {
   });
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Saves the current configuration to the SD card, including light, fan, ventilation, and watering profile
+// Saves the current configuration to the SD card.
 void SaveProfile(uint8_t nProfile) {
   SafeSDAccess([&]() {
     if (!g_bIsSDInit)
@@ -644,7 +603,9 @@ void SaveProfile(uint8_t nProfile) {
 
       pProfileFile.println(g_nIrrigationDayCounter);
       pProfileFile.println(g_nLastWateredHour);
+
       pProfileFile.println(g_nFertilizerIncorporationMode);
+
       /////////////////////////////////////////////////// SAVE IRRIGATION SCHEME DATA
       for (const auto& Watering : g_vecWateringStages) {
         pProfileFile.printf("%u|%u", Watering.Day, Watering.TargetCC);
@@ -660,6 +621,47 @@ void SaveProfile(uint8_t nProfile) {
       LOGGER(INFO, false, "Profile: %s updated successfully.", g_strProfiles[nProfile]);
     }
   });
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Controls the relay channel associated with the Power Supply by setting its state.
+// If bState is true, attempts to turn the relay ON (only if it was previously OFF).
+// If bState is false, attempts to turn the relay OFF, but only if no dependent relays are currently active.
+// Dependent relays include: Mixing Pump, Irrigation Pump, Pump0, Pump1, and Pump2.
+// Returns true if the state change was successful or already in the desired state; false if blocked or failed.
+bool PowerSupplyControl(bool bState) {
+  int8_t nState = -1;
+
+  if (bState) {
+    if (digitalRead(RELAYS_MAP[POWER_SUPPLY].Pin))
+      nState = RELAY_PIN_ON;
+    else
+      return true;
+  } else {
+    for (uint8_t i = MIXING_PUMP; i <= FERTILIZER_PUMP_2; i++) { // WARNING: Hardcode check
+      if (!digitalRead(RELAYS_MAP[i].Pin)) {
+        LOGGER(INFO, true, "The Power Supply cannot turn OFF because is used by other Process.");
+
+        return false;
+      }
+    }
+
+    if (!digitalRead(RELAYS_MAP[POWER_SUPPLY].Pin))
+      nState = RELAY_PIN_OFF;
+    else
+      return true;
+  }
+
+  if (nState != -1) {
+    digitalWrite(RELAYS_MAP[POWER_SUPPLY].Pin, nState);
+
+    LOGGER(INFO, true, "The Power Supply was turned %s.", bState ? "ON" : "OFF");
+
+    return true;
+  }
+
+  LOGGER(ERROR, true, "Was not possible to turn %s The Power Supply.", bState ? "ON" : "OFF");
+
+  return false;
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Sends a WhatsApp notification message using the CallMeBot API.
@@ -784,20 +786,12 @@ uint8_t GetSoilHumidity(uint8_t nSensorNumber) {
 // Reads the irrigation reservoir sensor and updates the global reservoir level percentage.
 // The level is calculated relative to the configured lower reference level and clamped to 0–100%.
 // The update occurs only if the reference level is valid (>0) and the sensor reading is valid (-1 indicates an error).
-// In TEST_MODE, the current level percentage is printed to the serial monitor for debugging.
 void CheckReservoirLevel() {
   if (g_nIrrigationReservoirLowerLevel > 0) {
     int16_t nLowerLevel = GetIrrigationReservoirLevel();
     if (nLowerLevel != -1) 
       g_nIrrigationSolutionLevel = std::clamp(static_cast<uint8_t>(100.0f * (g_nIrrigationReservoirLowerLevel - nLowerLevel) / g_nIrrigationReservoirLowerLevel), static_cast<uint8_t>(0), static_cast<uint8_t>(100));
   }
-
-#ifdef TEST_MODE
-  char cBuffer[37];
-  snprintf(cBuffer, sizeof(cBuffer), "[INFO] Current Reservoir Level: %u%%", g_nIrrigationSolutionLevel);
-
-  Serial.println(cBuffer);
-#endif
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Reads all configured soil moisture sensors and updates the global humidity array.
@@ -889,18 +883,6 @@ String HTMLProcessor(const String& var) {
   if (var == "MAXBRIGHT") {
     return String(S8050_MAX_VALUE);
   } else if (var == "ELEMENTVALUES") {
-    /*
-    let elements=[
-      'lightstart','lightstop',
-      'idc',
-      'ifts','rfts','rfhs',
-      'temphys','humhys',
-      'restint','restdur',
-      'ifpm',
-      'pumpfpm0','pumpfpm1','pumpfpm2',
-      'mixdur','saint'
-    ];
-    */
     String strReturn = String(g_nStartLightTime) + "," + String(g_nStopLightTime);
     strReturn += "," + String(g_nIrrigationDayCounter);
     strReturn += "," + String(g_nStartInternalFanTemperature) + "," + String(g_nStartVentilationTemperature) + "," + String(g_nStartVentilationHumidity);
@@ -1190,7 +1172,7 @@ void setup() {
   g_pWebServer.serveStatic("/logs", SD, "/logs").setCacheControl("max-age=2592000, immutable"); // Cache it by 1 month
   g_pWebServer.serveStatic("/metrics", SD, "/metrics").setCacheControl("max-age=2592000, immutable"); // Cache it by 1 month
 
-  // Index.html server & Request handler
+  // index.html server & Request handler
   g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
     if (request->hasArg("action")) {  // Process the request
       if (request->arg("action") == "restart") {
@@ -1199,17 +1181,6 @@ void setup() {
         delay(1000);
 
         ESP.restart();
-#ifdef TEST_MODE
-      } else if (request->arg("action") == "nexthour") {
-        time_t pTimeNow = time(nullptr);
-        struct tm currentTime;
-        localtime_r(&pTimeNow, &currentTime);
-
-        SetCurrentDatetime(pTimeNow + ((59 - currentTime.tm_min) * 60 + (60 - currentTime.tm_sec)) - 1);
-
-        request->send(200, "text/plain", "MSGThe time was advanced just before the next hour.");
-        return;
-#endif
       } else if (request->arg("action") == "cisl") {
         String strReturn = "La calibración falló. Intente nuevamente.";
         
@@ -1730,16 +1701,13 @@ void setup() {
 
       LOGGER(ERROR, true, "Firmware update failed. Error: %s", Update.errorString());
     } else {
-      // TODO: Acá podría poner una variable static para saber el ultimo % rpinteado y así no repetirlos
-      // 16/03/2026 03:19:27 [INFO] Written: 53248/1310720 bytes.
-      // 16/03/2026 03:19:27 [INFO] Written: 53248/1310720 bytes.
-      // 16/03/2026 03:19:27 [INFO] Written: 53248/1310720 bytes.
-      // 16/03/2026 03:19:27 [INFO] Written: 57344/1310720 bytes.
-      // 16/03/2026 03:19:27 [INFO] Written: 57344/1310720 bytes.
-      // 16/03/2026 03:19:27 [INFO] Written: 61440/1310720 bytes.
-      // 16/03/2026 03:19:27 [INFO] Written: 61440/1310720 bytes.
-      // 16/03/2026 03:19:27 [INFO] Written: 61440/1310720 bytes.
-      LOGGER(INFO, true, "Firmware update Written: %d/%d bytes.", Update.progress(), Update.size());
+      static uint8_t nLastPercent = 0;
+      uint8_t nPercent = (Update.progress() * 100) / Update.size();
+
+      if (nPercent != nLastPercent) {
+        nLastPercent = nPercent;
+        LOGGER(INFO, true, "Firmware update written: %d%%", nPercent);
+      }
     }
 
     if (bFinal) {
@@ -1929,10 +1897,6 @@ void loop() {
       if (nError == SimpleDHTErrSuccess) {
         g_nEnvironmentTemperature = static_cast<uint8_t>(bTemperature);
         g_nEnvironmentHumidity = static_cast<uint8_t>(bHumidity);
-#ifdef TEST_MODE
-      } else {
-        Serial.println("[ERROR] Failed to read DHT11 after max retries.");
-#endif
       }
 #elif defined(USE_DHT22)
       static uint64_t nLastEnvironmentCheck = 0;
@@ -1946,10 +1910,6 @@ void loop() {
         if (nError == SimpleDHTErrSuccess) {
           g_fEnvironmentTemperature = fTemperature;
           g_fEnvironmentHumidity = fHumidity;
-#ifdef TEST_MODE
-        } else {
-          Serial.println("[ERROR] Failed to read DHT22 after max retries.");
-#endif
         }
       }
 #endif
