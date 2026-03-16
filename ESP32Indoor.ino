@@ -18,17 +18,17 @@
 #include <WiFi.h>
 #include <Update.h>
 #include <SimpleDHT.h>  // DHT11: 5~95%RH ±5% | -20~60°C ±2°C (ASAIR Sensor)
+                        // DHT22: 0~100%RH ±2-5% | -40~80°C ±0.5°C (FMD)
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
 // TODO: A futuro podría reescribir toda la lógica para poder funcionar con días de mas de 24 horas (trabajar con marcas de tiempo transcurrido en lugar de horas y días).
 // TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado. (En caso de hacerlo, poner esto es // NOTES: // After unexpected energy shutdown, the fertilizer incorporation process gonna continue with the remaining CC and/or remaining stages to be incorporated.)
-// TODO: Si cambio al DHT22, hay que rectificar MAX_GRAPH_MARKS_LENGTH. Además de incrementar el tiempo entre lecturas (Seguramente tenga que poner un check de 2s).
 
 // NOTES:
 // Default IP for AP mode is: 192.168.4.1
 // If Environment Humidity or Temperature Reads 0, the fans never gonna start.
 // If Light Start & Stop Times Is 0, the light never gonna start.
-// DHT11 have a pullup (between data and vcc).
+// DHT11/DHT22 have a pullup (between data and vcc).
 // HW080 have a pulldown (in return line to gnd).
 // All logics assume/is for Days of 24 Hours max.
 // After unexpected energy shutdown, the irrigation process gonna re-do the last pulse if is needed, but it gonna do entire pulse, not just remaining time.
@@ -70,8 +70,15 @@ Notes:
 
 #define MAX_FERTILIZER_PUMPS 3  // pH Reducer, Vegetative & Flowering Fertilizers
 
+#define USE_DHT22 // OR USE_DHT22
+
 #define MAX_GRAPH_MARKS 48  // How much logs show in Web Panel Graph
-#define MAX_GRAPH_MARKS_LENGTH 32 // How long text is (Example: 1749390362|100|100|100|100|4095) If change from DHT11 to DHT22 can be 1 more byte more. For each extra soil moisture sensor is 4 bytes more. Remember add a extra byte for null terminator
+
+#ifdef USE_DHT11
+#define MAX_GRAPH_MARKS_LENGTH 32 // How long text is (Example: 1749390362|100|100|100|100|4095) For each extra soil moisture sensor is 4 bytes more. Remember add a extra byte for null terminator
+#elif defined(USE_DHT22)
+#define MAX_GRAPH_MARKS_LENGTH 36 // How long text is (Example: 1749390362|100.0|100.0|100|100|4095)
+#endif
 
 #define WIFI_RETRY_CONNECT_INTERVAL 300000  // 5 Minutes
 #define WIFI_MAX_RETRYS 5 // Max Wifi reconnection attempts
@@ -236,8 +243,15 @@ uint8_t g_nCurrentProfile = 0;
 uint8_t g_nEffectiveStartLights = 0;
 uint8_t g_nEffectiveStopLights = 0;
 uint64_t g_nIrrigationDuration = 0;
-uint8_t g_nEnvironmentTemperature = 0;
-uint8_t g_nEnvironmentHumidity = 0;
+
+#ifdef USE_DHT11
+  uint8_t g_nEnvironmentTemperature = 0;
+  uint8_t g_nEnvironmentHumidity = 0;
+#elif defined(USE_DHT22)
+  float g_fEnvironmentTemperature = 0.0f;
+  float g_fEnvironmentHumidity = 0.0f;
+#endif
+
 uint8_t g_nIrrigationSolutionLevel = 0;
 uint8_t g_nSoilsHumidity[nSoilMoisturePinsCount] = { 0 };
 uint64_t g_nFansRestTimeStartedAt = 0;
@@ -248,7 +262,13 @@ char g_strArrayGraphData[MAX_GRAPH_MARKS][MAX_GRAPH_MARKS_LENGTH] = {};
 
 // Global Handles, Interface & Instances
 AsyncWebServer g_pWebServer(WEBSERVER_PORT);  // Asynchronous web server instance listening on WEBSERVER_PORT
-SimpleDHT11 g_pDHT11(DHT_DATA_PIN);           // Interface to DHT11 Temperature & Humidity sensor
+
+#ifdef USE_DHT11
+  SimpleDHT11 g_pDHT11(DHT_DATA_PIN);         // Interface to DHT11 Temperature & Humidity sensor
+#elif defined(USE_DHT22)
+  SimpleDHT22 g_pDHT22(DHT_DATA_PIN);         // Interface to DHT22 Temperature & Humidity sensor
+#endif
+
 TaskHandle_t g_pWiFiReconnect;                // Task handle for Wifi reconnect logic running on core 0
 SemaphoreHandle_t g_pSDMutex;                 // Mutex to synchronize concurrent access to the SD card across tasks
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -950,7 +970,7 @@ String HTMLProcessor(const String& var) {
 
 void setup() {
 #ifdef ENABLE_SERIAL_LOGGER
-  Serial.begin(9600);
+  Serial.begin(115200);
   delay(3000);  // Small delay cuz this trash don't print the initial log
 #endif
 
@@ -1529,7 +1549,11 @@ void setup() {
         }
       } else if (request->arg("action") == "refresh") { // This is for refresh Panel values constantly
         // ================================================== Environment Section ================================================== //
+#ifdef USE_DHT11
         String strResponse = String(g_nEnvironmentTemperature) + ":" + String(g_nEnvironmentHumidity);
+#elif defined(USE_DHT22)
+        String strResponse = String(g_fEnvironmentTemperature, 1) + ":" + String(g_fEnvironmentHumidity, 1);
+#endif
         // ================================================== Irrigation Solution Level Section ================================================== //
         strResponse += ":" + String(g_nIrrigationSolutionLevel);
         // ================================================== Soil Section ================================================== //
@@ -1890,6 +1914,7 @@ void loop() {
     }
     // ================================================== Environment Section ================================================== //
     {
+#ifdef USE_DHT11
       byte bTemperature = 0, bHumidity = 0;
       uint8_t nError = g_pDHT11.read(&bTemperature, &bHumidity, NULL);
 
@@ -1901,6 +1926,25 @@ void loop() {
         Serial.println("[ERROR] Failed to read DHT11 after max retries.");
 #endif
       }
+#elif defined(USE_DHT22)
+      static uint64_t nLastEnvironmentCheck = 0;
+
+      if ((nCurrentMillis - nLastEnvironmentCheck) >= 2000) {
+        nLastEnvironmentCheck = nCurrentMillis;
+
+        float fTemperature = 0.0f, fHumidity = 0.0f;
+        uint8_t nError = g_pDHT22.read2(&fTemperature, &fHumidity, NULL);
+
+        if (nError == SimpleDHTErrSuccess) {
+          g_fEnvironmentTemperature = fTemperature;
+          g_fEnvironmentHumidity = fHumidity;
+        } else {
+#ifdef TEST_MODE
+          Serial.println("[ERROR] Failed to read DHT22 after max retries.");
+#endif
+        }
+      }
+#endif
     }
     // ================================================== Soil Section ================================================== //
     {
@@ -2250,14 +2294,25 @@ void loop() {
         }
       }
 
+#ifdef USE_DHT11
       bool bGeneralTurnOn = g_nEnvironmentTemperature > 0 && g_nEnvironmentHumidity > 0;
+#elif defined(USE_DHT22)
+      bool bGeneralTurnOn = g_fEnvironmentTemperature > 0.0f && g_fEnvironmentHumidity > 0.0f;
+#endif
       // =============== Internal Fan control by Temperature =============== //
       static bool bInternalFanByTemperature = false;
 
+#ifdef USE_DHT11
       if (g_nEnvironmentTemperature >= g_nStartInternalFanTemperature)
         bInternalFanByTemperature = true;
       else if (g_nEnvironmentTemperature <= (g_nStartInternalFanTemperature - g_nTemperatureStopHysteresis))
         bInternalFanByTemperature = false;
+#elif defined(USE_DHT22)
+      if (g_fEnvironmentTemperature >= g_nStartInternalFanTemperature)
+        bInternalFanByTemperature = true;
+      else if (g_fEnvironmentTemperature <= (g_nStartInternalFanTemperature - g_nTemperatureStopHysteresis))
+        bInternalFanByTemperature = false;
+#endif
 
       bool bInternalFan = g_nInternalFanMode == 2 || (bGeneralTurnOn && g_nFansRestTimeStartedAt == 0 && g_nInternalFanMode == 1 && bInternalFanByTemperature);
       if (bInternalFan) {
@@ -2277,6 +2332,7 @@ void loop() {
       static bool bVentilationByTemperature = false;
       static bool bVentilationByHumidity = false;
 
+#ifdef USE_DHT11
       if (g_nEnvironmentTemperature >= g_nStartVentilationTemperature)
         bVentilationByTemperature = true;
       else if (g_nEnvironmentTemperature <= (g_nStartVentilationTemperature - g_nTemperatureStopHysteresis))
@@ -2286,6 +2342,17 @@ void loop() {
         bVentilationByHumidity = true;
       else if (g_nEnvironmentHumidity <= (g_nStartVentilationHumidity - g_nHumidityStopHysteresis))
         bVentilationByHumidity = false;
+#elif defined(USE_DHT22)
+      if (g_fEnvironmentTemperature >= g_nStartVentilationTemperature)
+        bVentilationByTemperature = true;
+      else if (g_fEnvironmentTemperature <= (g_nStartVentilationTemperature - g_nTemperatureStopHysteresis))
+        bVentilationByTemperature = false;
+
+      if (g_fEnvironmentHumidity >= g_nStartVentilationHumidity)
+        bVentilationByHumidity = true;
+      else if (g_fEnvironmentHumidity <= (g_nStartVentilationHumidity - g_nHumidityStopHysteresis))
+        bVentilationByHumidity = false;
+#endif
 
       bool bVentilationFans = g_nVentilationMode == 2 || (bGeneralTurnOn && g_nFansRestTimeStartedAt == 0 && g_nVentilationMode == 1 && (bVentilationByTemperature || bVentilationByHumidity));
       if (bVentilationFans) {
@@ -2381,7 +2448,11 @@ void loop() {
       if ((nCurrentMillis - nLastStoreElapsedTime) >= g_nSamplingInterval) {
         nLastStoreElapsedTime = nCurrentMillis;
 
+#ifdef USE_DHT11
         String strValues = String(pTimeNow) + "|" + String(g_nEnvironmentTemperature) + "|" + String(g_nEnvironmentHumidity);
+#elif defined(USE_DHT22)
+        String strValues = String(pTimeNow) + "|" + String(g_fEnvironmentTemperature, 1) + "|" + String(g_fEnvironmentHumidity, 1);
+#endif
 
         for (uint8_t i = 0; i < nSoilMoisturePinsCount; i++) {
           g_nSoilsHumidity[i] = GetSoilHumidity(i);
