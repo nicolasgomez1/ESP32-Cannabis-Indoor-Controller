@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260315_083502" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260316_031119" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -1710,6 +1710,32 @@ void setup() {
     }
   });
 
+  g_pWebServer.on("/upload-clean", HTTP_POST, [](AsyncWebServerRequest* request) {
+    SafeSDAccess([&]() {
+      File pWWW = SD.open("/www");
+      std::vector<String> vecTmpFiles;
+
+      while (File pFile = pWWW.openNextFile()) {
+        const char* strFileName = pFile.name();
+        size_t nLen = strlen(strFileName);
+
+        if (nLen > 4 && strcmp(strFileName + nLen - 4, ".tmp") == 0)
+          vecTmpFiles.emplace_back(pFile.path());
+
+        pFile.close();
+      }
+
+      pWWW.close();
+
+      for (auto& strTmpFull : vecTmpFiles)
+        SD.remove(strTmpFull.c_str());
+
+      LOGGER(INFO, false, "Cancelled: %d temporary files removed.", vecTmpFiles.size());
+    });
+
+    request->send(200, "text/plain", "OK.");
+  });
+
   g_pWebServer.on("/upload", HTTP_POST, [](AsyncWebServerRequest* request) {
     if (request->_tempObject)
       request->send(500, "text/plain", "SD open failed.");
@@ -1738,9 +1764,9 @@ void setup() {
 
         File pFile = SD.open(strTmpPath, FILE_WRITE);
         if (!pFile) {
-          LOGGER(ERROR, false, "Failed to open: %s", strTmpPath.c_str());
-
           request->_tempObject = (void*)1;
+
+          LOGGER(ERROR, false, "Failed to open: %s", strTmpPath.c_str());
 
           return;
         }
@@ -1757,7 +1783,25 @@ void setup() {
 
           g_mapUploadFiles.erase(it);
 
-          LOGGER(INFO, false, "Temporary file saved: %s", strTmpPath.c_str());
+          const char* strExpectedSize = request->getHeader("File-Size") ? request->getHeader("File-Size")->value().c_str() : nullptr;
+          if (strExpectedSize) {
+            File pFile = SD.open(strTmpPath, FILE_READ);
+
+            if (pFile && pFile.size() != (size_t)atoi(strExpectedSize)) {
+              SD.remove(strTmpPath);
+
+              request->_tempObject = (void*)1;
+
+              LOGGER(ERROR, false, "File size mismatch: %s", strFileName.c_str());
+            } else {
+              LOGGER(INFO, false, "Temporary file saved: %s", strTmpPath.c_str());
+            }
+
+            if (pFile)
+              pFile.close();
+          } else {
+            LOGGER(WARN, false, "Temporary file saved (no size check): %s", strFileName.c_str());
+          }
         }
       }
     });
@@ -1798,32 +1842,6 @@ void setup() {
     });
 
     request->send(200, "text/plain", bAllOk ? "Actualización completa." : "Error en el reemplazo.");
-  });
-
-  g_pWebServer.on("/upload-clean", HTTP_POST, [](AsyncWebServerRequest* request) {
-    SafeSDAccess([&]() {
-      File pWWW = SD.open("/www");
-      std::vector<String> vecTmpFiles;
-
-      while (File pFile = pWWW.openNextFile()) {
-        const char* strFileName = pFile.name();
-        size_t nLen = strlen(strFileName);
-
-        if (nLen > 4 && strcmp(strFileName + nLen - 4, ".tmp") == 0)
-          vecTmpFiles.emplace_back(pFile.path());
-
-        pFile.close();
-      }
-
-      pWWW.close();
-
-      for (auto& strTmpFull : vecTmpFiles)
-        SD.remove(strTmpFull.c_str());
-
-      LOGGER(INFO, false, "Cancelled: %d temporary files removed.", vecTmpFiles.size());
-    });
-
-    request->send(200, "text/plain", "OK.");
   });
 
   g_pWebServer.begin();

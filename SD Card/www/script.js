@@ -835,7 +835,7 @@ GetElement('softwareform').addEventListener('submit',async ev=>{
 		let fd=new FormData();
 		fd.append('file',file);
 
-		let r=await fetch('/upload',{method:'POST',body:fd});
+		let r=await fetch('/upload',{method:'POST',body:fd,headers:{'File-Size':file.size}});
 		if(!r.ok){
 			alert('Error al subir: '+file.name);
 			await fetch('/upload-clean',{method:'POST'});
