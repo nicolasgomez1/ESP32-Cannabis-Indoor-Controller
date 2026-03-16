@@ -1,4 +1,4 @@
-const JSVersion='V420260314_213852';
+const JSVersion='V420260315_230508';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -470,14 +470,10 @@ function SetLightBright(s){
 
 function SemiCircleGauge(e,ranges,p,...t){
 	e=GetElement(e);
-
 	e.height=66;
-
-	let h=e.height-4;
-
 	e.width=e.height*2;
 
-	let ctx=e.getContext('2d'),cx=e.width/2,apr=Math.PI/ranges.length,sa=Math.PI,a=Math.PI,pw=.06,ty=h;
+	let h=e.height-4,ctx=e.getContext('2d'),cx=e.width/2,apr=Math.PI/ranges.length,sa=Math.PI,a=Math.PI,pw=.06,ty=h;
 
 	for(let i=0;i<ranges.length;i++){
 		let ea=sa+apr;
@@ -487,6 +483,7 @@ function SemiCircleGauge(e,ranges,p,...t){
 		ctx.strokeStyle=ranges[i].c;
 		ctx.lineWidth=11;
 		ctx.stroke();
+
 		sa=ea;
 	}
 
@@ -510,7 +507,7 @@ function SemiCircleGauge(e,ranges,p,...t){
 	ctx.fillStyle='#2A8387';
 	ctx.fill();
 
-	ctx.font='16px Arial';
+	ctx.font='14px Arial';
 	ctx.fillStyle='#D8DEE9';
 	ctx.textAlign='center';
 	ctx.textBaseline='middle';
