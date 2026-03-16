@@ -1,4 +1,4 @@
-const JSVersion='V420260315_230508';
+const JSVersion='V420260316_024248';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -286,7 +286,7 @@ function SendAction(action,...args){
 let sdb;
 function Send(e,v){
 	clearTimeout(sdb);
-	sdb=setTimeout(()=>SendAction('update',e.id,v),300);
+	sdb=setTimeout(()=>SendAction('update',e.id,v),1000);
 }
 
 function SetCropBegin(){
