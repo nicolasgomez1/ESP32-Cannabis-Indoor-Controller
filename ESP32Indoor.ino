@@ -1229,11 +1229,13 @@ void setup() {
         if (nLowerLevel != -1) {
           g_nIrrigationReservoirLowerLevel = nLowerLevel;
 
-          strReturn = "Se calibró el nivel Mínimo del Reservorio de Solución de Riego.";
-
           LOGGER(INFO, true, "Irrigation Reservoir minimum level setted.");
 
+          strReturn = "Se calibró el nivel Mínimo del Reservorio de Solución de Riego.";
+
           SaveSettings();
+
+          CheckReservoirLevel();
         }
 
         request->send(200, "text/plain", "MSG" + strReturn);
