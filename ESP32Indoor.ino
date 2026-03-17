@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260317_141050" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260317_170944" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -1230,6 +1230,8 @@ void setup() {
           g_nIrrigationReservoirLowerLevel = nLowerLevel;
 
           strReturn = "Se calibró el nivel Mínimo del Reservorio de Solución de Riego.";
+
+          LOGGER(INFO, true, "Irrigation Reservoir minimum level setted.");
 
           SaveSettings();
         }
