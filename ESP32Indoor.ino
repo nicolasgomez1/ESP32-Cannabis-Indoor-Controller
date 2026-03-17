@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260316_153755" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260316_222202" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -28,7 +28,6 @@
 // Default IP for AP mode is: 192.168.4.1
 // If Environment Humidity or Temperature Reads 0, the fans never gonna start.
 // If Light Start & Stop Times Is 0, the light never gonna start.
-// DHT11/DHT22 have a pullup (between data and vcc).
 // HW080 have a pulldown (in return line to gnd).
 // All logics assume/is for Days of 24 Hours max.
 // After unexpected energy shutdown, the irrigation process gonna re-do the last pulse if is needed, but it gonna do entire pulse, not just remaining time.
@@ -110,7 +109,7 @@ Notes:
 #define HCSR04_MAX_READS 5  // To get Irrigation Solution Level average
 
 // Pins
-#define DHT_DATA_PIN 4
+#define DHT_DATA_PIN 4  // Using 4.7k resistor between DATA & VCC
 
 #define SD_CS_PIN 5 // Chip select for Enable/Disable SD Card
 
@@ -1070,49 +1069,46 @@ void setup() {
       char cBufferFilePath[29];
       snprintf(cBufferFilePath, sizeof(cBufferFilePath), "/metrics/metrics_%02d_%04d.txt", currentTime.tm_mon + 1, currentTime.tm_year + 1900);
 
-      File pMetricsFile = SD.open(cBufferFilePath, FILE_READ);  // Read Mstrics file (For Chart history)
+      File pMetricsFile = SD.open(cBufferFilePath, FILE_READ);
       if (pMetricsFile) {
         size_t nFileSize = pMetricsFile.size();
-        const size_t nBlockSize = 512 /*MAX_GRAPH_MARKS_LENGTH * MAX_GRAPH_MARKS maybe this cause to much stack usage, so better back to 512*/;
-        char cChunkBuffer[nBlockSize];
-        int64_t nPos = (nFileSize > nBlockSize) ? nFileSize - nBlockSize : 0;
-        uint8_t nLinesRead = 0;
-        char cBuffer[MAX_GRAPH_MARKS_LENGTH];
+        const size_t nBufSize = MAX_GRAPH_MARKS * MAX_GRAPH_MARKS_LENGTH;
+        char cBuf[nBufSize + 1];
+        size_t nReadSize = (nFileSize > nBufSize) ? nBufSize : nFileSize;
 
-        while (nPos >= 0 && nLinesRead < MAX_GRAPH_MARKS) {
-          pMetricsFile.seek(nPos);
+        pMetricsFile.seek(nFileSize - nReadSize);
+        pMetricsFile.read((uint8_t*)cBuf, nReadSize);
 
-          size_t nBytesReadSize = pMetricsFile.read((uint8_t*)cChunkBuffer, (nFileSize < nBlockSize) ? nFileSize : nBlockSize);
-          if (nBytesReadSize == 0)
-            break;
-
-          for (int i = (int)nBytesReadSize - 1; i >= 0; i--) {
-            if (cChunkBuffer[i] == '\n' || (nPos == 0 && i == 0)) {
-              pMetricsFile.seek((nPos == 0 && i == 0) ? 0 : nPos + i + 1);
-
-              ReadFromStream(pMetricsFile, cBuffer, MAX_GRAPH_MARKS_LENGTH);
-
-              if (cBuffer[0] != '\0') {
-                strncpy(g_strArrayGraphData[nLinesRead], cBuffer, MAX_GRAPH_MARKS_LENGTH - 1);
-                g_strArrayGraphData[nLinesRead][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
-
-                nLinesRead++;
-
-                if (nLinesRead >= MAX_GRAPH_MARKS)
-                  break;
-              }
-            }
-          }
-
-          if (nLinesRead >= MAX_GRAPH_MARKS || nPos == 0)
-            break;
-
-          nPos -= nBlockSize;
-          if (nPos < 0)
-            nPos = 0;
-        }
+        cBuf[nReadSize] = '\0';
 
         pMetricsFile.close();
+
+        uint8_t nLinesRead = 0;
+        char* pEnd = cBuf + nReadSize;
+
+        while (nLinesRead < MAX_GRAPH_MARKS) {
+          char* pNewline = (char*)memrchr(cBuf, '\n', pEnd - cBuf);
+          char* pLineStart = pNewline ? pNewline + 1 : cBuf;
+
+          if (pNewline)
+            *pNewline = '\0';
+
+          char* pCR = pLineStart + strlen(pLineStart) - 1;
+          if (pCR >= pLineStart && *pCR == '\r')
+            *pCR = '\0';
+
+          if (*pLineStart != '\0') {
+            strncpy(g_strArrayGraphData[MAX_GRAPH_MARKS - 1 - nLinesRead], pLineStart, MAX_GRAPH_MARKS_LENGTH - 1);
+            g_strArrayGraphData[MAX_GRAPH_MARKS - 1 - nLinesRead][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
+
+            nLinesRead++;
+          }
+
+          if (!pNewline || pNewline <= cBuf)
+            break;
+
+          pEnd = pNewline;
+        }
       }
     } else {
       LOGGER(ERROR, false, "SD initialization failed. Settings & Time will not be loaded, but the system will not restart to avoid unexpected relay behavior.");
@@ -1897,6 +1893,8 @@ void loop() {
       if (nError == SimpleDHTErrSuccess) {
         g_nEnvironmentTemperature = static_cast<uint8_t>(bTemperature);
         g_nEnvironmentHumidity = static_cast<uint8_t>(bHumidity);
+      } else {
+        LOGGER(ERROR, true, "Environment reads failed.");
       }
 #elif defined(USE_DHT22)
       static uint64_t nLastEnvironmentCheck = 0;
@@ -1910,6 +1908,8 @@ void loop() {
         if (nError == SimpleDHTErrSuccess) {
           g_fEnvironmentTemperature = fTemperature;
           g_fEnvironmentHumidity = fHumidity;
+        } else {
+          LOGGER(ERROR, true, "Environment reads failed.");
         }
       }
 #endif
@@ -2436,13 +2436,13 @@ void loop() {
 
         WriteToSD(cBuffer, strValues.c_str(), true);
 
-        for (int8_t i = (MAX_GRAPH_MARKS - 1); i > 0; i--) { // Shifts all values up one position
-          strncpy(g_strArrayGraphData[i], g_strArrayGraphData[i - 1], MAX_GRAPH_MARKS_LENGTH - 1);
+        for (int8_t i = 0; i < (MAX_GRAPH_MARKS - 1); i++) {
+          strncpy(g_strArrayGraphData[i], g_strArrayGraphData[i + 1], MAX_GRAPH_MARKS_LENGTH - 1);
           g_strArrayGraphData[i][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
         }
 
-        strncpy(g_strArrayGraphData[0], strValues.c_str(), MAX_GRAPH_MARKS_LENGTH - 1); // Store the current value at the beginning of the array
-        g_strArrayGraphData[0][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
+        strncpy(g_strArrayGraphData[MAX_GRAPH_MARKS - 1], strValues.c_str(), MAX_GRAPH_MARKS_LENGTH - 1);
+        g_strArrayGraphData[MAX_GRAPH_MARKS - 1][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
       }
     }
   }
