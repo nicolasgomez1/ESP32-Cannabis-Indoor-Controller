@@ -10,15 +10,14 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260316_222202" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260317_141050" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
 #include <SD.h> // https://docs.arduino.cc/libraries/sd/#SD%20class
 #include <WiFi.h>
 #include <Update.h>
-#include <SimpleDHT.h>  // DHT11: 5~95%RH ±5% | -20~60°C ±2°C (ASAIR Sensor)
-                        // DHT22: 0~100%RH ±2-5% | -40~80°C ±0.5°C (FMD)
+#include <SimpleDHT.h>  // DHT11: 5~95%RH ±5% | -20~60°C ±2°C (ASAIR Sensor) | DHT22: 0~100%RH ±2-5% | -40~80°C ±0.5°C (FMD)
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
 // TODO: A futuro podría reescribir toda la lógica para poder funcionar con días de mas de 24 horas (trabajar con marcas de tiempo transcurrido en lugar de horas y días).
@@ -92,7 +91,7 @@ Notes:
 #define CALLMEBOT_APY_KEY SECRET_CALLMEBOT_APY_KEY
 #define CALLMEBOT_PHONE_TO_SEND SECRET_CALLMEBOT_PHONE_TO_SEND
 
-#define TIME_SAVE_INTERVAL 10000  // 10 Seconds
+#define TIME_SAVE_INTERVAL 10000  // 10 seconds
 
 #define CHECK_RESERVOIR_LEVEL_INTERVAL 3600000  // 1 Hour
 
@@ -109,7 +108,11 @@ Notes:
 #define HCSR04_MAX_READS 5  // To get Irrigation Solution Level average
 
 // Pins
-#define DHT_DATA_PIN 4  // Using 4.7k resistor between DATA & VCC
+#ifdef USE_DHT22
+#define DHT_VCC_PIN 1
+#endif
+
+#define DHT_DATA_PIN 4  // I'm using 4.7k resistor between DATA & VCC
 
 #define SD_CS_PIN 5 // Chip select for Enable/Disable SD Card
 
@@ -788,6 +791,7 @@ uint8_t GetSoilHumidity(uint8_t nSensorNumber) {
 void CheckReservoirLevel() {
   if (g_nIrrigationReservoirLowerLevel > 0) {
     int16_t nLowerLevel = GetIrrigationReservoirLevel();
+
     if (nLowerLevel != -1) 
       g_nIrrigationSolutionLevel = std::clamp(static_cast<uint8_t>(100.0f * (g_nIrrigationReservoirLowerLevel - nLowerLevel) / g_nIrrigationReservoirLowerLevel), static_cast<uint8_t>(0), static_cast<uint8_t>(100));
   }
@@ -810,6 +814,7 @@ template <typename T>
 bool CheckNSetValue(AsyncWebServerRequest* pRequest, const char* strArgumentName, T& Destination, const __FlashStringHelper* flashMessageToReturn, String& strReturn) {
   if (pRequest->hasArg(strArgumentName)) {
     T NewValue = static_cast<T>(pRequest->arg(strArgumentName).toInt());
+
     if (NewValue != Destination) {
       Destination = NewValue;
       strReturn += F("Se actualizó ");
@@ -967,6 +972,12 @@ void setup() {
 
     LOGGER(INFO, true, "%s Pin Done!", RELAYS_MAP[i].Name);
   }
+
+#ifdef USE_DHT22
+  pinMode(DHT_VCC_PIN, OUTPUT);
+  digitalWrite(DHT_VCC_PIN, HIGH);
+  LOGGER(INFO, true, "DHT VCC Pin Done!");
+#endif
 
   ledcAttach(S8050_PWM_PIN, S8050_FREQUENCY, S8050_RESOLUTION);
   LOGGER(INFO, true, "Light Brightness Pin Done!");
@@ -1894,12 +1905,22 @@ void loop() {
         g_nEnvironmentTemperature = static_cast<uint8_t>(bTemperature);
         g_nEnvironmentHumidity = static_cast<uint8_t>(bHumidity);
       } else {
-        LOGGER(ERROR, true, "Environment reads failed.");
+        LOGGER(ERROR, true, "DHT11 reads failed. Error: %d", nError);
       }
 #elif defined(USE_DHT22)
       static uint64_t nLastEnvironmentCheck = 0;
+      static uint64_t nDHTReadyAt = 2000;
+      static bool bPowerStabilized = false;
 
-      if ((nCurrentMillis - nLastEnvironmentCheck) >= 2000) {
+      if (bPowerStabilized) {
+        if (nCurrentMillis >= nDHTReadyAt) {
+          nDHTReadyAt = nCurrentMillis + 2000;
+
+          digitalWrite(DHT_VCC_PIN, HIGH);
+
+          bPowerStabilized = false;
+        }
+      } else if (nCurrentMillis >= nDHTReadyAt && (nCurrentMillis - nLastEnvironmentCheck) >= 2000) {
         nLastEnvironmentCheck = nCurrentMillis;
 
         float fTemperature = 0.0f, fHumidity = 0.0f;
@@ -1909,7 +1930,13 @@ void loop() {
           g_fEnvironmentTemperature = fTemperature;
           g_fEnvironmentHumidity = fHumidity;
         } else {
-          LOGGER(ERROR, true, "Environment reads failed.");
+          LOGGER(ERROR, true, "DHT22 reads failed. Error: %d", nError);
+
+          digitalWrite(DHT_VCC_PIN, LOW);
+
+          nDHTReadyAt = nCurrentMillis + 500;
+
+          bPowerStabilized = true;
         }
       }
 #endif
