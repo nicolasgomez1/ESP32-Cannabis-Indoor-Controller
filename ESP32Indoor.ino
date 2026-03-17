@@ -78,7 +78,7 @@ Notes:
   #define MAX_GRAPH_MARKS_LENGTH 36 // How long text is (Example: 1749390362|100.0|100.0|100|100|4095)
 #endif
 
-#define WIFI_RETRY_CONNECT_INTERVAL 300000  // 5 Minutes
+#define WIFI_RETRY_CONNECT_INTERVAL 60000 // 1 minute
 #define WIFI_MAX_RETRYS 5 // Max Wifi reconnection attempts
 #define WIFI_RETRY_INTERVAL 1000  // 1 second
 
@@ -105,9 +105,9 @@ Notes:
 #define HW080_MAX 2800      // I'm using 20k resistors, so the max value never go up to 4095
 #define HW080_MAX_READS 10  // To get good soil humidity average
 
-#define HCSR04_MAX_READS 5  // To get Irrigation Solution Level average
+#define HCSR04_MAX_READS 10  // To get Irrigation Solution Level average
 
-// Pins
+// Pins (Using an NodeMCU-32s v1.1)
 #ifdef USE_DHT22
 #define DHT_VCC_PIN 1
 #endif
@@ -158,12 +158,14 @@ const RelayPin RELAYS_MAP[RELAYS_INDEX_COUNT] = { // Add here more Pins from the
   { "Flowering Fertilizer Pump", 25 },  // Channel 7 of Relay Module 0
 
   { "Power Supply", 33 }                // Channel 0 of Relay Module 1
-  //{ "Water Electrovalve", ... },         // Channel 1 of Relay Module 1
+  //{ "Water Electrovalve", 3 }         // Channel 1 of Relay Module 1
 };
 
 const SoilMoisturePin pSoilMoisturePins[] = { // Add here more Pins for Soil Moisture
   { 34, "#B57165" },  // Soil Humidity Sensor 0
   { 35, "#784B43" }   // Soil Humidity Sensor 1
+  /*{ 36, "#B54B65" },  // Soil Humidity Sensor 2
+  { 39, "#788643" }   // Soil Humidity Sensor 3*/
 };
 
 // Global Constants
@@ -719,45 +721,77 @@ void SendNotification(const char* strMessage) {
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Measures the irrigation reservoir level using an HC-SR04 ultrasonic sensor.
-// Performs multiple distance readings to improve accuracy, averaging only the valid results.
+// Performs multiple distance readings to improve accuracy, discarding the highest and lowest values
+// to filter outliers, then averaging the remaining valid results.
 // Each reading triggers the sensor and waits for the echo, discarding timeouts.
 // Returns the average distance (in centimeters) as an integer (int16_t) from the sensor to the water surface.
-// If all readings fail, logs an error and returns -1.
+// If all readings fail or there are not enough valid readings, logs an error and returns -1.
 int16_t GetIrrigationReservoirLevel() {
-  float fCombinedValues = 0;
+  float fReadings[HCSR04_MAX_READS];
   uint8_t nValidReads = 0;
 
   for (uint8_t i = 0; i < HCSR04_MAX_READS; i++) {
     digitalWrite(HCSR04_TRIGGER_PIN, LOW);
-    delayMicroseconds(2); 
+    delayMicroseconds(2);
     digitalWrite(HCSR04_TRIGGER_PIN, HIGH);
     delayMicroseconds(10);  // Small Wait to obtain an stable reading
     digitalWrite(HCSR04_TRIGGER_PIN, LOW);
 
     unsigned long lDuration = pulseIn(HCSR04_ECHO_PIN, HIGH, 23530);  // ~4 meters
 
-    if (lDuration == 0) {
-#ifdef ENABLE_SERIAL_LOGGER
-      Serial.println("[ERROR] Irrigation Solution Level read out of range.");
-#endif
-    } else {
-      fCombinedValues += (lDuration * 0.0343f) / 2.0f;
-      nValidReads++;
-    }
+    if (lDuration == 0)
+      LOGGER(ERROR, true, "Irrigation Solution Level read out of range.");
+    else
+      fReadings[nValidReads++] = (lDuration * 0.0343f) / 2.0f;
 
     if (HCSR04_MAX_READS > 1 && i < (HCSR04_MAX_READS - 1))
       delay(60); // Small delay between reads
   }
 
-  if (nValidReads > 0) {
-    return static_cast<int16_t>(fCombinedValues / nValidReads);
-  } else {
-#ifdef ENABLE_SERIAL_LOGGER
-    Serial.println("[ERROR] All HCSR04 readings failed.");
-#endif
+  if (nValidReads == 0) {
+    LOGGER(ERROR, true, "All HCSR04 readings failed.");
 
     return -1;
   }
+
+  if (nValidReads <= 2) {
+    LOGGER(ERROR, true, "Not enough HCSR04 readings.");
+
+    return static_cast<int16_t>(fReadings[0]);
+  }
+
+  // Find the largest and smallest
+  float fMin = fReadings[0], fMax = fReadings[0];
+
+  for (uint8_t i = 1; i < nValidReads; i++) {
+    if (fReadings[i] < fMin)
+      fMin = fReadings[i];
+
+    if (fReadings[i] > fMax)
+      fMax = fReadings[i];
+  }
+
+  // Average without higher or lower limits
+  float fSum = 0;
+  bool bMinRemoved = false, bMaxRemoved = false;
+
+  for (uint8_t i = 0; i < nValidReads; i++) {
+    if (!bMinRemoved && fReadings[i] == fMin) {
+      bMinRemoved = true;
+
+      continue;
+    }
+
+    if (!bMaxRemoved && fReadings[i] == fMax) {
+      bMaxRemoved = true;
+
+      continue;
+    }
+
+    fSum += fReadings[i];
+  }
+
+  return static_cast<int16_t>(fSum / (nValidReads - 2));
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Reads the average humidity value from the specified soil sensor index.
@@ -1913,7 +1947,7 @@ void loop() {
       static bool bPowerStabilized = false;
 
       if (bPowerStabilized) {
-        if (nCurrentMillis >= nDHTReadyAt) {
+        if (nCurrentMillis >= nDHTReadyAt) {  // After set the pin to LOW, put again to HIGH and wait 2 seconds
           nDHTReadyAt = nCurrentMillis + 2000;
 
           digitalWrite(DHT_VCC_PIN, HIGH);
@@ -1929,7 +1963,7 @@ void loop() {
         if (nError == SimpleDHTErrSuccess) {
           g_fEnvironmentTemperature = fTemperature;
           g_fEnvironmentHumidity = fHumidity;
-        } else {
+        } else {  // Set pin to LOW and wait 500ms
           LOGGER(ERROR, true, "DHT22 reads failed. Error: %d", nError);
 
           digitalWrite(DHT_VCC_PIN, LOW);
