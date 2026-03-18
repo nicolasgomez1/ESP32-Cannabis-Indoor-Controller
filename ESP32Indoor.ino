@@ -207,9 +207,9 @@ struct FertilizerIncorporationStage {
 };
 
 const char* g_cProfiles[] = {
-  "vegetative",
-  "flowering",
-  "drying"
+  "/profiles/vegetative",
+  "/profiles/flowering",
+  "/profiles/drying"
 };
 
 // Settings Variables
@@ -238,7 +238,7 @@ int8_t g_nLastWateredHour = -1;
 uint8_t g_nFertilizerIncorporationMode = 0;
 std::vector<WateringData> g_vecWateringStages;
 ///////////////////////////////////////////
-static std::map<String, File> g_mapUploadFiles;
+std::map<String, File> g_mapUploadFiles;
 bool g_bIsSDInit = false;
 uint8_t g_nCurrentProfile = 0;
 uint8_t g_nEffectiveStartLights = 0;
@@ -482,7 +482,7 @@ void LoadProfile(uint8_t nProfile) {
   SafeSDAccess([&]() {
     char cBuffer[64];
 
-    File pProfileFile = SD.open(String("/profiles/") + g_cProfiles[nProfile], FILE_READ);
+    File pProfileFile = SD.open(g_cProfiles[nProfile], FILE_READ);
     if (pProfileFile) {
       ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // START LIGHT TIME
       g_nStartLightTime = atoi(cBuffer);
@@ -553,7 +553,7 @@ void LoadProfile(uint8_t nProfile) {
 // Saves the current configuration to the SD card.
 void SaveProfile(uint8_t nProfile) {
   SafeSDAccess([&]() {
-    File pProfileFile = SD.open(String("/profiles/") + g_cProfiles[nProfile], FILE_WRITE);
+    File pProfileFile = SD.open(g_cProfiles[nProfile], FILE_WRITE);
     if (pProfileFile) {
       pProfileFile.println(g_nStartLightTime);
       pProfileFile.println(g_nStopLightTime);
@@ -1737,7 +1737,7 @@ void setup() {
       return;
 
     SafeSDAccess([&]() {
-      String strTmpPath = String("/www/") + strFileName + ".tmp";
+      String strTmpPath = "/www/" + strFileName + ".tmp";
 
       if (!nIndex) {
         SD.remove(strTmpPath);
@@ -2140,10 +2140,10 @@ void loop() {
           } else {  // No se puede iniciar un Pulso de Riego. Por X motivo
             if (g_nIrrigationSolutionLevel == 0 || g_nIrrigationFlowPerMinute == 0) {  // No hay Solución de Riego, Avisar por Whatsapp
               if (g_nIrrigationSolutionLevel == 0)
-                SendNotification(String("No hay suficiente Solución de Riego para hacer este Pulso.").c_str());
+                SendNotification("No hay suficiente Solución de Riego para hacer este Pulso.");
 
               if (g_nIrrigationFlowPerMinute == 0)
-                SendNotification(String("No se definió el Caudal de la Bomba de Riego.").c_str());
+                SendNotification("No se definió el Caudal de la Bomba de Riego.");
 
               // Estos 2 casos son bastante críticos, así que marcar la Hora cómo Regada. Además si no lo hiciera, SendNotification spamearía.
               g_nLastWateredHour = currentTime.tm_hour;  // Se marca esta Hora cómo regada; Para no volver a verificar hasta la próxima
