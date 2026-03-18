@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260317_170944" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260318_181950" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -415,7 +415,7 @@ void LOGGER(ERR_TYPE nType, bool bUseSafeSDAccess, const char* cFormat, ...) {
 
   struct tm currentTime;
   GetLocalTimeNow(&currentTime);
-  snprintf(cTimestamp, sizeof(cTimestamp), "%02d/%02d/%04d %02d:%02d:%02d ", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
+  snprintf(cTimestamp, sizeof(cTimestamp), "%02d/%02d/%04d %02d:%02d:%02d", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
 
   switch (nType) {
     case INFO:  snprintf(cPrintType, sizeof(cPrintType), "[INFO] "); break;
@@ -1881,7 +1881,7 @@ void loop() {
         g_nEnvironmentTemperature = static_cast<uint8_t>(bTemperature);
         g_nEnvironmentHumidity = static_cast<uint8_t>(bHumidity);
       } else {
-        LOGGER(ERROR, true, "DHT11 reads failed. Error: %d", nError);
+        LOGGER(ERROR, true, "DHT11 reads failed. Error: %d.", nError);
       }
 #elif defined(USE_DHT22)
       static uint64_t nLastEnvironmentCheck = 0;
@@ -1906,7 +1906,7 @@ void loop() {
           g_fEnvironmentTemperature = fTemperature;
           g_fEnvironmentHumidity = fHumidity;
         } else {  // Set pin to LOW and wait 500ms
-          LOGGER(ERROR, true, "DHT22 reads failed. Error: %d", nError);
+          LOGGER(ERROR, true, "DHT22 reads failed. Error: %d.", nError);
 
           digitalWrite(DHT_VCC_PIN, LOW);
 
