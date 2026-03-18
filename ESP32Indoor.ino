@@ -1126,7 +1126,7 @@ void setup() {
   WiFi.mode(WIFI_STA);  // Only Station mode
 #endif
 
-  SafeSDAccess([&]() {
+  if (g_cSSID[0] != '\0') {
     WiFi.begin(g_cSSID, g_cSSIDPWD);
 
     uint8_t nConnectTrysCount = 0;
@@ -1141,7 +1141,7 @@ void setup() {
       LOGGER(INFO, true, "Connected to Wifi SSID: %s PASSWORD: %s. IP: %s.", g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
     else
       LOGGER(ERROR, true, "Max Wifi reconnect attempts reached.");
-  });
+  }
 
   LOGGER(INFO, true, "Creating Wifi reconnect task thread...");
 
