@@ -1,4 +1,4 @@
-const JSVersion='V420260316_184008';
+const JSVersion='V420260318_191158';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -97,6 +97,49 @@ function Flash(){
 	setTimeout(()=>{e.style.visibility='hidden';},100);
 }
 
+function GetWheelValue(e){return Math.round(e.scrollTop/15);}
+
+function GetLightStartStop(){return[GetWheelValue(e_lightstart)+1,GetWheelValue(e_lightstop)+1];}
+
+function CalcLightDur(){
+	let r=GetLightStartStop(),ch=new Date().getHours();
+
+	GetElement('ind_meri_start').innerText=(r[0]>=12?'PM':'AM');
+	GetElement('ind_meri_stop').innerText=(r[1]>=12?'PM':'AM');
+
+	let e=GetElement('ind_ld'),h=(r[1]-r[0]+24)%24,c='#D8DEE9';
+
+	if(h<5)
+		c='#FF1200';
+
+	e.style.color=c;
+	e.innerText='Horas de Luz: '+h;
+
+	GetElement('ls').setAttribute('fill',(r[0]<r[1]&&ch>=r[0]&&ch<r[1])||(r[0]>=r[1]&&(ch>=r[0]||ch<r[1]))?'#FFCF47':'#CFCFCF');
+}
+
+function SetPhoto(a,b){
+	ElementsValues[0]=parseInt(a);
+	ElementsValues[1]=parseInt(b);
+
+	e_lightstart.scrollTop=(a-1)*15;
+	e_lightstop.scrollTop=(b-1)*15;
+
+	CalcLightDur();
+}
+
+function CalcBright(v){return`Aprox: ${(Math.round(v/MaxLightBright*100)/100*1008).toFixed(0)}ppfd`;}
+
+function SetLightBright(s){
+	let e=GetElement('lb'),v=parseInt(e.value),p=Math.round(v/MaxLightBright*100);
+
+	GetElement('ind_lp').innerText=p+'%';
+	GetElement('ind_lb').innerText=p>0?CalcBright(v):'Apagado';
+
+	if(s)
+		Send(e,v);
+}
+
 function SendAction(action,...args){
 	let currentUrl=new URL(window.location.href);
 	currentUrl.searchParams.set('action',action);
@@ -106,7 +149,13 @@ function SendAction(action,...args){
 			let r=GetLightStartStop();
 			if((r[1]-r[0]+24)%24<5){
 				alert('No se puede definir un Fotoperiodo inferior a 5 Horas.');
+
+				SetPhoto(ElementsValues[0],ElementsValues[1]);
+
 				return;
+			}else{
+				ElementsValues[0]=r[0];
+				ElementsValues[1]=r[1];
 			}
 		}
 
@@ -152,7 +201,7 @@ function SendAction(action,...args){
 							SetFanMode(e);
 					}else{
 						if(e=='idc'){
-							ElementsValues[2]=v;
+							ElementsValues[2]=parseInt(v);
 							GetElement(e).scrollTop=(v-1)*15;
 						}else{
 							GetElement(e).scrollTop=v*15;
@@ -194,7 +243,7 @@ function SendAction(action,...args){
 			for(let i=0;i<2;i++)
 				document.querySelector('.f'+i).style.animationPlayState=data[6+i]=='0'?'running':'paused';
 
-			let idc=data[8];
+			let idc=parseInt(data[8]);
 
 			if(idc!=ElementsValues[2]){
 				ElementsValues[2]=idc;
@@ -426,46 +475,6 @@ function CalcFertsIncorporation(){
 	}
 
 	GetElement('fti').innerHTML=r;
-}
-
-function GetWheelValue(e){return Math.round(e.scrollTop/15);}
-
-function GetLightStartStop(){return[GetWheelValue(e_lightstart)+1,GetWheelValue(e_lightstop)+1];}
-
-function CalcLightDur(){
-	let r=GetLightStartStop(),ch=new Date().getHours();
-
-	GetElement('ind_meri_start').innerText=(r[0]>=12?'PM':'AM');
-	GetElement('ind_meri_stop').innerText=(r[1]>=12?'PM':'AM');
-
-	let e=GetElement('ind_ld'),h=(r[1]-r[0]+24)%24,c='#D8DEE9';
-
-	if(h<5)
-		c='#FF1200';
-
-	e.style.color=c;
-	e.innerText='Horas de Luz: '+h;
-
-	GetElement('ls').setAttribute('fill',(r[0]<r[1]&&ch>=r[0]&&ch<r[1])||(r[0]>=r[1]&&(ch>=r[0]||ch<r[1]))?'#FFCF47':'#CFCFCF');
-}
-
-function SetPhoto(a,b){
-	e_lightstart.scrollTop=(a-1)*15;
-	e_lightstop.scrollTop=(b-1)*15;
-
-	CalcLightDur();
-}
-
-function CalcBright(v){return`Aprox: ${(Math.round(v/MaxLightBright*100)/100*1008).toFixed(0)}ppfd`;}
-
-function SetLightBright(s){
-	let e=GetElement('lb'),v=parseInt(e.value),p=Math.round(v/MaxLightBright*100);
-
-	GetElement('ind_lp').innerText=p+'%';
-	GetElement('ind_lb').innerText=p>0?CalcBright(v):'Apagado';
-
-	if(s)
-		Send(e,v);
 }
 
 function SemiCircleGauge(e,ranges,p,...t){

@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260318_181950" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260318_191158" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
