@@ -59,9 +59,6 @@ Notes:
   - The incorporation process only runs once per trigger (based on nMaxStages == 0).*/
 
 // Definitions
-//#define TEST_MODE             // Use this to enable special web commands
-//#define ENABLE_SERIAL_LOGGER  // Use this when debugging
-#define ENABLE_SD_LOGGING     // Use this to save logs to SD Card
 //#define ENABLE_AP_ALWAYS      // Use this to enable always the Access Point. Else it just enable when have no internet connection
 
 #define FLOW_TEST_DURATION 10000 // 10 seconds
@@ -73,9 +70,9 @@ Notes:
 #define MAX_GRAPH_MARKS 48  // How much logs show in Web Panel Graph
 
 #ifdef USE_DHT11
-  #define MAX_GRAPH_MARKS_LENGTH 32 // How long text is (Example: 1749390362|100|100|100|100|4095) For each extra soil moisture sensor is 4 bytes more. Remember add a extra byte for null terminator
+#define MAX_GRAPH_MARKS_LENGTH 32 // How long text is (Example: 1749390362|100|100|100|100|4095) For each extra soil moisture sensor is 4 bytes more. Remember add a extra byte for null terminator
 #elif defined(USE_DHT22)
-  #define MAX_GRAPH_MARKS_LENGTH 36 // How long text is (Example: 1749390362|100.0|100.0|100|100|4095)
+#define MAX_GRAPH_MARKS_LENGTH 36 // How long text is (Example: 1749390362|100.0|100.0|100|100|4095)
 #endif
 
 #define WIFI_RETRY_CONNECT_INTERVAL 60000 // 1 minute
@@ -129,7 +126,7 @@ struct RelayPin {
 };
 
 struct SoilMoisturePin {
-  uint8_t Pin;  // Pin Number
+  uint8_t Pin;              // Pin Number
   const char HTMLColor[8];  // HTML Color for use in Graph on Web Panel
 };
 
@@ -172,7 +169,7 @@ const SoilMoisturePin pSoilMoisturePins[] = { // Add here more Pins for Soil Moi
 const uint8_t nSoilMoisturePinsCount = sizeof(pSoilMoisturePins) / sizeof(pSoilMoisturePins[0]);
 
 // Global Variables
-const char* g_strWebServerFiles[] = { // Add here files to be server by the webserver
+const char* g_cWebServerFiles[] = { // Add here files to be server by the webserver
   "/www/chart.js",
   "/www/fan.webp",
   "/www/style.css",
@@ -205,11 +202,11 @@ struct WateringData {
 };
 
 struct FertilizerIncorporationStage {
-  uint8_t Pin;  // Pin Number
+  uint8_t Pin;        // Pin Number
   uint64_t Duration;  // Turn ON Time
 };
 
-const char* g_strProfiles[] = {
+const char* g_cProfiles[] = {
   "vegetative",
   "flowering",
   "drying"
@@ -249,11 +246,11 @@ uint8_t g_nEffectiveStopLights = 0;
 uint64_t g_nIrrigationDuration = 0;
 
 #ifdef USE_DHT11
-  uint8_t g_nEnvironmentTemperature = 0;
-  uint8_t g_nEnvironmentHumidity = 0;
+uint8_t g_nEnvironmentTemperature = 0;
+uint8_t g_nEnvironmentHumidity = 0;
 #elif defined(USE_DHT22)
-  float g_fEnvironmentTemperature = 0.0f;
-  float g_fEnvironmentHumidity = 0.0f;
+float g_fEnvironmentTemperature = 0.0f;
+float g_fEnvironmentHumidity = 0.0f;
 #endif
 
 uint8_t g_nIrrigationSolutionLevel = 0;
@@ -268,9 +265,9 @@ char g_strArrayGraphData[MAX_GRAPH_MARKS][MAX_GRAPH_MARKS_LENGTH] = {};
 AsyncWebServer g_pWebServer(WEBSERVER_PORT);  // Asynchronous web server instance listening on WEBSERVER_PORT
 
 #ifdef USE_DHT11
-  SimpleDHT11 g_pDHT11(DHT_DATA_PIN);         // Interface to DHT11 Temperature & Humidity sensor
+SimpleDHT11 g_pDHT11(DHT_DATA_PIN);         // Interface to DHT11 Temperature & Humidity sensor
 #elif defined(USE_DHT22)
-  SimpleDHT22 g_pDHT22(DHT_DATA_PIN);         // Interface to DHT22 Temperature & Humidity sensor
+SimpleDHT22 g_pDHT22(DHT_DATA_PIN);         // Interface to DHT22 Temperature & Humidity sensor
 #endif
 
 TaskHandle_t g_pWiFiReconnect;                // Task handle for Wifi reconnect logic running on core 0
@@ -300,15 +297,15 @@ bool GetLocalTimeNow(struct tm* pTimeInfo) {
 // Reads a line from the given file stream into the provided buffer.
 // Ensures the buffer is null-terminated and trims trailing whitespace (e.g., spaces, tabs, newlines).
 // - pFile: reference to the open File object.
-// - pBuffer: pointer to the destination character buffer (must be large enough to hold the line).
+// - cBuffer: pointer to the destination character buffer (must be large enough to hold the line).
 // - nBufferSize: size of the destination buffer (including null terminator).
-void ReadFromStream(File& pFile, char* pBuffer, size_t nBufferSize) {
-  size_t sizeLength = pFile.readBytesUntil('\n', pBuffer, nBufferSize - 1);
+void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
+  size_t sizeLength = pFile.readBytesUntil('\n', cBuffer, nBufferSize - 1);
 
-  pBuffer[sizeLength] = '\0';
+  cBuffer[sizeLength] = '\0';
 
-  while (sizeLength > 0 && isspace(pBuffer[sizeLength - 1]))
-    pBuffer[--sizeLength] = '\0';
+  while (sizeLength > 0 && isspace(cBuffer[sizeLength - 1]))
+    cBuffer[--sizeLength] = '\0';
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Provides utility functions to convert between ticks (milliseconds) and human-readable time units.
@@ -323,92 +320,75 @@ inline uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60;
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Executes the provided function (`fn`) with safe, exclusive access to the SD card.
 // - Tries to acquire the SD card mutex within 100 ms to ensure thread-safe access.
-//   If the mutex cannot be acquired, prints a warning via Serial (only in TEST_MODE & ENABLE_SERIAL_LOGGER) and exits.
+//   If the mutex cannot be acquired, exits immediately and returns false.
 // - Once the mutex is acquired, it is automatically released when the function scope ends,
 //   using RAII via the ScopedMutexUnlock helper.
 // - If the SD card is not yet initialized (`g_bIsSDInit` is false), attempts initialization via SD.begin().
-//   If initialization fails, logs the failure (only in TEST_MODE & ENABLE_SERIAL_LOGGER), and returns.
+//   If initialization fails, returns false without executing `fn`.
 // - After initialization, checks whether a valid SD card is inserted (cardType != CARD_NONE).
-//   If not present, logs an error (TEST_MODE & ENABLE_SERIAL_LOGGER only), resets internal SD state, calls SD.end(), and exits.
+//   If not present, resets internal SD state, calls SD.end(), and returns false.
 // - Verifies filesystem access by attempting to open the root directory.
-//   If the directory is invalid or inaccessible, logs an error (TEST_MODE & ENABLE_SERIAL_LOGGER only),
-//   resets internal SD state, calls SD.end(), and exits.
-// - If all checks pass, the user-provided function `fn()` is executed while the mutex is held.
-void SafeSDAccess(std::function<void()> fn) {
-  if (!xSemaphoreTake(g_pSDMutex, pdMS_TO_TICKS(100 /*ms*/))) {
-#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
-    Serial.println("[WARN] SD Mutex TimeOut.");
-#endif
-
-    return;
-  }
+//   If the directory is invalid or inaccessible, resets internal SD state, calls SD.end(), and returns false.
+// - If all checks pass, executes `fn()` while the mutex is held and returns true.
+bool SafeSDAccess(std::function<void()> fn) {
+  if (!xSemaphoreTake(g_pSDMutex, pdMS_TO_TICKS(100 /*ms*/)))
+    return false;
 
   struct ScopedMutexUnlock {
-    SemaphoreHandle_t& mutex;
-    ~ScopedMutexUnlock() { xSemaphoreGive(mutex); }
+    SemaphoreHandle_t& pMutex;
+    ~ScopedMutexUnlock() { xSemaphoreGive(pMutex); }
   } unlocker{g_pSDMutex};
 
   if (!g_bIsSDInit) {
     g_bIsSDInit = SD.begin(SD_CS_PIN);
 
-    if (!g_bIsSDInit) {
-#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
-      Serial.println("[ERROR] Failed to initialize SD.");
-#endif
-
-      return;
-    }
+    if (!g_bIsSDInit)
+      return false;
   }
 
   if (SD.cardType() == CARD_NONE) {
-#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
-    Serial.println("[ERROR] No SD card detected.");
-#endif
-
     g_bIsSDInit = false;
 
     SD.end();
 
-    return;
+    return false;
   }
 
   File pRoot = SD.open("/");
   if (!pRoot || !pRoot.isDirectory()) {
-#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
-    Serial.println("[ERROR] Filesystem not accessible or corrupted.");
-#endif
-
     g_bIsSDInit = false;
 
     SD.end();
 
-    return;
+    return false;
   } else {
     pRoot.close();
   }
 
   fn();
+
+  return true;
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Writes a line of text to a file on the SD card.
-// - strFileName: Path of the file to write to.
-// - strText: Text string to be written.
+// - cFileName: Path of the file to write to.
+// - cBuffer: Text string to be written.
 // - bAppend: If true, appends to the file; otherwise, overwrites it.
 // - bUseSafeSDAccess: If true, wraps the operation inside SafeSDAccess for thread-safe access.
 // If the SD is not initialized, the function exits without performing any action.
-void WriteToSD(const char* strFileName, const char* strText, bool bAppend, bool bUseSafeSDAccess = true) {
+void WriteToSD(const char* cFileName, const char* cBuffer, bool bAppend, bool bUseSafeSDAccess = true) {
   auto Write = [&]() {
     if (!g_bIsSDInit)
       return;
 
     char cFinalFileName[64];
 
-    strncpy(cFinalFileName, strFileName, sizeof(cFinalFileName));
+    strncpy(cFinalFileName, cFileName, sizeof(cFinalFileName));
     cFinalFileName[sizeof(cFinalFileName) - 1] = '\0';
 
     File pFile = SD.open(cFinalFileName, bAppend ? FILE_APPEND : FILE_WRITE);
     if (pFile) {
-      pFile.println(strText);
+      pFile.println(cBuffer);
 
       pFile.close();
     }
@@ -420,21 +400,18 @@ void WriteToSD(const char* strFileName, const char* strText, bool bAppend, bool 
     Write();
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Logs a formatted message with severity and timestamp.
+// Logs a formatted message with severity and timestamp to a daily SD log file.
 // Parameters:
 // - nType: Log severity (INFO, WARN, ERROR).
-// - bUseSafeSDAccess: Indicates whether SD access should be protected.
-// - strFormat: printf-style format string with optional arguments.
+// - bUseSafeSDAccess: Indicates whether SD access should be protected by the mutex.
+// - cFormat: printf-style format string with optional arguments.
 // Behavior:
-// - Prepends timestamp (DD/MM/YYYY HH:MM:SS) and severity tag.
-// - Outputs to a daily SD log file if ENABLE_SD_LOGGING is defined.
-// - Prints to Serial if ENABLE_SERIAL_LOGGER is defined.
-void LOGGER(ERR_TYPE nType, bool bUseSafeSDAccess, const char* strFormat, ...) {
-#if defined(ENABLE_SD_LOGGING) || defined(ENABLE_SERIAL_LOGGER)
+// - Prepends timestamp (DD/MM/YYYY HH:MM:SS) and severity tag ([INFO], [WARN], [ERROR]).
+// - Writes the formatted message to a daily log file on the SD card (/logs/logging_DD_MM_YYYY.txt).
+void LOGGER(ERR_TYPE nType, bool bUseSafeSDAccess, const char* cFormat, ...) {
   va_list args;
 
   char cTimestamp[20], cPrintType[9], cBuffer[384];
-  uint8_t nOffset = 0;
 
   struct tm currentTime;
   GetLocalTimeNow(&currentTime);
@@ -446,25 +423,18 @@ void LOGGER(ERR_TYPE nType, bool bUseSafeSDAccess, const char* strFormat, ...) {
     case ERROR: snprintf(cPrintType, sizeof(cPrintType), "[ERROR] "); break;
   }
 
-  nOffset = snprintf(cBuffer, sizeof(cBuffer), "%s %s", cTimestamp, cPrintType);
+  uint8_t nOffset = snprintf(cBuffer, sizeof(cBuffer), "%s %s", cTimestamp, cPrintType);
 
-  va_start(args, strFormat);
+  va_start(args, cFormat);
 
-  vsnprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, strFormat, args);
+  vsnprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, cFormat, args);
 
   va_end(args);
 
-#ifdef ENABLE_SD_LOGGING
   char cFinalFileName[29];
-
   snprintf(cFinalFileName, sizeof(cFinalFileName), "/logs/logging_%02d_%02d_%04d.txt", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900);
 
   WriteToSD(cFinalFileName, cBuffer, true, bUseSafeSDAccess);
-#endif
-#ifdef ENABLE_SERIAL_LOGGER
-  Serial.println(cBuffer);
-#endif
-#endif
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Saves current global configuration settings to the "/settings" file on the SD card using SafeSDAccess.
@@ -474,9 +444,6 @@ void LOGGER(ERR_TYPE nType, bool bUseSafeSDAccess, const char* strFormat, ...) {
 // Logs a success message if the settings file is successfully written.
 void SaveSettings() {
   SafeSDAccess([&]() {
-    if (!g_bIsSDInit)
-      return;
-
     File pSettingsFile = SD.open("/settings", FILE_WRITE);
     if (pSettingsFile) {
       pSettingsFile.println(g_cSSID);
@@ -513,12 +480,9 @@ void SaveSettings() {
 // Loads a profile from the SD card.
 void LoadProfile(uint8_t nProfile) {
   SafeSDAccess([&]() {
-    if (!g_bIsSDInit)
-      return;
-
     char cBuffer[64];
 
-    File pProfileFile = SD.open(String("/profiles/") + g_strProfiles[nProfile], FILE_READ);
+    File pProfileFile = SD.open(String("/profiles/") + g_cProfiles[nProfile], FILE_READ);
     if (pProfileFile) {
       ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // START LIGHT TIME
       g_nStartLightTime = atoi(cBuffer);
@@ -581,7 +545,7 @@ void LoadProfile(uint8_t nProfile) {
 
       pProfileFile.close();
 
-      LOGGER(INFO, false, "Profile: %s loaded successfully.", g_strProfiles[nProfile]);
+      LOGGER(INFO, false, "Profile: %s loaded successfully.", g_cProfiles[nProfile]);
     }
   });
 }
@@ -589,10 +553,7 @@ void LoadProfile(uint8_t nProfile) {
 // Saves the current configuration to the SD card.
 void SaveProfile(uint8_t nProfile) {
   SafeSDAccess([&]() {
-    if (!g_bIsSDInit)
-      return;
-
-    File pProfileFile = SD.open(String("/profiles/") + g_strProfiles[nProfile], FILE_WRITE);
+    File pProfileFile = SD.open(String("/profiles/") + g_cProfiles[nProfile], FILE_WRITE);
     if (pProfileFile) {
       pProfileFile.println(g_nStartLightTime);
       pProfileFile.println(g_nStopLightTime);
@@ -609,7 +570,6 @@ void SaveProfile(uint8_t nProfile) {
       pProfileFile.println(g_nLastWateredHour);
 
       pProfileFile.println(g_nFertilizerIncorporationMode);
-
       /////////////////////////////////////////////////// SAVE IRRIGATION SCHEME DATA
       for (const auto& Watering : g_vecWateringStages) {
         pProfileFile.printf("%u|%u", Watering.Day, Watering.TargetCC);
@@ -622,7 +582,7 @@ void SaveProfile(uint8_t nProfile) {
 
       pProfileFile.close();
 
-      LOGGER(INFO, false, "Profile: %s updated successfully.", g_strProfiles[nProfile]);
+      LOGGER(INFO, false, "Profile: %s updated successfully.", g_cProfiles[nProfile]);
     }
   });
 }
@@ -644,7 +604,6 @@ bool PowerSupplyControl(bool bState) {
     for (uint8_t i = MIXING_PUMP; i <= FERTILIZER_PUMP_2; i++) { // WARNING: Hardcode check
       if (!digitalRead(RELAYS_MAP[i].Pin)) {
         LOGGER(INFO, true, "The Power Supply cannot turn OFF because is used by other Process.");
-
         return false;
       }
     }
@@ -664,18 +623,17 @@ bool PowerSupplyControl(bool bState) {
   }
 
   LOGGER(ERROR, true, "Was not possible to turn %s The Power Supply.", bState ? "ON" : "OFF");
-
   return false;
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Sends a WhatsApp notification message using the CallMeBot API.
-// - strMessage: Text message to send (will be URL-encoded automatically)
+// - cMessage: Text message to send (will be URL-encoded automatically)
 // Returns early if WiFi is not connected.
 // Encodes special characters using percent-encoding (%XX format).
 // Characters allowed without encoding: alphanumeric, dash, underscore, dot, tilde.
 // Message is truncated silently if encoded length exceeds 256 bytes.
 // Logs an error if the HTTP request fails (non-200 response code).
-void SendNotification(const char* strMessage) {
+void SendNotification(const char* cMessage) {
   if (WiFi.status() != WL_CONNECTED) {
     LOGGER(ERROR, true, "Cannot send notification, WiFi not connected.");
     return;
@@ -684,8 +642,8 @@ void SendNotification(const char* strMessage) {
   size_t i, j = 0;
   char cEncodedMessage[256] = { 0 };
 
-  for (i = 0; strMessage[i] != '\0'; ++i) {
-    char c = strMessage[i];
+  for (i = 0; cMessage[i] != '\0'; ++i) {
+    char c = cMessage[i];
 
     if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
       if (j < sizeof(cEncodedMessage) - 1) {
@@ -750,7 +708,6 @@ int16_t GetIrrigationReservoirLevel() {
 
   if (nValidReads == 0) {
     LOGGER(ERROR, true, "All HCSR04 readings failed.");
-
     return -1;
   }
 
@@ -778,13 +735,11 @@ int16_t GetIrrigationReservoirLevel() {
   for (uint8_t i = 0; i < nValidReads; i++) {
     if (!bMinRemoved && fReadings[i] == fMin) {
       bMinRemoved = true;
-
       continue;
     }
 
     if (!bMaxRemoved && fReadings[i] == fMax) {
       bMaxRemoved = true;
-
       continue;
     }
 
@@ -845,12 +800,12 @@ void CheckSoilHumidity() {
 // Supports generic numeric types via templating (e.g., uint8_t, uint16_t, int).
 // Returns true if the value was changed, false otherwise.
 template <typename T>
-bool CheckNSetValue(AsyncWebServerRequest* pRequest, const char* strArgumentName, T& Destination, const __FlashStringHelper* flashMessageToReturn, String& strReturn) {
-  if (pRequest->hasArg(strArgumentName)) {
-    T NewValue = static_cast<T>(pRequest->arg(strArgumentName).toInt());
+bool CheckNSetValue(AsyncWebServerRequest* pRequest, const char* cArgumentName, T& pDestination, const __FlashStringHelper* flashMessageToReturn, String& strReturn) {
+  if (pRequest->hasArg(cArgumentName)) {
+    T NewValue = static_cast<T>(pRequest->arg(cArgumentName).toInt());
 
-    if (NewValue != Destination) {
-      Destination = NewValue;
+    if (NewValue != pDestination) {
+      pDestination = NewValue;
       strReturn += F("Se actualizó ");
       strReturn += flashMessageToReturn;
       strReturn += F(".\r\n");
@@ -869,7 +824,7 @@ bool CheckNSetValue(AsyncWebServerRequest* pRequest, const char* strArgumentName
 // Tries to reconnect up to WIFI_MAX_RETRYS times, with a 1-second delay between attempts.
 // Logs a success message with IP address upon connection, or an error message if all attempts fail.
 // After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
-void Thread_WifiReconnect(void* parameter) {
+void Thread_WifiReconnect(void* _) {
   for (;;) {
 #if !defined(ENABLE_AP_ALWAYS)
     if (!(WiFi.getMode() & WIFI_AP)) {
@@ -989,11 +944,6 @@ String HTMLProcessor(const String& var) {
 }
 
 void setup() {
-#ifdef ENABLE_SERIAL_LOGGER
-  Serial.begin(115200);
-  delay(3000);  // Small delay cuz this trash don't print the initial log
-#endif
-
   g_pSDMutex = xSemaphoreCreateMutex();
 
   LOGGER(INFO, true, "========== Indoor Controller Started ==========");
@@ -1033,132 +983,130 @@ void setup() {
 
   LOGGER(INFO, true, "Loading Settings & Time...");
 
-  SafeSDAccess([&]() {
-    if (g_bIsSDInit) {
-      File pSettingsFile = SD.open("/settings", FILE_READ); // Read Settings File
-      if (pSettingsFile) {
-        char cBuffer[64];
-        ///////////////////////////////////////////////////
-        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // SSID
+  if (!SafeSDAccess([&]() {
+    File pSettingsFile = SD.open("/settings", FILE_READ); // Read Settings File
+    if (pSettingsFile) {
+      char cBuffer[64];
+      ///////////////////////////////////////////////////
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // SSID
 
-        strncpy(g_cSSID, cBuffer, sizeof(g_cSSID));
-        g_cSSID[sizeof(g_cSSID) - 1] = '\0';
-        ///////////////////////////////////////////////////
-        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // SSID PASSWORD
+      strncpy(g_cSSID, cBuffer, sizeof(g_cSSID));
+      g_cSSID[sizeof(g_cSSID) - 1] = '\0';
+      ///////////////////////////////////////////////////
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // SSID PASSWORD
 
-        strncpy(g_cSSIDPWD, cBuffer, sizeof(g_cSSIDPWD));
-        g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
-        ///////////////////////////////////////////////////
-        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // UNIXTIMESTAMP OF CROP BEGIN
-        g_nCropBegin = atoi(cBuffer);
-        ///////////////////////////////////////////////////
-        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // SAMPLING TAKE INTERVALS FOR GRAPH
-        g_nSamplingInterval = atoi(cBuffer);
-        ///////////////////////////////////////////////////
-        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // CURRENT PROFILE
-        g_nCurrentProfile = atoi(cBuffer);
-        ///////////////////////////////////////////////////
-        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // FANS REST INTERVAL
-        g_nFansRestInterval = atoi(cBuffer);
-        ///////////////////////////////////////////////////
-        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // FANS REST DURATION
-        g_nFansRestDuration = atoi(cBuffer);
-        ///////////////////////////////////////////////////
-        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // TEMPERATURE HYSTERESIS TO STOP FANS
-        g_nTemperatureStopHysteresis = atoi(cBuffer);
-        ///////////////////////////////////////////////////
-        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // HUMIDITY HYSTERESIS TO STOP FANS
-        g_nHumidityStopHysteresis = atoi(cBuffer);
-        ///////////////////////////////////////////////////
-        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // IRRIGATION PUMP FLOW PER MINUTE
-        g_nIrrigationFlowPerMinute = atoi(cBuffer);
-        ///////////////////////////////////////////////////
-        for (uint8_t i = 0; i < MAX_FERTILIZER_PUMPS; i++) {      // CC FLOW PER MINUTE OF EACH PUMPS
-          ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));
-          g_nFertilizersPumpsFlowPerMinute[i] = atoi(cBuffer);
-        }
-        ///////////////////////////////////////////////////
-        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // MIXING PUMP DURATION
-        g_nMixingPumpDuration = atoi(cBuffer);
-        ///////////////////////////////////////////////////
-        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // LOWER POINT OF IRRIGATION SOLUTION RESERVOIR
-        g_nIrrigationReservoirLowerLevel = atoi(cBuffer);
-        ///////////////////////////////////////////////////
-        pSettingsFile.close();
-      } else {
-        LOGGER(ERROR, false, "Failed to open Settings file.");
+      strncpy(g_cSSIDPWD, cBuffer, sizeof(g_cSSIDPWD));
+      g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
+      ///////////////////////////////////////////////////
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // UNIXTIMESTAMP OF CROP BEGIN
+      g_nCropBegin = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // SAMPLING TAKE INTERVALS FOR GRAPH
+      g_nSamplingInterval = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // CURRENT PROFILE
+      g_nCurrentProfile = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // FANS REST INTERVAL
+      g_nFansRestInterval = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // FANS REST DURATION
+      g_nFansRestDuration = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // TEMPERATURE HYSTERESIS TO STOP FANS
+      g_nTemperatureStopHysteresis = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // HUMIDITY HYSTERESIS TO STOP FANS
+      g_nHumidityStopHysteresis = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // IRRIGATION PUMP FLOW PER MINUTE
+      g_nIrrigationFlowPerMinute = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      for (uint8_t i = 0; i < MAX_FERTILIZER_PUMPS; i++) {      // CC FLOW PER MINUTE OF EACH PUMPS
+        ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));
+        g_nFertilizersPumpsFlowPerMinute[i] = atoi(cBuffer);
       }
       ///////////////////////////////////////////////////
-      struct tm currentTime;
-
-      LOGGER(INFO, false, "Getting Datetime from SD Card...");
-
-      File pTimeFile = SD.open("/time", FILE_READ); // Read Time file
-      if (pTimeFile) {
-        setenv("TZ", TIMEZONE, 1);
-        tzset();
-
-        LOGGER(INFO, false, "Timezone setted.");
-
-        SetCurrentDatetime(pTimeFile.readStringUntil('\n').toInt());
-
-        LOGGER(INFO, false, "Current datetime setted.");
-
-        GetLocalTimeNow(&currentTime);
-
-        LOGGER(INFO, false, "Current Datetime: %02d/%02d/%04d %02d:%02d:%02d.", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
-
-        pTimeFile.close();
-      }
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // MIXING PUMP DURATION
+      g_nMixingPumpDuration = atoi(cBuffer);
       ///////////////////////////////////////////////////
-      char cBufferFilePath[29];
-      snprintf(cBufferFilePath, sizeof(cBufferFilePath), "/metrics/metrics_%02d_%04d.txt", currentTime.tm_mon + 1, currentTime.tm_year + 1900);
-
-      File pMetricsFile = SD.open(cBufferFilePath, FILE_READ);
-      if (pMetricsFile) {
-        size_t nFileSize = pMetricsFile.size();
-        const size_t nBufSize = MAX_GRAPH_MARKS * MAX_GRAPH_MARKS_LENGTH;
-        char cBuf[nBufSize + 1];
-        size_t nReadSize = (nFileSize > nBufSize) ? nBufSize : nFileSize;
-
-        pMetricsFile.seek(nFileSize - nReadSize);
-        pMetricsFile.read((uint8_t*)cBuf, nReadSize);
-
-        cBuf[nReadSize] = '\0';
-
-        pMetricsFile.close();
-
-        uint8_t nLinesRead = 0;
-        char* pEnd = cBuf + nReadSize;
-
-        while (nLinesRead < MAX_GRAPH_MARKS) {
-          char* pNewline = (char*)memrchr(cBuf, '\n', pEnd - cBuf);
-          char* pLineStart = pNewline ? pNewline + 1 : cBuf;
-
-          if (pNewline)
-            *pNewline = '\0';
-
-          char* pCR = pLineStart + strlen(pLineStart) - 1;
-          if (pCR >= pLineStart && *pCR == '\r')
-            *pCR = '\0';
-
-          if (*pLineStart != '\0') {
-            strncpy(g_strArrayGraphData[MAX_GRAPH_MARKS - 1 - nLinesRead], pLineStart, MAX_GRAPH_MARKS_LENGTH - 1);
-            g_strArrayGraphData[MAX_GRAPH_MARKS - 1 - nLinesRead][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
-
-            nLinesRead++;
-          }
-
-          if (!pNewline || pNewline <= cBuf)
-            break;
-
-          pEnd = pNewline;
-        }
-      }
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // LOWER POINT OF IRRIGATION SOLUTION RESERVOIR
+      g_nIrrigationReservoirLowerLevel = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      pSettingsFile.close();
     } else {
-      LOGGER(ERROR, false, "SD initialization failed. Settings & Time will not be loaded, but the system will not restart to avoid unexpected relay behavior.");
+      LOGGER(ERROR, false, "Failed to open Settings file.");
     }
-  });
+    ///////////////////////////////////////////////////
+    struct tm currentTime;
+
+    LOGGER(INFO, false, "Getting Datetime from SD Card...");
+
+    File pTimeFile = SD.open("/time", FILE_READ); // Read Time file
+    if (pTimeFile) {
+      setenv("TZ", TIMEZONE, 1);
+      tzset();
+
+      LOGGER(INFO, false, "Timezone setted.");
+
+      SetCurrentDatetime(pTimeFile.readStringUntil('\n').toInt());
+
+      LOGGER(INFO, false, "Current datetime setted.");
+
+      GetLocalTimeNow(&currentTime);
+
+      LOGGER(INFO, false, "Current Datetime: %02d/%02d/%04d %02d:%02d:%02d.", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
+
+      pTimeFile.close();
+    }
+    ///////////////////////////////////////////////////
+    char cBufferFilePath[29];
+    snprintf(cBufferFilePath, sizeof(cBufferFilePath), "/metrics/metrics_%02d_%04d.txt", currentTime.tm_mon + 1, currentTime.tm_year + 1900);
+
+    File pMetricsFile = SD.open(cBufferFilePath, FILE_READ);
+    if (pMetricsFile) {
+      size_t nFileSize = pMetricsFile.size();
+      const size_t nBufSize = MAX_GRAPH_MARKS * MAX_GRAPH_MARKS_LENGTH;
+      char cBuf[nBufSize + 1];
+      size_t nReadSize = (nFileSize > nBufSize) ? nBufSize : nFileSize;
+
+      pMetricsFile.seek(nFileSize - nReadSize);
+      pMetricsFile.read((uint8_t*)cBuf, nReadSize);
+
+      cBuf[nReadSize] = '\0';
+
+      pMetricsFile.close();
+
+      uint8_t nLinesRead = 0;
+      char* cEnd = cBuf + nReadSize;
+
+      while (nLinesRead < MAX_GRAPH_MARKS) {
+        char* cNewline = (char*)memrchr(cBuf, '\n', cEnd - cBuf);
+        char* cLineStart = cNewline ? cNewline + 1 : cBuf;
+
+        if (cNewline)
+          *cNewline = '\0';
+
+        char* cCR = cLineStart + strlen(cLineStart) - 1;
+        if (cCR >= cLineStart && *cCR == '\r')
+          *cCR = '\0';
+
+        if (*cLineStart != '\0') {
+          strncpy(g_strArrayGraphData[MAX_GRAPH_MARKS - 1 - nLinesRead], cLineStart, MAX_GRAPH_MARKS_LENGTH - 1);
+          g_strArrayGraphData[MAX_GRAPH_MARKS - 1 - nLinesRead][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
+
+          nLinesRead++;
+        }
+
+        if (!cNewline || cNewline <= cBuf)
+          break;
+
+        cEnd = cNewline;
+      }
+    }
+  })) {
+    LOGGER(ERROR, false, "SD initialization failed. Settings & Time will not be loaded, but the system will not restart to avoid unexpected relay behavior.");
+  }
 
   LOGGER(INFO, true, "Loading Profile...");
 
@@ -1179,23 +1127,20 @@ void setup() {
 #endif
 
   SafeSDAccess([&]() {
-    if (!g_bIsSDInit)
-      return;
+    WiFi.begin(g_cSSID, g_cSSIDPWD);
 
-      WiFi.begin(g_cSSID, g_cSSIDPWD);
+    uint8_t nConnectTrysCount = 0;
 
-      uint8_t nConnectTrysCount = 0;
+    while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
+      nConnectTrysCount++;
 
-      while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
-        nConnectTrysCount++;
+      delay(WIFI_RETRY_INTERVAL); // Wait before trying again
+    }
 
-        delay(WIFI_RETRY_INTERVAL); // Wait before trying again
-      }
-
-      if (WiFi.status() == WL_CONNECTED)
-        LOGGER(INFO, true, "Connected to Wifi SSID: %s PASSWORD: %s. IP: %s.", g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
-      else
-        LOGGER(ERROR, true, "Max Wifi reconnect attempts reached.");
+    if (WiFi.status() == WL_CONNECTED)
+      LOGGER(INFO, true, "Connected to Wifi SSID: %s PASSWORD: %s. IP: %s.", g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
+    else
+      LOGGER(ERROR, true, "Max Wifi reconnect attempts reached.");
   });
 
   LOGGER(INFO, true, "Creating Wifi reconnect task thread...");
@@ -1206,8 +1151,8 @@ void setup() {
   LOGGER(INFO, true, "Setting up Web Server...");
 
   // Static files server
-  for (uint8_t i = 0; i < (sizeof(g_strWebServerFiles) / sizeof(g_strWebServerFiles[0])); i++)
-    g_pWebServer.serveStatic(g_strWebServerFiles[i], SD, g_strWebServerFiles[i]).setCacheControl("max-age=2592000");  // Cache it by 1 month
+  for (uint8_t i = 0; i < (sizeof(g_cWebServerFiles) / sizeof(g_cWebServerFiles[0])); i++)
+    g_pWebServer.serveStatic(g_cWebServerFiles[i], SD, g_cWebServerFiles[i]).setCacheControl("max-age=2592000");  // Cache it by 1 month
 
   // Static serving of the logs & metrics folder and all the files inside it
   g_pWebServer.serveStatic("/logs", SD, "/logs").setCacheControl("max-age=2592000, immutable"); // Cache it by 1 month
@@ -1400,33 +1345,33 @@ void setup() {
         // =============== Irrigation Scheme =============== //
         if (request->hasArg("ichart")) {
           const String& refstrValues = request->arg("ichart");
-          const char* strBuffer = refstrValues.c_str();
+          const char* cBuffer = refstrValues.c_str();
           std::vector<WateringData> vecNewWateringStages;
 
-          while (*strBuffer) {
+          while (*cBuffer) {
             char* cEndBuffer;
             WateringData pData = {};
 
-            long nDay = strtol(strBuffer, &cEndBuffer, 10);
+            long nDay = strtol(cBuffer, &cEndBuffer, 10);
 
             if (*cEndBuffer != '|')
               break;
 
-            strBuffer = cEndBuffer + 1;
+            cBuffer = cEndBuffer + 1;
 
-            long nTargetCC = strtol(strBuffer, &cEndBuffer, 10);
+            long nTargetCC = strtol(cBuffer, &cEndBuffer, 10);
 
             if (*cEndBuffer != '|')
               break;
 
-            strBuffer = cEndBuffer + 1;
+            cBuffer = cEndBuffer + 1;
 
             if ((nDay > 0 && nDay <= UINT16_MAX) && (nTargetCC >= 0 && nTargetCC <= UINT16_MAX)) {
               pData.Day = static_cast<uint16_t>(nDay);
               pData.TargetCC = static_cast<uint16_t>(nTargetCC);
 
               for (uint8_t i = 0; i < MAX_FERTILIZER_PUMPS; ++i) {
-                float fFertilizerCC = strtof(strBuffer, &cEndBuffer);
+                float fFertilizerCC = strtof(cBuffer, &cEndBuffer);
 
                 if (fFertilizerCC < 0.0f || !isfinite(fFertilizerCC))
                   fFertilizerCC = 0.0f;
@@ -1434,16 +1379,16 @@ void setup() {
                 pData.FertilizerToApply[i] = fFertilizerCC;
 
                 if (*cEndBuffer == '|')
-                  strBuffer = cEndBuffer + 1;
+                  cBuffer = cEndBuffer + 1;
                 else
-                  strBuffer = cEndBuffer;
+                  cBuffer = cEndBuffer;
               }
 
               vecNewWateringStages.push_back(pData);
             }
 
             if (*cEndBuffer == ',')
-              strBuffer = cEndBuffer + 1;
+              cBuffer = cEndBuffer + 1;
             else
               break;
           }
@@ -1644,57 +1589,50 @@ void setup() {
         return;
       } else if (request->arg("action") == "list") {  // This returns the file list in logs folder
         if (request->hasArg("logs") || request->hasArg("metrics")) {
-          SafeSDAccess([&]() {
-            if (g_bIsSDInit) {
-              bool bFirst = true;
-              String strFileName, strResponse;
-              String strFolder = request->hasArg("logs") ? "logs" : "metrics";
-              File pLogsDir = SD.open("/" + strFolder);
-              File pFile = pLogsDir.openNextFile();
+          if (!SafeSDAccess([&]() {
+            bool bFirst = true;
+            String strFileName, strResponse;
+            String strFolder = request->hasArg("logs") ? "logs" : "metrics";
+            File pLogsDir = SD.open("/" + strFolder);
+            File pFile = pLogsDir.openNextFile();
 
-              while (pFile) {
-                strFileName = String(pFile.name());
+            while (pFile) {
+              strFileName = String(pFile.name());
 
-                if (!pFile.isDirectory()) {
-                  if (!bFirst)
-                    strResponse += ":";
-                  else
-                    bFirst = false;
+              if (!pFile.isDirectory()) {
+                if (!bFirst)
+                  strResponse += ":";
+                else
+                  bFirst = false;
 
-                  int nLastSlash = strFileName.lastIndexOf('/');
-                  if (nLastSlash >= 0)
-                    strResponse += strFileName.substring(nLastSlash + 1);
-                  else
-                    strResponse += strFileName;
-                }
-
-                pFile.close();
-
-                pFile = pLogsDir.openNextFile();
+                int nLastSlash = strFileName.lastIndexOf('/');
+                if (nLastSlash >= 0)
+                  strResponse += strFileName.substring(nLastSlash + 1);
+                else
+                  strResponse += strFileName;
               }
 
-              pLogsDir.close();
+              pFile.close();
 
-              request->send(200, "text/plain", strResponse);
-            } else {
-              request->send(500, "text/plain", "No hay una Tarjeta SD conectada.");
+              pFile = pLogsDir.openNextFile();
             }
-          });
+
+            pLogsDir.close();
+
+            request->send(200, "text/plain", strResponse);
+          })) {
+            request->send(500, "text/plain", "No hay una Tarjeta SD conectada.");
+          }
         }
 
         return;
       }
     } else {  // Return Panel content
-      SafeSDAccess([&]() {
-        AsyncWebServerResponse* pResponse;
-
-        if (g_bIsSDInit)
-          pResponse = request->beginResponse(SD, "/www/index.html", "text/html", false, HTMLProcessor);
-        else
-          pResponse = request->beginResponse(500, "text/plain", "No hay una Tarjeta SD conectada.");
-
-        request->send(pResponse);
-      });
+      if (!SafeSDAccess([&]() {
+        request->send(SD, "/www/index.html", "text/html", false, HTMLProcessor);
+      })) {
+        request->send(500, "text/plain", "No hay una Tarjeta SD conectada.");
+      }
 
       return;
     }
@@ -1769,10 +1707,10 @@ void setup() {
       std::vector<String> vecTmpFiles;
 
       while (File pFile = pWWW.openNextFile()) {
-        const char* strFileName = pFile.name();
-        size_t nLen = strlen(strFileName);
+        const char* cFileName = pFile.name();
+        size_t nLen = strlen(cFileName);
 
-        if (nLen > 4 && strcmp(strFileName + nLen - 4, ".tmp") == 0)
+        if (nLen > 4 && strcmp(cFileName + nLen - 4, ".tmp") == 0)
           vecTmpFiles.emplace_back(pFile.path());
 
         pFile.close();
@@ -1836,11 +1774,11 @@ void setup() {
 
           g_mapUploadFiles.erase(it);
 
-          const char* strExpectedSize = request->getHeader("File-Size") ? request->getHeader("File-Size")->value().c_str() : nullptr;
-          if (strExpectedSize) {
+          const char* cExpectedSize = request->getHeader("File-Size") ? request->getHeader("File-Size")->value().c_str() : nullptr;
+          if (cExpectedSize) {
             File pFile = SD.open(strTmpPath, FILE_READ);
 
-            if (pFile && pFile.size() != (size_t)atoi(strExpectedSize)) {
+            if (pFile && pFile.size() != (size_t)atoi(cExpectedSize)) {
               SD.remove(strTmpPath);
 
               request->_tempObject = (void*)1;
@@ -1868,10 +1806,10 @@ void setup() {
       std::vector<String> vecTmpFiles;
 
       while (File pFile = pWWW.openNextFile()) {
-        const char* strFileName = pFile.name();
-        size_t nLen = strlen(strFileName);
+        const char* cFileName = pFile.name();
+        size_t nLen = strlen(cFileName);
 
-        if (nLen > 4 && strcmp(strFileName + nLen - 4, ".tmp") == 0)
+        if (nLen > 4 && strcmp(cFileName + nLen - 4, ".tmp") == 0)
           vecTmpFiles.emplace_back(pFile.path());
 
         pFile.close();
@@ -2511,10 +2449,4 @@ void loop() {
       }
     }
   }
-
-#if defined(TEST_MODE) && defined(ENABLE_SERIAL_LOGGER)
-  size_t freeHeap = ESP.getFreeHeap();
-
-  Serial.printf("[INFO] Free Heap: %u bytes after all loop function execute.\n", freeHeap);
-#endif
 }
