@@ -1501,7 +1501,7 @@ void setup() {
 
             WiFi.disconnect(false); // First disconnect from current Network (Arg false to just disconnect the Station, not the AP)
 
-            if (eTaskGetState(g_pWiFiReconnect) == eRunning)  // Then check if task g_pWiFiReconnect is running. If it is, Suspend it to eventually Resume it with the new SSID and SSID Password
+            if (eTaskGetState(g_pWiFiReconnect) != eSuspended)
               vTaskSuspend(g_pWiFiReconnect);
           }
 
