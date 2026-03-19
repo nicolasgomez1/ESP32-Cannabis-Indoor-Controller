@@ -1,4 +1,4 @@
-const JSVersion='V420260318_214733';
+const JSVersion='V420260319_001802';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -109,7 +109,7 @@ function CalcLightDur(){
 
 	let e=GetElement('ind_ld'),h=(r[1]-r[0]+24)%24,c='#D8DEE9';
 
-	if(h<5)
+	if(h<(parseInt(e_profile.value)==1?5:4))
 		c='#FF1200';
 
 	e.style.color=c;
@@ -146,9 +146,9 @@ function SendAction(action,...args){
 
 	if(args.length%2===0){
 		if(args[0]==e_lightstart.id||args[0]==e_lightstop.id){
-			let r=GetLightStartStop();
-			if((r[1]-r[0]+24)%24<5){
-				alert('No se puede definir un Fotoperiodo inferior a 5 Horas.');
+			let r=GetLightStartStop(),min=parseInt(e_profile.value)==1?5:4;
+			if((r[1]-r[0]+24)%24<min){
+				alert(`No se puede definir un Fotoperiodo inferior a ${min} Horas.`);
 
 				SetPhoto(ElementsValues[0],ElementsValues[1]);
 

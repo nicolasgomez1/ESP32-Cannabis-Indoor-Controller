@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260318_213556" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260319_001802" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -2089,7 +2089,7 @@ void loop() {
 
         if (((currentTime.tm_hour - g_nLastWateredHour + 24) % 24) > 0 && !bIsTheLastPulse && !digitalRead(RELAYS_MAP[LIGHTS].Pin)) {  // Cada Hora en punto verificar si se puede Aplicar un Pulso de Riego
           uint8_t nPulseInterval = (g_nCurrentProfile == 1 /*Flowering*/) ? 2 : 1 /*Vegetative*/;
-          uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 2) % 24;
+          uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 1) % 24;
           uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24;
 
           nTotalPulses = ((nStopIrrigationHour - nStartIrrigationHour + 24) % 24) / nPulseInterval;
