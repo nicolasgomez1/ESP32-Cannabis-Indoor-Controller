@@ -42,10 +42,10 @@ let humranges=[
 ];
 
 let Chart1Labels=[
-	{label:'Solución de Riego',borderColor:'#6699CC',backgroundColor:'#6699CC',yAxisID:'s'},
-	{label:'Reductor de pH',borderColor:'#FABA18',backgroundColor:'#FABA18'},
-	{label:'Fertilizante de Vegetativo',borderColor:'#264072',backgroundColor:'#264072'},
-	{label:'Fertilizante de Floración',borderColor:'#ED6D58',backgroundColor:'#ED6D58'}
+	{label:'Solución de Riego',borderColor:'#6699CC',yAxisID:'s'},
+	{label:'Reductor de pH',borderColor:'#FABA18'},
+	{label:'Fertilizante de Vegetativo',borderColor:'#264072'},
+	{label:'Fertilizante de Floración',borderColor:'#ED6D58'}
 ];
 
 elements.forEach((e,index)=>{
@@ -272,9 +272,7 @@ function SendAction(action,...args){
 					let v=cd[i].split('|');
 
 					for(let j=1;j<v.length;j++){
-						let f=parseFloat(v[j]);
-
-						hchart.data.datasets[j>2?j:j-1].data[i]={x:v[0],y:j==5?(f>0?1:0):f,string:v[j]};
+						hchart.data.datasets[j>2?j:j-1].data[i]={x:v[0],y:v[j],string:v[j]};
 
 						if(j==2){
 							let r=CalcVPD(v[1],v[2]).toFixed(2);
@@ -466,7 +464,7 @@ function CalcFertsIncorporation(){
 	if(di>=0){
 		r='Se van a Incorporar Fertilizantes del Día: '+ids.data[di].x;
 
-		fds.forEach((ds,j)=>{
+		fds.forEach(ds=>{
 			let cc=parseFloat(ds.data[di].y);
 
 			if(cc>.001)
@@ -589,10 +587,12 @@ function TrapezoidIndicator(e,l){
 	ctx.fillText(l+'%',e.width/2,70/1.7);
 }
 
-Object.assign(Chart.defaults.datasets.line,{borderWidth:1.2,tension:.3});
+Object.assign(Chart.defaults.datasets.line,{borderWidth:1.5,tension:.3});
 Chart.defaults.layout.padding={left:20,right:20};
 Chart.defaults.scales.linear={offset:false,display:false};
 Chart.defaults.interaction={mode:'index',intersect:false};
+
+Chart1Labels.forEach(ds=>{ds.backgroundColor=ds.borderColor});
 
 let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labels},
 	options:{
@@ -645,9 +645,11 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 
 let ShowTextLines=false;
 
-Chart2Labels.forEach(ds=>{
+Chart2Labels.forEach((ds,i)=>{
 	ds.pointRadius=0;
 	ds.tension=0;
+	ds.backgroundColor=ds.borderColor;
+	ds.yAxisID=i==2?'1':i==5?'2':'0'
 });
 
 let hchart=new Chart(GetElement('hchart'),{type:'line',data:{datasets:Chart2Labels},
