@@ -953,7 +953,6 @@ void setup() {
   for (uint8_t i = 0; i < RELAYS_INDEX_COUNT; i++) {
     pinMode(RELAYS_MAP[i].Pin, OUTPUT); // Set Pin Mode
     digitalWrite(RELAYS_MAP[i].Pin, RELAY_PIN_OFF); // Set default Pin State
-
     LOGGER(INFO, true, "%s Pin Done!", RELAYS_MAP[i].Name);
   }
 
@@ -972,7 +971,6 @@ void setup() {
 
   for (uint8_t i = 0; i < nSoilMoisturePinsCount; i++) {
     pinMode(pSoilMoisturePins[i].Pin, INPUT);
-
     LOGGER(INFO, true, "Soil Humidity Pin %d Done!", i);
   }
 
@@ -2088,9 +2086,9 @@ void loop() {
         }
 
         if (((currentTime.tm_hour - g_nLastWateredHour + 24) % 24) > 0 && !bIsTheLastPulse && !digitalRead(RELAYS_MAP[LIGHTS].Pin)) {  // Cada Hora en punto verificar si se puede Aplicar un Pulso de Riego
-          uint8_t nPulseInterval = (g_nCurrentProfile == 1 /*Flowering*/) ? 2 : 1 /*Vegetative*/;
-          uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 1) % 24;
-          uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24;
+          uint8_t nPulseInterval = (g_nCurrentProfile == 1 /*Flowering*/) ? 2 : 1 /*Vegetative*/; // TODO: Esto podria ser configurable (dependiendo del perfil)
+          uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 1) % 24;  // TODO: Esto podria ser configurable (dependiendo del perfil)
+          uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24; // TODO: Esto podria ser configurable (dependiendo del perfil)
 
           nTotalPulses = ((nStopIrrigationHour - nStartIrrigationHour + 24) % 24) / nPulseInterval;
 
@@ -2240,7 +2238,7 @@ void loop() {
 
         bIsTheLastPulse = false;
 
-        if (g_nIrrigationSolutionLevel <= 25) {
+        if (g_nIrrigationSolutionLevel <= 25) { // TODO: Esto podria ser configurable
           char cBuffer[41];
           snprintf(cBuffer, sizeof(cBuffer), "Reservorio de Solución de Riego al %d%.", g_nIrrigationSolutionLevel);
           SendNotification(cBuffer);

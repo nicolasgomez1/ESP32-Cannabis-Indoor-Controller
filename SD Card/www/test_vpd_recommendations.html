@@ -1,13 +1,10 @@
-<html><head><meta name=viewport content=width=device-width,initial-scale=1.0><meta charset=utf-8><link rel=icon href=data:,><link rel='shortcut icon'href=data:,><title>ESP32 Indoor Panel</title><link rel=stylesheet type=text/css href=style.css><script src=chart.js></script>
-</head>
+<html><head><link rel=stylesheet type=text/css href=style.css><script src=chart.js></script></head>
 <body>
-	<div id=updateflash></div>
 	<div id=wrapper>
 		<card>
 			<container>Perfil: <input type=range class=slider id=profilesel min=0 max=2 step=1 value=0 oninput=UpdateSelectedProfile()> <ind id=ind_profilesel></ind></container>
 			<container>Rango de Temperatura: <wheelcontainer><div class=wheel id=t0></div></wheelcontainer>~<wheelcontainer><div class=wheel id=t1></div></wheelcontainer></container>
 			<container>Rango de Humedad: <wheelcontainer><div class=wheel id=h0></div></wheelcontainer>~<wheelcontainer><div class=wheel id=h1></div></wheelcontainer></container>
-			<container>Tolerancia de DPV: <wheelcontainer><div class=wheel id=vpdt></div></wheelcontainer></container>
 			<container>Prioridad: <input type=range class=slider id=priority min=0 max=1 step=1 value=0 oninput=UpdateVPDCorrectorPriority()> <ind id=ind_priority></ind></container>
 		</card>
 		<card>
@@ -23,65 +20,34 @@
 			<canvas id=meter_vpd></canvas>
 			<div class=state id=ind_vpd></div>
 		</card>
-		<card>
-			Nivel de Solución de Riego
-			<div style=display:flex>
-				<canvas id=reservoirlevel></canvas>
-				<button onclick=SendAction('cisl')>Calibrar</button>
-			</div>
-		</card>
-		<card>
-			Ferilización
-			<container>Modo de Incorporación: <input type=range class=slider id=fim min=0 max=1 step=1 value=0 oninput=SetFertsIncorporationMode(true)> <ind id=ind_fim></ind></container>
-			<ind id=fti></ind>
-			<button onclick=SendAction('applyferts')>Incorporar Fertilizantes</button>
-		</card>
-		<card_header>
-			Esquema de Riego y Fertilización
-			<canvas id=ichart></canvas>
-		</card_header>
-		<card_header>
-			Historial de las últimas 48 muestras
-			<table id=legend>
-				<thead><tr><th>Indicadores<div style=float:right><button id=toggletext>Mostrar Valores</button></div></th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead>
-				<tbody></tbody>
-			</table>
-			<canvas id=hchart></canvas>
-		</card_header>
 	</div>
 </body>
 	<script>
-		function Flash(){
-			let e=GetElement('updateflash');
-			e.style.visibility='visible';
+		function GetElement(n){return document.getElementById(n);}
 
-			setTimeout(()=>{e.style.visibility='hidden';},300);
-		}
-		Flash();
-
-		let c=['#EC6066','#6699CC','#99C794','#F9AE58'];
+		let rc=['#EC6066','#6699CC','#99C794','#F9AE58'];
 
 		let vpdranges=[
-			{min:0,max:.3,c:c[0],s:'Peligro, Muy Húmedo'},
-			{min:.3,max:.6,c:c[1],s:'Propagación'},
-			{min:.6,max:1.0,c:c[2],s:'Vegetativo'},
-			{min:1.0,max:1.6,c:c[3],s:'Floración'},
-			{min:1.6,max:6.27,c:c[0],s:'Peligro, Muy Seco'}
+			{min:0,max:.3,c:rc[0],s:'Peligro, Muy Húmedo'},
+			{min:.3,max:.6,c:rc[1],s:'Propagación'},
+			{min:.6,max:1.0,c:rc[2],s:'Vegetativo'},
+			{min:1.0,max:1.6,c:rc[3],s:'Floración'},
+			{min:1.6,max:6.27,c:rc[0],s:'Peligro, Muy Seco'}
 		];
 
 		let tempranges=[
-			{min:0,max:18,c:c[1]},
-			{min:18,max:26,c:c[2]},
-			{min:26,max:30,c:c[3]},
-			{min:30,max:60,c:c[0]}
+			{min:0,max:18,c:rc[1]},
+			{min:18,max:26,c:rc[2]},
+			{min:26,max:30,c:rc[3]},
+			{min:30,max:60,c:rc[0]}
 		];
 
 		let humranges=[
-			{min:0,max:40,c:c[0]},
-			{min:40,max:50,c:c[1]},
-			{min:50,max:70,c:c[2]},
-			{min:70,max:85,c:c[3]},
-			{min:85,max:100,c:c[0]}
+			{min:0,max:40,c:rc[0]},
+			{min:40,max:50,c:rc[1]},
+			{min:50,max:70,c:rc[2]},
+			{min:70,max:85,c:rc[3]},
+			{min:85,max:100,c:rc[0]}
 		];
 
 		let recommends=['▲ Humedad.','▼ Humedad.','▲ Temperatura.','▼ Temperatura.','Óptimo.'];
@@ -226,12 +192,13 @@
 		function SemiCircleGauge(e,ranges,p,...t){
 			e=GetElement(e);
 			e.height=66;
-			let h=e.height-4;
 			e.width=e.height*2;
 
-			let ctx=e.getContext('2d'),cx=e.width/2,apr=Math.PI/ranges.length,sa=Math.PI,a=Math.PI,pw=.06,ty=h;
+			p=parseFloat(p);
 
-			for(i=0;i<ranges.length;i++){
+			let h=e.height-4,ctx=e.getContext('2d'),cx=e.width/2,apr=Math.PI/ranges.length,sa=Math.PI,a=Math.PI,pw=.06,ty=h;
+
+			for(let i=0;i<ranges.length;i++){
 				let ea=sa+apr;
 
 				ctx.beginPath();
@@ -239,13 +206,14 @@
 				ctx.strokeStyle=ranges[i].c;
 				ctx.lineWidth=11;
 				ctx.stroke();
+
 				sa=ea;
 			}
 
 			if(p>=ranges[ranges.length-1].max){
 				a=2*Math.PI;
 			}else{
-				for(i=0;i<ranges.length;i++){
+				for(let i=0;i<ranges.length;i++){
 					let r=ranges[i];
 
 					if(p>=r.min&&p<=r.max){
@@ -262,14 +230,20 @@
 			ctx.fillStyle='#2A8387';
 			ctx.fill();
 
-			ctx.font='16px Arial';
 			ctx.fillStyle='#D8DEE9';
 			ctx.textAlign='center';
 			ctx.textBaseline='middle';
 
-			if(p%1!==0){
+			if(e.id=='meter_vpd'){
+				ctx.font='14px Arial';
+
 				ty-=18;
+
 				p=p.toFixed(2);
+			}else{
+				ctx.font='16px Arial';
+
+				p=p.toFixed(1);
 			}
 
 			ctx.fillText(p+t[0],cx,ty-4);
@@ -278,355 +252,21 @@
 				ctx.fillText(t[1],cx,ty+11);
 		}
 
-		function TrapezoidIndicator(e,l){
-			e=GetElement(e);
-			e.height=74;
-			e.width=72;
-
-			let ctx=e.getContext('2d'),ox=(e.width-60)/2,tl=[ox,1],tr=[ox+60,1],bl=[ox+10/2,69],br=[ox+110/2,69];
-
-			ctx.beginPath();
-			ctx.moveTo(tl[0]+3,tl[1]);
-			ctx.lineTo(tr[0]-3,tr[1]);
-			ctx.quadraticCurveTo(tr[0],tr[1],tr[0],tr[1]+3);
-			ctx.lineTo(br[0],br[1]-3);
-			ctx.quadraticCurveTo(br[0],br[1],br[0]-3,br[1]);
-			ctx.lineTo(bl[0]+3,bl[1]);
-			ctx.quadraticCurveTo(bl[0],bl[1],bl[0],bl[1]-3);
-			ctx.lineTo(tl[0],tl[1]+3);
-			ctx.quadraticCurveTo(tl[0],tl[1],tl[0]+3,tl[1]);
-			ctx.closePath();
-			ctx.lineWidth=1.5;
-			ctx.strokeStyle='#6699CC';
-			ctx.stroke();
-
-			let ty=tl[1]+3,ih=bl[1]-5,fty=ty+(1-Math.max(.01,Math.min(l/100,1)))*ih,ftd=60-10*((fty-ty)/ih),fx=(e.width-ftd)/2;
-
-			ctx.beginPath();
-			ctx.moveTo(ox+10/2+3,66);
-			ctx.lineTo(ox+110/2-3,66);
-			ctx.lineTo(fx+ftd-3,fty);
-			ctx.lineTo(fx+3,fty);
-			ctx.closePath();
-			ctx.fillStyle='#6699CC';
-			ctx.fill();
-
-			ctx.font='16px Arial';
-			ctx.fillStyle='#D8DEE9';
-			ctx.textAlign='center';
-			ctx.shadowColor='#000';
-			ctx.shadowBlur=4;
-			ctx.fillText(l+'%',e.width/2,70/1.7);
-		}
-
 		function SetEnvValues(t,h){
 			let vpd=CalcVPD(t,h);
 
 			SemiCircleGauge('meter_temp',tempranges,t,'°C');
 			SemiCircleGauge('meter_hum',humranges,h,'%');
-
 			SemiCircleGauge('meter_vpd',vpdranges,vpd,'kPa',GetStateOfVPD(vpd));
 			GetElement('ind_vpd').innerText=GetVPDRecommendation(t,h,vpd);
 		}
 
-		TrapezoidIndicator('reservoirlevel',69);
+		function randomFloat(min, max) {return Math.random() * (max - min) + min;}
 
-		////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		Object.assign(Chart.defaults.datasets.line,{borderWidth:1.2,tension:.3});
-		Chart.defaults.layout.padding={left:20,right:20};
-		Chart.defaults.scales.linear={offset:false,display:false};
-		Chart.defaults.interaction={mode:'index',intersect:false};
-
-		let Chart1Labels=[
-			{label:'Solución de Riego',borderColor:'#6699CC',backgroundColor:'#6699CC',yAxisID:'s'},
-			{label:'Reductor de pH',borderColor:'#FABA18',backgroundColor:'#FABA18'},
-			{label:'Fertilizante de Vegetativo',borderColor:'#264072',backgroundColor:'#264072'},
-			{label:'Fertilizante de Floración',borderColor:'#ED6D58',backgroundColor:'#ED6D58'}
-		];
-
-		let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labels},
-			options:{
-				plugins:{
-					legend:{display:true,labels:{color:'#D8DEE9'}},
-					tooltip:{
-						callbacks:{
-							title:item=>'Día: '+item[0].raw.x,
-							label:item=>item.dataset.label+`: ${item.raw.y}cc`,
-							footer:items=>{
-								let d=[100,2.0,3.0,['test','test']];//CalcIrrigation(item.raw.y);
-
-								return[
-									'Total de Pulsos: '+d[0],
-									`Cantidad de Riego por Pulso: ${d[1].toFixed(1)}cc (${(d[1]/items[0].raw.y*100).toFixed(1)}% de ${items[0].raw.y}cc)`,
-									`Duración de cada Pulso: ${d[2].toFixed(1)} segundos`,
-									'Horas de Riego: '+d[3].join(' '),
-								];
-							}
-						}
-					}
-				},animation:{duration:0},interaction:{mode:'index',intersect:false},
-				scales:{
-					y:{display:false},s:{display:false},
-					x:{display:true,type:'linear',ticks:{stepSize:1,color:'#D8DEE9'},title:{color:'#D8DEE9',display:true,text:'Día'}}
-				}
-			},plugins:[{
-				afterDatasetsDraw(chart){
-			let{ctx,data}=chart;
-
-			data.datasets.forEach((ds,i)=>{
-				if(!chart.isDatasetVisible(i))
-					return;
-
-				chart.getDatasetMeta(i).data.forEach((p,index)=>{
-					ctx.save();
-					ctx.fillStyle=ds.borderColor;
-					ctx.shadowColor='black';
-					ctx.shadowOffsetX=1;
-					ctx.shadowOffsetY=1;
-					ctx.fillStyle='#D8DEE9';
-					ctx.fillText(ds.data[index].y+'cc',p.x-10,p.y);
-					ctx.restore();
-				});
-			});
-		}
-			}]
-		});
-		
-		ichart.canvas.addEventListener('pointerup',e=>{
-			if(e.button>0)
-				return;
-
-			let r=ichart.canvas.getBoundingClientRect();
-
-			if(e.clientY-r.top<25)
-				return;
-
-			let d=ichart.getElementsAtEventForMode(e,'nearest',{intersect:true},true);
-
-			let Apply=()=>{
-				if(confirm('Querés aplicar los cambios?'))
-					SendAction('update','ichart',ichart.data.datasets[0].data.map((_,i)=>ichart.data.datasets[0].data[i].x+'|'+ichart.data.datasets.map(ds=>ds.data[i].y).join('|')).join(','));
-			};
-
-			if(d.length){
-				if(confirm('¿Seguro que queres eliminar este Riego?')){
-					let x=ichart.data.datasets[d[0].datasetIndex].data[d[0].index].x;
-
-					for(i=0;i<Chart1Labels.length;i++)
-						ichart.data.datasets[i].data=ichart.data.datasets[i].data.filter(p=>p.x!=x);
-
-					ichart.update();
-					Apply();
-				}
-			}else{
-				let d=prompt('Día',Math.round(ichart.scales.x.getValueForPixel(e.clientX-r.left))),c=false;
-
-				if(d!==null&&!isNaN(d)&&d>0){
-					for(i=0;i<Chart1Labels.length;i++){
-						let cc=prompt(`Cantidad de CC de ${Chart1Labels[i].label} a ${i==0?'Regar':'Incorporar'}`,Math.round(ichart.scales.y.getValueForPixel(e.clientY-r.top)));
-						if(cc!==null&&!isNaN(cc)){
-							ichart.data.datasets[i].data.push({x:parseInt(d),y:parseFloat(cc)});
-							ichart.data.datasets[i].data.sort((a,b)=>a.x-b.x);
-
-							if(i+1==Chart1Labels.length)
-								c=true;
-						}else{
-							break;
-						}
-					}
-
-					if(c){
-						ichart.update();
-						Apply();
-					}
-				}
-			}
-		});
-		//////////////////
-		for(i=0;i<Chart1Labels.length;i++)
-			ichart.data.datasets[i].data=[];
-
-		let s="1|20|0.00|0.00|0.00,7|30|0.00|0.00|0.00,17|40|0.00|0.00|0.00,24|20|5.00|100.00|10.00,27|50|0.00|0.00|0.00,37|80|0.00|0.00|0.00,47|100|0.00|0.00|0.00,57|120|0.00|0.00|0.00,67|140|0.00|0.00|0.00".split(',');
-		for(j=0;j<s.length;j++){
-			let n=s[j].split('|');
-
-			for(k=1;k<n.length;k++)
-				ichart.data.datasets[k-1].data[j]={x:n[0],y:n[k]};
-		}
-
-		ichart.update();
-		//////////////////////////////////////
-		function CalcFertsIncorporation(){
-			let m=parseInt(e_fim.value),idc=10;// TODO: cuando pase esto a script.js; cambiar por --> idc=GetWheelValue(elements[2]);;
-			let ids=ichart.data.datasets[0],fds=ichart.data.datasets.slice(1),hti=false,di=-1;
-
-			for(i=ids.data.length-1;i>=0;i--){
-				let d=parseInt(ids.data[i].x);
-
-				if(!hti&&idc>=d&&parseFloat(ids.data[i].y)>0){
-					if(m==0){
-						hti=true;
-					}else if(m==1){
-						for(j=0;j<fds.length;j++){
-							if(parseFloat(fds[j].data[i].y)>.001){
-								hti=true;
-								break;
-							}
-						}
-					}
-				}
-
-				if(!hti&&idc>=d)
-					break;
-
-				if(hti&&fds.some(ds=>parseFloat(ds.data[i].y)>.001)){
-					di=i;
-					break;
-				}
-			}
-
-			let r='<ind class=state>No se Incorporarán Fertilizantes.</ind>';
-			if(di>=0){
-				r='Se van a Incorporar Fertilizantes del Día: '+ids.data[di].x;
-
-				fds.forEach((ds,j)=>{
-					let cc=parseFloat(ds.data[di].y);
-					if(cc>.001)
-						r+=`<br><ind style=color:${ds.borderColor}>${ds.label}</ind>: ${cc.toFixed(1)}cc`;
-				});
-			}
-
-			GetElement('fti').innerHTML=r;
-		}
-
-		SetFertsIncorporationMode();
-
-		////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		let ShowTextLines=false;
-		let MaxLightBright=4095,Chart2TimeZone="ART3";
-			let Chart2Labels=[
-				{label:'Temperatura Ambiente',borderColor:'#E3792B',backgroundColor:'#E3792B',symbol:'°C',yAxisID:'s'},
-				{label:'Humedad Ambiente',borderColor:'#87B4BC',backgroundColor:'#87B4BC',symbol:'%',yAxisID:'s'},
-				{label:'Déficit de Presión de Vapor',borderColor:'#4B7843',backgroundColor:'#4B7843',symbol:'kPa'},
-				{label:'Humedad de Maceta 0',borderColor:'#B57165',backgroundColor:'#B57165',symbol:'%',yAxisID:'s'},
-				{label:'Humedad de Maceta 1',borderColor:'#784B43',backgroundColor:'#784B43',symbol:'%',yAxisID:'s'},
-				{label:'Luz',borderColor:'#D6B83B',backgroundColor:'#D6B83B',yAxisID:'0',stepped:1}
-			];
-
-Chart2Labels.forEach(ds=>{
-	ds.pointRadius=0;
-	ds.tension=0;
-});
-
-let hchart=new Chart(GetElement('hchart'),{type:'line',data:{datasets:Chart2Labels},
-	options:{
-		plugins:{
-			legend:{display:false},
-			tooltip:{
-				callbacks:{
-					title:item=>{
-						let date=new Date(item[0].raw.x*1000);
-						return`Fecha: ${date.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})} `+date.toLocaleTimeString('es-AR');
-					},
-					label:item=>item.dataset.label+`: ${item.dataset.symbol?item.raw.string+item.dataset.symbol+(item.dataset.symbol=='kPa'?` (${GetStateOfVPD(item.raw.string)})`:''):item.raw.string=='0'?'Apagada':`Encendida (${CalcBright(item.raw.string)})`}`
-				}
-			}
-		},animation:{duration:0},scales:{x:{type:'linear',ticks:{stepSize:1}}}
-	},plugins:[{
-		afterDatasetsDraw(chart){
-			if(!ShowTextLines)
-				return;
-
-			let{ctx,data}=chart;
-
-			data.datasets.forEach((ds,i)=>{
-				if(ds.hidden||i==5)
-					return;
-
-				chart.getDatasetMeta(i).data.forEach((p,index)=>{
-					ctx.save();
-					ctx.fillStyle=ds.borderColor;
-					ctx.shadowColor='black';
-					ctx.shadowOffsetX=1;
-					ctx.shadowOffsetY=1;
-					ctx.fillText(ds.data[index].y+ds.symbol,p.x-10,p.y-3);
-					ctx.restore();
-				});
-			});
-		}
-	}]
-});
-
-	let cd="1754418391|21|64|29|39|0,1754421991|21|66|29|38|0,1754425592|21|69|29|39|0,1754429192|21|68|30|37|0,1754432792|20|64|29|39|0,1754436392|20|68|29|37|0,1754439993|20|69|30|37|0,1754443593|20|68|28|39|0,1754447193|20|69|28|38|0,1754450793|20|69|28|37|0,1754454394|12|74|27|38|0,1754457994|12|78|30|34|0,1754461594|11|79|29|34|0,1754465194|11|79|25|35|0,1754468795|11|79|24|35|0,1754472395|10|79|28|32|0,1754475995|18|65|27|32|0,1754479595|18|66|25|34|0,1754483196|18|68|26|34|0,1754486796|19|66|25|35|0,1754490396|20|68|26|34|0,1754493996|20|68|28|34|0,1754497597|21|65|27|34|0,1754501197|21|67|27|34|0,1754504797|22|65|27|33|4095,1754508397|23|65|28|34|4095,1754511998|23|66|75|100|4095,1754515598|22|69|29|34|4095,1754519198|22|68|28|34|4095,1754522798|22|68|29|35|4095,1754526398|22|69|29|34|4095,1754529999|21|68|28|36|4095,1754533599|21|68|28|36|4095,1754537199|21|68|28|35|4095,1754540800|14|75|31|32|4095,1754544400|13|79|27|33|4095,1754548000|13|79|29|31|4095,1754551600|12|80|24|34|4095,1754555201|12|81|28|30|4095,1754558801|12|81|27|31|4095,1754562401|19|67|26|30|4095,1754566001|19|69|26|31|4095,1754569602|19|67|25|32|4095,1754573202|19|68|26|31|4095,1754576802|20|67|25|31|4095,1754580402|20|69|27|31|4095,1754584003|20|68|27|32|4095,1754587603|21|69|27|33|4095".split(',');
-
-	for(i=0;i<cd.length;i++){
-		let v=cd[i].split('|');
-
-		for(j=1;j<v.length;j++){
-			let f=parseFloat(v[j]);
-			hchart.data.datasets[j>2?j:j-1].data[i]={x:v[0],y:j==5?(f>0?1:0):f,string:v[j]};
-
-			if(j==2){
-				let r=CalcVPD(v[1],v[2]).toFixed(2);
-				hchart.data.datasets[j].data[i]={x:v[0],y:r,string:r};
-			}
-		}
-	}
-	hchart.update();
-
-document.querySelector('#legend').addEventListener('click',e=>{
-	if(e.target&&e.target.matches('td.showline')){
-		let ds=hchart.data.datasets[e.target.getAttribute('ddi')];
-		ds.hidden=!ds.hidden;
-		hchart.update();
-		e.target.classList.toggle('hideline',ds.hidden);
-	}
-});
-
-GetElement('toggletext').addEventListener('click',e=>{
-	ShowTextLines=!ShowTextLines;
-	e.textContent=ShowTextLines?'Ocultar Valores':'Mostrar Valores';
-	hchart.update();
-});
-
-			let tablechild={},table=document.querySelector('#legend tbody');
-
-			table.querySelectorAll('td.showline').forEach(td=>{tablechild[td.getAttribute('ddi')]=td.classList.contains('hideline')});
-			table.innerHTML='';
-
-			hchart.data.datasets.forEach((ds,i)=>{
-				let v=ds.data.map(point=>point.y),r=document.createElement('tr'),s=ds.symbol,min,max,avg;
-
-				if(i==5){
-					return;
-				}else if(i==2){
-					let t=hchart.data.datasets[0].data.map(point=>point.y),h=hchart.data.datasets[1].data.map(point=>point.y),vpds=[];
-
-					for(j=0;j<t.length;j++)
-						vpds.push(CalcVPD(t[j],h[j]));
-
-					min=Math.min(...vpds).toFixed(2);
-					max=Math.max(...vpds).toFixed(2);
-					avg=(vpds.reduce((s,v)=>s+v,0)/vpds.length).toFixed(2);
-					min+=s+` (${GetStateOfVPD(min)})`;
-					max+=s+` (${GetStateOfVPD(max)})`;
-					avg+=s+` (${GetStateOfVPD(avg)})`;
-				}else{
-					min=Math.min(...v)+s;
-					max=Math.max(...v)+s;
-					avg=(v.reduce((s,v)=>s+v,0)/v.length).toFixed()+s;
-				}
-
-				r.innerHTML=`<td style=color:${ds.borderColor} class='showline ${tablechild[i]?'hideline':''}'ddi=${i}>${ds.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
-
-				table.appendChild(r);
-			});
-		////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		SetEnvValues(24,59);
 		setInterval(()=>{
-			//SetEnvValues(24,59);
+			SetEnvValues(randomFloat(0,40),randomFloat(0,100));
 			// o
 			//location.reload();
-		},800);
+		},500);
 	</script>
 </html>

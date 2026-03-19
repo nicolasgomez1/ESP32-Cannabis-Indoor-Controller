@@ -6,12 +6,12 @@
 		<link rel='shortcut icon'href=data:,>
 		<title>ESP32 Indoor Logs & Metrics</title>
 		<link rel=stylesheet type=text/css href=style.css>
-		<style>a{color:inherit;text-decoration:underline}ul{padding:12}</style>
+		<style>a{color:inherit;text-decoration:underline}ul{margin:0-5}</style>
 	</head>
 	<body>
 		<div id=wrapper>
 			<card>
-				<ct>Logs/Metrics</ct>
+				<ct>Archivos de Registro y Metricas</ct>
 				<div style=display:flex>
 					<ul id=logslist></ul>
 					<ul id=metricslist></ul>
@@ -32,7 +32,7 @@
 				f.sort((a,b)=>parseDate(b)-parseDate(a)).forEach(n=>{
 					let i=document.createElement('li'),l=document.createElement('a');
 					l.href='../logs/'+n+(n==today?'#'+Date.now():'');
-					l.textContent=n.replace(/^logging_/, '');
+					l.textContent=n.replace('.txt','');
 					l.target='_blank';
 					i.appendChild(l);
 					e.appendChild(i);
@@ -50,7 +50,7 @@
 				f.sort((a,b)=>parseDateb(b)-parseDateb(a)).forEach(n=>{
 					let i=document.createElement('li'),l=document.createElement('a');
 					l.href='../metrics/'+n+(n==today?'#'+Date.now():'');
-					l.textContent=n.replace(/^metrics_/, '');
+					l.textContent=n.replace('.txt','');
 					l.target='_blank';
 					i.appendChild(l);
 					e.appendChild(i);
