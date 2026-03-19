@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260318_191158" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260318_213556" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -893,7 +893,7 @@ String HTMLProcessor(const String& var) {
     String strReturn;
 
     for (uint8_t i = 0; i < nSoilMoisturePinsCount; i++)
-      strReturn += "{label:'Humedad de Maceta " + String(i) + "',borderColor:'" + pSoilMoisturePins[i].HTMLColor + "',backgroundColor:'" + pSoilMoisturePins[i].HTMLColor + "',symbol:'%%'},";
+      strReturn += "{label:'Humedad de Maceta " + String(i) + "',borderColor:'" + pSoilMoisturePins[i].HTMLColor + "',symbol:'%%'},";
 
     return strReturn;
   } else if (var == "PROFILE") {
