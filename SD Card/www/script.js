@@ -1,9 +1,27 @@
-const JSVersion='V420260319_001802';
+const JSVersion='V420260319_184503';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
 
-let e_profile=GetElement('profile'),e_lightstart=GetElement('lightstart'),e_lightstop=GetElement('lightstop'),e_fim=GetElement('fim');
+function SetWheelSpinRange(e,min,max,step=1){
+	e=GetElement(e);
+	e.min=min;
+	e.step=step;
+
+	for(i=min;i<=max+Number.EPSILON;i=Math.round((i+step)*1000)/1000){
+		let l=document.createElement('div');
+		l.className='wheellabel';
+		l.textContent=i;
+		e.appendChild(l);
+	}
+}
+
+function SetWheelSpinValue(e,v){
+	e=GetElement(e);
+	e.scrollTop=Math.round((v-e.min)/e.step)*15;
+}
+
+function GetWheelValue(e){return parseFloat(e.children[Math.round(e.scrollTop/15)].textContent);}
 
 let elements=[
 	'lightstart','lightstop',
@@ -15,6 +33,8 @@ let elements=[
 	'pumpfpm0','pumpfpm1','pumpfpm2',
 	'mixdur','saint'
 ];
+
+let e_profile=GetElement('profile'),e_lightstart=GetElement(elements[0]),e_lightstop=GetElement(elements[1]),e_fim=GetElement('fim');
 
 let rc=['#EC6066','#6699CC','#99C794','#F9AE58'];
 
@@ -48,58 +68,39 @@ let Chart1Labels=[
 	{label:'Fertilizante de Floración',borderColor:'#ED6D58'}
 ];
 
-elements.forEach((e,index)=>{
-	e=GetElement(e);
+SetWheelSpinRange(elements[0],1,24);
+SetWheelSpinRange(elements[1],1,24);
 
-	for(let i=0;i<=999;i++){
-		let l=document.createElement('div');
-		l.className='wheellabel';
+SetWheelSpinRange(elements[2],1,365);
 
-		if(index<2){
-			if(i>0){
-				l.textContent=i;
+SetWheelSpinRange(elements[3],0,100);
 
-				if(i>24){
-					e.scrollTop=(ElementsValues[index]-1)*15;
-					break;
-				}
-			}
-		}else if(index<3){
-			if(i>0){
-				l.textContent=i;
+SetWheelSpinRange(elements[4],0,100);
+SetWheelSpinRange(elements[5],0,100);
 
-				if(i>365){
-					e.scrollTop=(ElementsValues[index]-1)*15;
-					break;
-				}
-			}
-		}else{
-			l.textContent=i;
+SetWheelSpinRange(elements[6],0,100);
+SetWheelSpinRange(elements[7],0,100);
 
-			if(index<8&&i>100){
-				e.scrollTop=ElementsValues[index]*15;
-				break;
-			}else if(i==999){
-				e.scrollTop=ElementsValues[index]*15;
-			}
-		}
+SetWheelSpinRange(elements[8],1,1440);
+SetWheelSpinRange(elements[9],1,1440);
 
-		if(l.textContent!='')
-			e.appendChild(l);
-	}
-});
+SetWheelSpinRange(elements[10],0,1000);
+SetWheelSpinRange(elements[11],0,1000);
+SetWheelSpinRange(elements[12],0,1000);
+SetWheelSpinRange(elements[13],0,1000);
+
+SetWheelSpinRange(elements[14],0,1440);
+SetWheelSpinRange(elements[15],1,1440);
 
 function Flash(){
 	let e=GetElement('updateflash');
 
 	e.style.visibility='visible';
 
-	setTimeout(()=>{e.style.visibility='hidden';},100);
+	setTimeout(()=>{e.style.visibility='hidden';},300);
 }
 
-function GetWheelValue(e){return Math.round(e.scrollTop/15);}
-
-function GetLightStartStop(){return[GetWheelValue(e_lightstart)+1,GetWheelValue(e_lightstop)+1];}
+function GetLightStartStop(){return[GetWheelValue(e_lightstart),GetWheelValue(e_lightstop)];}
 
 function CalcLightDur(){
 	let r=GetLightStartStop(),ch=new Date().getHours();
@@ -122,8 +123,8 @@ function SetPhoto(a,b){
 	ElementsValues[0]=parseInt(a);
 	ElementsValues[1]=parseInt(b);
 
-	e_lightstart.scrollTop=(a-1)*15;
-	e_lightstop.scrollTop=(b-1)*15;
+	SetWheelSpinValue(elements[0],a);
+	SetWheelSpinValue(elements[1],b);
 
 	CalcLightDur();
 }
@@ -149,9 +150,7 @@ function SendAction(action,...args){
 			let r=GetLightStartStop(),min=parseInt(e_profile.value)==1?5:4;
 			if((r[1]-r[0]+24)%24<min){
 				alert(`No se puede definir un Fotoperiodo inferior a ${min} Horas.`);
-
 				SetPhoto(ElementsValues[0],ElementsValues[1]);
-
 				return;
 			}else{
 				ElementsValues[0]=r[0];
@@ -200,12 +199,10 @@ function SendAction(action,...args){
 						else
 							SetFanMode(e);
 					}else{
-						if(e=='idc'){
+						if(e=='idc')
 							ElementsValues[2]=parseInt(v);
-							GetElement(e).scrollTop=(v-1)*15;
-						}else{
-							GetElement(e).scrollTop=v*15;
-						}
+
+						SetWheelSpinValue(e,v);
 					}
 				}
 			}
@@ -247,7 +244,8 @@ function SendAction(action,...args){
 
 			if(idc!=ElementsValues[2]){
 				ElementsValues[2]=idc;
-				GetElement('idc').scrollTop=(idc-1)*15;
+
+				SetWheelSpinValue(elements[2],idc);
 			}
 
 			let wattimerem=parseInt(data[9]);
@@ -360,9 +358,9 @@ function SetFanMode(n,s){
 function GetStateOfVPD(v){
 	if(v<=vpdranges[4].max){
 		for(let i=0;i<vpdranges.length;i++){
-			let r=vpdranges[i],isLast=i==vpdranges.length-1;
+			let r=vpdranges[i],il=i==vpdranges.length-1;
 
-			if(v>=r.min&&(isLast?v<=r.max:v<r.max))
+			if(v>=r.min&&(il?v<=r.max:v<r.max))
 				return vpdranges[i].s;
 		}
 	}
@@ -431,7 +429,7 @@ function SetFertsIncorporationMode(s){
 }
 
 function CalcFertsIncorporation(){
-	let m=parseInt(e_fim.value),idc=GetWheelValue(GetElement(elements[2]))+1;
+	let m=parseInt(e_fim.value),idc=GetWheelValue(GetElement(elements[2]));
 	let ids=ichart.data.datasets[0],fds=ichart.data.datasets.slice(1),hti=false,di=-1;
 
 	for(let i=ids.data.length-1;i>=0;i--){
@@ -477,8 +475,8 @@ function CalcFertsIncorporation(){
 
 function SemiCircleGauge(e,ranges,p,...t){
 	e=GetElement(e);
-	e.height=66;
-	e.width=e.height*2;
+	e.height=70;
+	e.width=160;
 
 	p=parseFloat(p);
 
@@ -523,7 +521,7 @@ function SemiCircleGauge(e,ranges,p,...t){
 	if(e.id=='meter_vpd'){
 		ctx.font='14px Arial';
 
-		ty-=18;
+		ty-=17;
 
 		p=p.toFixed(2);
 	}else{
@@ -535,7 +533,7 @@ function SemiCircleGauge(e,ranges,p,...t){
 	ctx.fillText(p+t[0],cx,ty-4);
 
 	if(t[1])
-		ctx.fillText(t[1],cx,ty+11);
+		ctx.fillText(t[1],cx,ty+10);
 }
 
 function SetEnvValues(t,h){
@@ -649,7 +647,7 @@ Chart2Labels.forEach((ds,i)=>{
 	ds.pointRadius=0;
 	ds.tension=0;
 	ds.backgroundColor=ds.borderColor;
-	ds.yAxisID=i==2?'1':i==5?'2':'0'
+	ds.yAxisID=i==2?'1':i==5?'2':'0';
 });
 
 let hchart=new Chart(GetElement('hchart'),{type:'line',data:{datasets:Chart2Labels},
@@ -702,8 +700,6 @@ elements.forEach((e,i)=>{
 		let r=GetWheelValue(e);
 
 		if(i<3){
-			r++;
-
 			if(i<2)
 				CalcLightDur();
 			else
@@ -735,8 +731,6 @@ elements.forEach((e,i)=>{
 		let r=GetWheelValue(e);
 
 		if(i<3){
-			r++;
-
 			if(i<2)
 				CalcLightDur();
 			else
@@ -870,9 +864,9 @@ GetElement('softwareform').addEventListener('submit',async ev=>{
 
 window.onload=function(){
 	SetSelectedProfile(true);
+	elements.forEach((e,i)=>{SetWheelSpinValue(e,ElementsValues[i]);});
 	CalcLightDur();
 	SetLightBright();
-	SetEnvValues(0,0);
 	['ifm','rfm'].forEach(e=>SetFanMode(e));
 	SetFertsIncorporationMode();
 	GetElement('htmlver').innerText=HTMLVersion;

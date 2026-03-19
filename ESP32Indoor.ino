@@ -30,6 +30,9 @@
 // HW080 have a pulldown (in return line to gnd).
 // All logics assume/is for Days of 24 Hours max.
 // After unexpected energy shutdown, the irrigation process gonna re-do the last pulse if is needed, but it gonna do entire pulse, not just remaining time.
+/* Error Codes:
+      ERR0: Cannot change the Profile at this time.
+*/
 /* Fertilizer Incorporation Logic:
      The fertilizer incorporation process is controlled by the g_bApplyFertilizers flag.
      When triggered, the system inspects past irrigation days (g_vecWateringStages) to determine whether to apply fertilizers, based on the current incorporation mode (g_nFertilizerIncorporationMode).
