@@ -1,4 +1,4 @@
-const JSVersion='V420260318_213556';
+const JSVersion='V420260318_214733';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -272,7 +272,7 @@ function SendAction(action,...args){
 					let v=cd[i].split('|');
 
 					for(let j=1;j<v.length;j++){
-						hchart.data.datasets[j>2?j:j-1].data[i]={x:v[0],y:v[j],string:v[j]};
+						hchart.data.datasets[j>2?j:j-1].data[i]={x:v[0],y:parseFloat(v[j]),string:v[j]};
 
 						if(j==2){
 							let r=CalcVPD(v[1],v[2]).toFixed(2);
