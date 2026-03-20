@@ -2,7 +2,7 @@
 <body>
 	<div id=wrapper>
 		<card>
-			<container>Perfil: <input type=range class=slider id=profilesel min=0 max=2 step=1 value=0 oninput=UpdateSelectedProfile()> <ind id=ind_profilesel></ind></container>
+			<container>Perfil: <input type=range class=slider id=profilesel min=0 max=2 step=1 value=0 oninput=SetSelectedProfile()> <ind id=ind_profile></ind></container>
 			<container>Rango de Temperatura: <wheelcontainer><div class=wheel id=t0></div></wheelcontainer>~<wheelcontainer><div class=wheel id=t1></div></wheelcontainer></container>
 			<container>Rango de Humedad: <wheelcontainer><div class=wheel id=h0></div></wheelcontainer>~<wheelcontainer><div class=wheel id=h1></div></wheelcontainer></container>
 			<container>Rango de DPV: <wheelcontainer><div class=wheel id=vpd0></div></wheelcontainer>~<wheelcontainer><div class=wheel id=vpd1></div></wheelcontainer></container>
@@ -55,7 +55,7 @@
 			{min:85,max:100,c:rc[0]}
 		];
 
-		let recommends=['▲ Humedad.','▼ Humedad.','▲ Temperatura.','▼ Temperatura.','Óptimo.','Fuera de Rango'];
+		let recommends=['▲ Humedad.','▼ Humedad.','▲ Temperatura.','▼ Temperatura.','Óptimo.','This could get ugly'];
 		///////////////////////
 		let elements=['t0','t1','h0','h1','vpd0','vpd1'];
 
@@ -112,11 +112,26 @@
 		function GetElement(n){return document.getElementById(n);}
 		function CalcBright(v){return`Aprox: ${(Math.round(v/MaxLightBright*100)/100*1008).toFixed(0)}ppfd`;}
 
-		function UpdateSelectedProfile(s){
+		function SetSelectedProfile(s){
 			let v=parseInt(e_prosel.value);
-			GetElement('ind_profilesel').innerText=v==0?'Vegetativo':v==1?'Floración':'Secado';
+			GetElement('ind_profile').innerText=v==0?'Vegetativo':v==1?'Floración':'Secado';
+
+			if(v>1)
+				return;
+
+			v=v+2;
+
+			SetWheelSpinValue('t0',tempranges[v-1].min);
+			SetWheelSpinValue('t1',tempranges[v-1].max);
+
+			SetWheelSpinValue('h0',humranges[v].min);
+			SetWheelSpinValue('h1',humranges[v].max);
+
+			SetWheelSpinValue('vpd0',vpdranges[v].min);
+			SetWheelSpinValue('vpd1',vpdranges[v].max);
 		}
-		UpdateSelectedProfile();
+
+		SetSelectedProfile();
 
 		function UpdateVPDCorrectorPriority(){
 			let v=parseInt(e_priority.value);
@@ -221,7 +236,7 @@
 
 			p=parseFloat(p);
 
-			let h=e.height,ctx=e.getContext('2d'),cx=e.width/2,apr=Math.PI/ranges.length,sa=Math.PI,a=Math.PI,pw=.06,ty=h;
+			let h=e.height-4,ctx=e.getContext('2d'),cx=e.width/2,apr=Math.PI/ranges.length,sa=Math.PI,a=Math.PI,pw=.06,ty=h;
 
 			for(let i=0;i<ranges.length;i++){
 				let ea=sa+apr;
@@ -262,7 +277,7 @@
 			if(e.id=='meter_vpd'){
 				ctx.font='14px Arial';
 
-				ty-=18;
+				ty-=17;
 
 				p=p.toFixed(2);
 			}else{
@@ -274,7 +289,7 @@
 			ctx.fillText(p+t[0],cx,ty-4);
 
 			if(t[1])
-				ctx.fillText(t[1],cx,ty+11);
+				ctx.fillText(t[1],cx,ty+10);
 		}
 
 		function SetEnvValues(t,h){
@@ -289,21 +304,30 @@
 		// TODO: Acá hay que crear una función que sea la que toma las decisiones. Consultando a GetVPDRecommendation, ejecutando la recomendación. Y esperando un periodo de tiempo antes de volver a consultarle a GetVPDRecommendation
 		function ExecuteCorrections(t,h){
 			let vpd=CalcVPD(t,h),r=GetVPDRecommendation(t,h,vpd);
+
+			ind_lastaction.innerText=r;
 		}
 		//////////////////////////////////////////////////////////////////////////////////////////
 		function randomFloat(min, max) {return Math.random() * (max - min) + min;}
 
+		let t,h;
+
+t=36.7,h=69.3;
+			SetEnvValues(t,h);
+
 		setInterval(()=>{
-			SetEnvValues(randomFloat(15,40),randomFloat(30,80));
+			//t=randomFloat(15,40),h=randomFloat(30,80);
+			SetEnvValues(t,h);
+
 			// o
 			//location.reload();
 		},500);
 
 		setInterval(() => {
-			ExecuteCorrections();
+			ExecuteCorrections(t,h);
 		},
 		1000 
-		//15 * 60 * 1000
+		//5 * 60 * 1000	// 5 minutos
 			);
 	</script>
 </html>

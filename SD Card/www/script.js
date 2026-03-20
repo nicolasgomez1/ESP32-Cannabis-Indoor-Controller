@@ -371,9 +371,9 @@ function GetStateOfVPD(v){
 function CalcVPD(t,h){
 	t=parseFloat(t),h=parseFloat(h);
 
-	let e=6.112*Math.exp((17.67*t)/(243.5+t)),r=(e-(h/100)*e)/10;
+	let e=6.112*Math.exp((17.67*t)/(243.5+t));
 
-	return r;
+	return (e-(h/100)*e)/1;
 }
 
 function CalcTime(s){
