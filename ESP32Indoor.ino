@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260319_001802" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260320_025610" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -31,7 +31,7 @@
 // All logics assume/is for Days of 24 Hours max.
 // After unexpected energy shutdown, the irrigation process gonna re-do the last pulse if is needed, but it gonna do entire pulse, not just remaining time.
 /* Error Codes:
-      ERR0: Cannot change the Profile at this time.
+     ERR0: Cannot change the Profile at this time.
 */
 /* Fertilizer Incorporation Logic:
      The fertilizer incorporation process is controlled by the g_bApplyFertilizers flag.
@@ -228,6 +228,7 @@ uint16_t g_nIrrigationFlowPerMinute = 0;
 uint16_t g_nFertilizersPumpsFlowPerMinute[MAX_FERTILIZER_PUMPS] = { 0 };
 uint64_t g_nMixingPumpDuration = 0;
 uint16_t g_nIrrigationReservoirLowerLevel = 0;
+uint8_t g_nLowReservoirLevelWarning = 0;  // TODO: Incluir esto en el web panel
 uint8_t g_nStartLightTime = 0;
 uint8_t g_nStopLightTime = 0;
 uint16_t g_nLightBrightness = 0;
@@ -472,6 +473,7 @@ void SaveSettings() {
       pSettingsFile.println(g_nMixingPumpDuration);
 
       pSettingsFile.println(g_nIrrigationReservoirLowerLevel);
+      pSettingsFile.println(g_nLowReservoirLevelWarning);
 
       pSettingsFile.close();
 
@@ -524,26 +526,56 @@ void LoadProfile(uint8_t nProfile) {
       ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // FERTILIZERS INCORPORATION MODE
       g_nFertilizerIncorporationMode = atoi(cBuffer);
       ///////////////////////////////////////////////////     READ IRRIGATION SCHEME DATA
+      // TODO: Leer el nuevo renglon. (Aunque como este es el momento de transicion, no va a existir ese renglon)
+      ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer));
+
       g_vecWateringStages.clear();
+      // TODO: Eventualmente no haya leido los 3 perfiles; Se van a convertir al nuevo formato y el check y código de lectura del formato viejo ya no va a ser necesario y lo voy a poder borrar
+      if (strchr(cBuffer, '|') != nullptr) {  // Old File
+        do {  //while (pProfileFile.available()) {
+          WateringData pData = {};
 
-      while (pProfileFile.available()) {
-        ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // IRRIGATION DAY|IRRIGATION CC|FERTILIZER A CC|FERTILIZER B CC|ETC
+          char* cToken = strtok(cBuffer, "|");
+          pData.Day = atoi(cToken);
 
-        WateringData pData = {};
-
-        char* cToken = strtok(cBuffer, "|");
-        pData.Day = atoi(cToken);
-
-        cToken = strtok(nullptr, "|");
-        pData.TargetCC = atoi(cToken);
-
-        for (uint8_t i = 0; i < MAX_FERTILIZER_PUMPS; ++i) {
           cToken = strtok(nullptr, "|");
+          pData.TargetCC = atoi(cToken);
 
-          pData.FertilizerToApply[i] = atof(cToken);
+          for (uint8_t i = 0; i < MAX_FERTILIZER_PUMPS; ++i) {
+            cToken = strtok(nullptr, "|");
+
+            pData.FertilizerToApply[i] = atof(cToken);
+          }
+
+          g_vecWateringStages.push_back(pData);
+          //
+          if (pProfileFile.available())
+            ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // IRRIGATION DAY|IRRIGATION CC|FERTILIZER A CC|FERTILIZER B CC|ETC
+          else
+            break;
+        } while (true);
+      } else {  // New File
+        uint16_t nTotalStages = atoi(cBuffer);
+
+        for (uint16_t n = 0; n < nTotalStages; ++n) {
+          ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer));
+
+          WateringData pData = {};
+
+          char* cToken = strtok(cBuffer, "|");
+          pData.Day = atoi(cToken);
+
+          cToken = strtok(nullptr, "|");
+          pData.TargetCC = atoi(cToken);
+
+          for (uint8_t i = 0; i < MAX_FERTILIZER_PUMPS; ++i) {
+            cToken = strtok(nullptr, "|");
+
+            pData.FertilizerToApply[i] = atof(cToken);
+          }
+
+          g_vecWateringStages.push_back(pData);
         }
-
-        g_vecWateringStages.push_back(pData);
       }
 
       pProfileFile.close();
@@ -574,6 +606,8 @@ void SaveProfile(uint8_t nProfile) {
 
       pProfileFile.println(g_nFertilizerIncorporationMode);
       /////////////////////////////////////////////////// SAVE IRRIGATION SCHEME DATA
+      pProfileFile.println(g_vecWateringStages.size());
+
       for (const auto& Watering : g_vecWateringStages) {
         pProfileFile.printf("%u|%u", Watering.Day, Watering.TargetCC);
 
@@ -947,10 +981,22 @@ String HTMLProcessor(const String& var) {
 }
 
 void setup() {
+  esp_reset_reason_t pReason = esp_reset_reason();
   g_pSDMutex = xSemaphoreCreateMutex();
 
   LOGGER(INFO, true, "========== Indoor Controller Started ==========");
   LOGGER(INFO, true, "Firmware Version: %s", FIRMWAREVERSION);
+
+  if (pReason != ESP_RST_POWERON && pReason != ESP_RST_SW) {
+    const char* cReasons[] = {
+      "Unknown", "Power on", "External pin", "Software", 
+      "Panic/Exception", "Interrupt watchdog", "Task watchdog",
+      "Other watchdog", "Deepsleep", "Brownout", "SDIO"
+    };
+
+    LOGGER(WARN, true, "Reset reason: %s", cReasons[pReason]);
+  }
+
   LOGGER(INFO, true, "Initializing Pins...");
 
   for (uint8_t i = 0; i < RELAYS_INDEX_COUNT; i++) {
@@ -1034,6 +1080,14 @@ void setup() {
       ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // LOWER POINT OF IRRIGATION SOLUTION RESERVOIR
       g_nIrrigationReservoirLowerLevel = atoi(cBuffer);
       ///////////////////////////////////////////////////
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // LOWER RESERVOIR LEVEL WARNING
+      g_nLowReservoirLevelWarning = atoi(cBuffer);
+      ///////////////////////////////////////////////////
+      /*  // NOTE: En caso de que necesite agregar un nuevo valor. para hacerlo es así:
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer)); 
+      if (cBuffer[0] != '\0') // NOTE: Una vez se guarde el archivo con el nuevo formato, puedo borrar este check
+        new val = atoi(cBuffer);
+      */
       pSettingsFile.close();
     } else {
       LOGGER(ERROR, false, "Failed to open Settings file.");
@@ -1775,11 +1829,11 @@ void setup() {
 
           g_mapUploadFiles.erase(it);
 
-          const char* cExpectedSize = request->getHeader("File-Size") ? request->getHeader("File-Size")->value().c_str() : nullptr;
-          if (cExpectedSize) {
+          String strExpectedSize = request->getHeader("File-Size") ? request->getHeader("File-Size")->value() : "";
+          if (strExpectedSize.length() > 0) {
             File pFile = SD.open(strTmpPath, FILE_READ);
-
-            if (pFile && pFile.size() != (size_t)atoi(cExpectedSize)) {
+            
+            if (pFile && pFile.size() != (size_t)strExpectedSize.toInt()) {
               SD.remove(strTmpPath);
 
               request->_tempObject = (void*)1;
@@ -2155,7 +2209,7 @@ void loop() {
             bApplyIrrigation = false;
           }
 
-          bApplyIrrigation = bApplyIrrigation && g_nIrrigationDuration > 0; // Finalmente si hasta ahora todos los checks fueron pasados exitosamente, verificar si g_nIrrigationDuration es > 0 quiere decir que ya pasó por for (uint8_t nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) y se asignó la duración del Pulso de Riego a hacer a continuación.
+          bApplyIrrigation = bApplyIrrigation && g_nIrrigationDuration > 0; // Finalmente si hasta ahora los checks fueron pasados exitosamente, verificar si g_nIrrigationDuration es > 0 quiere decir que ya pasó por for (uint8_t nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) y se asignó la duración del Pulso de Riego a hacer a continuación.
         }
       } else if (bApplyIrrigation) {  // Si se está aplicando un Riego; Verificar si ya se puede dejar de regar.
         if (PowerSupplyControl(true)) {
@@ -2241,7 +2295,7 @@ void loop() {
 
         bIsTheLastPulse = false;
 
-        if (g_nIrrigationSolutionLevel <= 25) { // TODO: Esto podria ser configurable
+        if (g_nIrrigationSolutionLevel <= g_nLowReservoirLevelWarning) {
           char cBuffer[41];
           snprintf(cBuffer, sizeof(cBuffer), "Reservorio de Solución de Riego al %d%.", g_nIrrigationSolutionLevel);
           SendNotification(cBuffer);
