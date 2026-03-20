@@ -1,4 +1,4 @@
-const JSVersion='V420260319_184503';
+const JSVersion='V420260320_173956';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -31,7 +31,7 @@ let elements=[
 	'restint','restdur',
 	'ifpm',
 	'pumpfpm0','pumpfpm1','pumpfpm2',
-	'mixdur','saint'
+	'mixdur','lrlw','saint'
 ];
 
 let e_profile=GetElement('profile'),e_lightstart=GetElement(elements[0]),e_lightstop=GetElement(elements[1]),e_fim=GetElement('fim');
@@ -90,7 +90,9 @@ SetWheelSpinRange(elements[12],0,1000);
 SetWheelSpinRange(elements[13],0,1000);
 
 SetWheelSpinRange(elements[14],0,1440);
-SetWheelSpinRange(elements[15],1,1440);
+SetWheelSpinRange(elements[15],0,100);
+
+SetWheelSpinRange(elements[16],1,1440);
 
 function Flash(){
 	let e=GetElement('updateflash');

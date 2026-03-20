@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260320_025610" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260320_173956" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -228,7 +228,7 @@ uint16_t g_nIrrigationFlowPerMinute = 0;
 uint16_t g_nFertilizersPumpsFlowPerMinute[MAX_FERTILIZER_PUMPS] = { 0 };
 uint64_t g_nMixingPumpDuration = 0;
 uint16_t g_nIrrigationReservoirLowerLevel = 0;
-uint8_t g_nLowReservoirLevelWarning = 0;  // TODO: Incluir esto en el web panel
+uint8_t g_nLowReservoirLevelWarning = 0;
 uint8_t g_nStartLightTime = 0;
 uint8_t g_nStopLightTime = 0;
 uint16_t g_nLightBrightness = 0;
@@ -526,11 +526,11 @@ void LoadProfile(uint8_t nProfile) {
       ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // FERTILIZERS INCORPORATION MODE
       g_nFertilizerIncorporationMode = atoi(cBuffer);
       ///////////////////////////////////////////////////     READ IRRIGATION SCHEME DATA
-      // TODO: Leer el nuevo renglon. (Aunque como este es el momento de transicion, no va a existir ese renglon)
+      // TODO: Leer el nuevo renglon. (Aunque como este es el momento de transicion, no va a existir)
       ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer));
 
       g_vecWateringStages.clear();
-      // TODO: Eventualmente no haya leido los 3 perfiles; Se van a convertir al nuevo formato y el check y código de lectura del formato viejo ya no va a ser necesario y lo voy a poder borrar
+      // TODO: Eventualmente cuando haya leido los 3 perfiles; Se van a convertir al nuevo formato y el check y código de lectura del formato viejo ya no va a ser necesario y lo voy a poder borrar
       if (strchr(cBuffer, '|') != nullptr) {  // Old File
         do {  //while (pProfileFile.available()) {
           WateringData pData = {};
@@ -923,7 +923,7 @@ String HTMLProcessor(const String& var) {
     for (uint8_t i = 0; i < MAX_FERTILIZER_PUMPS; i++)
       strReturn += "," + String(g_nFertilizersPumpsFlowPerMinute[i]);
 
-    strReturn += "," + String(TicksToSeconds(g_nMixingPumpDuration)) + "," + String(TicksToMinutes(g_nSamplingInterval));
+    strReturn += "," + String(TicksToSeconds(g_nMixingPumpDuration)) + "," + String(g_nLowReservoirLevelWarning) + "," + String(TicksToMinutes(g_nSamplingInterval));
 
     return strReturn;
   } else if (var == "SOILLABELS") {
@@ -1080,7 +1080,7 @@ void setup() {
       ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // LOWER POINT OF IRRIGATION SOLUTION RESERVOIR
       g_nIrrigationReservoirLowerLevel = atoi(cBuffer);
       ///////////////////////////////////////////////////
-      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // LOWER RESERVOIR LEVEL WARNING
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // LOW RESERVOIR LEVEL WARNING
       g_nLowReservoirLevelWarning = atoi(cBuffer);
       ///////////////////////////////////////////////////
       /*  // NOTE: En caso de que necesite agregar un nuevo valor. para hacerlo es así:
@@ -1503,6 +1503,8 @@ void setup() {
             strReturn += "Se actualizó la Duración de Mezclado de Solución de Riego.\r\n";
           }
         }
+        // =============== Low Reservoir Level Warning =============== //
+        CheckNSetValue(request, "lrlw", g_nLowReservoirLevelWarning, F("el nivel mínimo del reservorio para notificación"), strReturn);
         // =============== Sampling take Intervals =============== //
         if (request->hasArg("saint")) {
           nNewValue = MinutesToTicks(request->arg("saint").toInt());
@@ -1832,7 +1834,7 @@ void setup() {
           String strExpectedSize = request->getHeader("File-Size") ? request->getHeader("File-Size")->value() : "";
           if (strExpectedSize.length() > 0) {
             File pFile = SD.open(strTmpPath, FILE_READ);
-            
+
             if (pFile && pFile.size() != (size_t)strExpectedSize.toInt()) {
               SD.remove(strTmpPath);
 
@@ -2297,7 +2299,7 @@ void loop() {
 
         if (g_nIrrigationSolutionLevel <= g_nLowReservoirLevelWarning) {
           char cBuffer[41];
-          snprintf(cBuffer, sizeof(cBuffer), "Reservorio de Solución de Riego al %d%.", g_nIrrigationSolutionLevel);
+          snprintf(cBuffer, sizeof(cBuffer), "Reservorio de Solucion de Riego al %d%.", g_nIrrigationSolutionLevel);
           SendNotification(cBuffer);
         }
       }

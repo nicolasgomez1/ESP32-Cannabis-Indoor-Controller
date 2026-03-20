@@ -8,7 +8,7 @@
 		<link rel=stylesheet type=text/css href=www/style.css>
 		<script src=www/chart.js></script>
 		<script>
-			let HTMLVersion='V420260318_213556',MaxLightBright=%MAXBRIGHT%,ElementsValues=[%ELEMENTVALUES%];
+			let HTMLVersion='V420260320_173956',MaxLightBright=%MAXBRIGHT%,ElementsValues=[%ELEMENTVALUES%];
 			let Chart2Labels=[
 				{label:'Temperatura Ambiente',borderColor:'#E3792B',symbol:'°C'},
 				{label:'Humedad Ambiente',borderColor:'#87B4BC',symbol:'%%'},
@@ -115,6 +115,7 @@
 				<container>Fertilizante de Floración:<wheelcontainer><div class=wheel id=pumpfpm2></div></wheelcontainer>cc<button onclick=SendAction('testpump7')>Probar</button></container>
 				<hr>
 				<container>Duración de Mezclado de Solución de Riego:<wheelcontainer><div class=wheel id=mixdur></div></wheelcontainer>Segundos<button onclick=SendAction('mixis')>Mezclar</button></container>
+				<container>Nivel mínimo del reservorio para notificación:<wheelcontainer><div class=wheel id=lrlw></div></wheelcontainer>%</container>
 				<hr>
 				<container>Intervalo de toma de Muestras:<wheelcontainer><div class=wheel id=saint></div></wheelcontainer>Minutos</container>
 				<hr>
