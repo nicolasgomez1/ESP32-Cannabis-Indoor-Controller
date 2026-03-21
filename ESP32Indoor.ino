@@ -2125,12 +2125,12 @@ void loop() {
     }
     // ================================================== Irrigation Section ================================================== //
     {
-      /* TODO: Hay que testear este bloque a fondo antes de borrar comentarios y limpiar todo.
-          Cosas a comprobar:
-            Que pasa si g_nLastWateredHour ya se marcó como regado porque el TargetCC Estaba en 0 y ahora eso cambió?
+      /*  TODO: Verificar como se comporta en todos los casos posibles.
 
-            Se ve correcto. Pero hay un edge case — ¿qué pasa si el controlador se reinicia después de que bIsTheLastPulse se seteó pero antes de que la luz se apague? bIsTheLastPulse es estática y se pierde, entonces el contador nunca incrementa ese día.
-            ¿Es un caso que te preocupa o lo considerás aceptable dado que es un escenario muy poco probable?
+        1) Que pasa si cambia el perfil (g_nCurrentProfile)
+        2) Que pasa si se reinicia el controlador (g_nLastWateredHour y g_nIrrigationDayCounter son persistentes)
+        3) Que pasa si se ejecutó el último pulso y recién ahí el usuario cambia de perfil (g_nCurrentProfile)
+        4) Que pasa si if (!bIsTheLastPulse && g_nLastWateredHour == (int8_t)nLastPossibleIrrigationHour) es verdadero y se define bIsTheLastPulse true, se ejecutan el total de pulsos o se omite alguno?
       */
       static bool bIsTheLastPulse = false;
       static bool bApplyIrrigation = false;
@@ -2147,18 +2147,21 @@ void loop() {
         if (nLastKnownCurrentProfile != g_nCurrentProfile) {  // El perfil cambió desde el último check; Hay que reiniciar variables
           nCurrentPulseHour = 0;
           bIsTheLastPulse = false;
-
           nLastKnownCurrentProfile = g_nCurrentProfile;
         }
 
+        uint8_t nPulseInterval = (g_nCurrentProfile == 1 /*Flowering*/) ? 2 : 1 /*Vegetative*/; // TODO: Esto podria ser configurable (dependiendo del perfil)
+        uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 1) % 24;  // TODO: Esto podria ser configurable (dependiendo del perfil)
+        uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24; // TODO: Esto podria ser configurable (dependiendo del perfil)
+
+        nTotalPulses = ((nStopIrrigationHour - nStartIrrigationHour + 24) % 24) / nPulseInterval;
+
+        uint8_t nLastPossibleIrrigationHour = (nStartIrrigationHour + (nTotalPulses - 1) * nPulseInterval) % 24;
+        if (!bIsTheLastPulse && g_nLastWateredHour == (int8_t)nLastPossibleIrrigationHour)
+          bIsTheLastPulse = true;
+
         if (((currentTime.tm_hour - g_nLastWateredHour + 24) % 24) > 0 && !bIsTheLastPulse && !digitalRead(RELAYS_MAP[LIGHTS].Pin)) {  // Cada Hora en punto verificar si se puede Aplicar un Pulso de Riego
-          uint8_t nPulseInterval = (g_nCurrentProfile == 1 /*Flowering*/) ? 2 : 1 /*Vegetative*/; // TODO: Esto podria ser configurable (dependiendo del perfil)
-          uint8_t nStartIrrigationHour = (g_nEffectiveStartLights + 1) % 24;  // TODO: Esto podria ser configurable (dependiendo del perfil)
-          uint8_t nStopIrrigationHour = (g_nEffectiveStopLights - 2 + 24) % 24; // TODO: Esto podria ser configurable (dependiendo del perfil)
-
-          nTotalPulses = ((nStopIrrigationHour - nStartIrrigationHour + 24) % 24) / nPulseInterval;
-
-          CheckReservoirLevel();
+          CheckReservoirLevel();  // Check Reservoir level before try anything (This is not very usefull cuz after that, checks for g_nIrrigationSolutionLevel > 0, but is better than nothing)
 
           // Permitir regar si: se están incorporando los fertilizantes. Ni si se está haciendo una prueba de flujo de las Bombas. Ni si se está mezclando la solución de Riego. Ó se está ejecutando un riego.
           // NOTE: Estos checks son livianos así que por esa parte no hay Drama. En cambio, el check para verificar si TargetCC es > 0 es algo más pesado; Así que lo pongo por separado luego de hacer estos checks livianos.
@@ -2196,14 +2199,6 @@ void loop() {
               LOGGER(INFO, true, "Irrigation pulse skipped (No CC defined).");
 
               g_nLastWateredHour = currentTime.tm_hour;  // Se marca esta Hora cómo regada; Para no volver a verificar hasta la próxima
-
-              /* TODO: Acá ya sabemos que para el día actual o para atras, no hay ningún TargetCC definido...
-                  Acá tendriamos que comprobar de alguna manera si es el último pulso/check de pulso del día. y de ser así incrementar el g_nIrrigationDayCounter y (Supongo) reiniciar g_nLastWateredHour a -1
-              */
-              uint8_t nLastPossibleHour = (nStartIrrigationHour + (nTotalPulses - 1) * nPulseInterval) % 24;
-              if (((currentTime.tm_hour - nLastPossibleHour + 24) % 24) == 0)
-                bIsTheLastPulse = true;
-              ////////////////
 
               SaveProfile(g_nCurrentProfile);
 
@@ -2300,22 +2295,6 @@ void loop() {
         }
       }
 
-      /* TODO: Esto en realidad está mal. porque yo puedo definir un esquema de riego que sea así:
-        Día | CC
-         0  |  0
-        ----------
-         7  |  10
-        ----------
-         14  |  20
-        ----------
-         21  |  40
-        ----------
-         28  |  60
-        ----------
-
-        Defino 0 a proposito para no regar hasta el día 7. Pero el contador nunca incrementa porque no entra en el if por causa del bIsTheLastPulse. Una opción ya que uso el check de la luz, es simplementa eliminar la lógica de esa variable y simplemente usar las otras 2
-          UPDATE: No es tan simple como usar !bApplyIrrigation && digitalRead(RELAYS_MAP[LIGHTS].Pin) porque se va a incrementar constantemente. Así que... puedo definir una variable estática, una vez incrementado el g_nIrrigationDayCounter, poner la val en true y no volver a ponerla en false hasta que se prenda la luz. aun que no se, suena sucio. tiene que haber una forma mas inteligente de hacerlo... porque si no voy a tener problemas en caso de reinicio del controlador y demás mierdas
-      */
       if (!bApplyIrrigation && // Si no se está aplicando un Pulso de Riego
           bIsTheLastPulse &&  // Si es/fue el último Pulso de Riego
           digitalRead(RELAYS_MAP[LIGHTS].Pin)) {  // El relé se apagó (Completo el fotoperiodo)
