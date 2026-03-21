@@ -1605,7 +1605,7 @@ void setup() {
         strResponse += ":" + String(digitalRead(RELAYS_MAP[VENTILATION_FANS].Pin));  // 1 = stopped, 0 turn on
         // ================================================== Irrigation Section ================================================== //
         strResponse += ":" + String(g_nIrrigationDayCounter);
-        strResponse += ":" + String(g_nIrrigationDuration);  // Ticks
+        strResponse += ":" + String(TicksToSeconds(g_nIrrigationDuration));
         // ================================================== Firmware Versioning Section ================================================== //
         strResponse += ":" + String(FIRMWAREVERSION);
         // ================================================== Graph Section ================================================== //
@@ -2127,10 +2127,14 @@ void loop() {
     {
       /*  TODO: Verificar como se comporta en todos los casos posibles.
 
-        1) Que pasa si cambia el perfil (g_nCurrentProfile)
-        2) Que pasa si se reinicia el controlador (g_nLastWateredHour y g_nIrrigationDayCounter son persistentes)
-        3) Que pasa si se ejecutó el último pulso y recién ahí el usuario cambia de perfil (g_nCurrentProfile)
-        4) Que pasa si if (!bIsTheLastPulse && g_nLastWateredHour == (int8_t)nLastPossibleIrrigationHour) es verdadero y se define bIsTheLastPulse true, se ejecutan el total de pulsos o se omite alguno?
+        1) Que pasa si cambia el perfil (g_nCurrentProfile) ✓
+        2) Que pasa si se reinicia el controlador (g_nLastWateredHour y g_nIrrigationDayCounter son persistentes) ✓
+        3) Que pasa si se ejecutó el último pulso y recién ahí el usuario cambia de perfil (g_nCurrentProfile)  ✓
+        4) Que pasa si if (!bIsTheLastPulse && g_nLastWateredHour == (int8_t)nLastPossibleIrrigationHour) es verdadero y se define bIsTheLastPulse true, se ejecutan el total de pulsos o se omite alguno?  ✓
+
+        Nuevos casos a verificar:
+        1) Que pasa si cambia el fotoperiodo (En cualquier situación, ya sea antes de el último pulso o después)  ✓
+        2) CRITICO: Ver que bajo ningún motivo si se está aplicando un pulso, se dejé de verificar si hay que apagar la bomba. Siempre siempre sin importar nada, tiene que eventualmente apagarse la bomba.  ✓
       */
       static bool bIsTheLastPulse = false;
       static bool bApplyIrrigation = false;
