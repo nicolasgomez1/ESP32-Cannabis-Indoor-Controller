@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260320_173956" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260321_175522" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -1083,10 +1083,10 @@ void setup() {
       ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // LOW RESERVOIR LEVEL WARNING
       g_nLowReservoirLevelWarning = atoi(cBuffer);
       ///////////////////////////////////////////////////
-      /*  // NOTE: En caso de que necesite agregar un nuevo valor. para hacerlo es así:
+      /*  // NOTE EXAMPLE: En caso de que necesite agregar un nuevo valor. para hacerlo es así:
       ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer)); 
-      if (cBuffer[0] != '\0') // NOTE: Una vez se guarde el archivo con el nuevo formato, puedo borrar este check
-        new val = atoi(cBuffer);
+      if (cBuffer[0] != '\0') // NOTE: Una vez se guarde el archivo con el nuevo formato, se puede borrar este check
+        new_val = atoi(cBuffer);
       */
       pSettingsFile.close();
     } else {
@@ -2125,7 +2125,7 @@ void loop() {
     }
     // ================================================== Irrigation Section ================================================== //
     {
-      /*  TODO: Verificar como se comporta en todos los casos posibles.
+      /*  TESTS: Verificar como se comporta en estos casos posibles.
 
         1) Que pasa si cambia el perfil (g_nCurrentProfile) ✓
         2) Que pasa si se reinicia el controlador (g_nLastWateredHour y g_nIrrigationDayCounter son persistentes) ✓

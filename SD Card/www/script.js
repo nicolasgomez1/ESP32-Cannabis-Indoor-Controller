@@ -1,4 +1,4 @@
-const JSVersion='V420260320_173956';
+const JSVersion='V420260321_184353';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n);}
@@ -375,7 +375,7 @@ function CalcVPD(t,h){
 
 	let e=6.112*Math.exp((17.67*t)/(243.5+t));
 
-	return (e-(h/100)*e)/1;
+	return (e-(h/100)*e)/10;
 }
 
 function CalcTime(s){
@@ -643,7 +643,7 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 	}]
 });
 
-let ShowTextLines=false;
+let stl=false;
 
 Chart2Labels.forEach((ds,i)=>{
 	ds.pointRadius=0;
@@ -669,7 +669,7 @@ let hchart=new Chart(GetElement('hchart'),{type:'line',data:{datasets:Chart2Labe
 		},animation:{duration:0},scales:{x:{type:'linear',ticks:{stepSize:1}}}
 	},plugins:[{
 		afterDatasetsDraw(chart){
-			if(!ShowTextLines)
+			if(!stl)
 				return;
 
 			let{ctx,data}=chart;
@@ -818,8 +818,8 @@ document.querySelector('#legend').addEventListener('click',e=>{
 });
 
 GetElement('tt').addEventListener('click',e=>{
-	ShowTextLines=!ShowTextLines;
-	e.textContent=ShowTextLines?'Ocultar Valores':'Mostrar Valores';
+	stl=!stl;
+	e.textContent=stl?'Ocultar Valores':'Mostrar Valores';
 	hchart.update();
 });
 
