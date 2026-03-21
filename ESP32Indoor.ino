@@ -2125,6 +2125,13 @@ void loop() {
     }
     // ================================================== Irrigation Section ================================================== //
     {
+      /* TODO: Hay que testear este bloque a fondo antes de borrar comentarios y limpiar todo.
+          Cosas a comprobar:
+            Que pasa si g_nLastWateredHour ya se marcó como regado porque el TargetCC Estaba en 0 y ahora eso cambió?
+
+            Se ve correcto. Pero hay un edge case — ¿qué pasa si el controlador se reinicia después de que bIsTheLastPulse se seteó pero antes de que la luz se apague? bIsTheLastPulse es estática y se pierde, entonces el contador nunca incrementa ese día.
+            ¿Es un caso que te preocupa o lo considerás aceptable dado que es un escenario muy poco probable?
+      */
       static bool bIsTheLastPulse = false;
       static bool bApplyIrrigation = false;
       static uint8_t nTotalPulses = 0;  // Not need clean
@@ -2189,6 +2196,14 @@ void loop() {
               LOGGER(INFO, true, "Irrigation pulse skipped (No CC defined).");
 
               g_nLastWateredHour = currentTime.tm_hour;  // Se marca esta Hora cómo regada; Para no volver a verificar hasta la próxima
+
+              /* TODO: Acá ya sabemos que para el día actual o para atras, no hay ningún TargetCC definido...
+                  Acá tendriamos que comprobar de alguna manera si es el último pulso/check de pulso del día. y de ser así incrementar el g_nIrrigationDayCounter y (Supongo) reiniciar g_nLastWateredHour a -1
+              */
+              uint8_t nLastPossibleHour = (nStartIrrigationHour + (nTotalPulses - 1) * nPulseInterval) % 24;
+              if (((currentTime.tm_hour - nLastPossibleHour + 24) % 24) == 0)
+                bIsTheLastPulse = true;
+              ////////////////
 
               SaveProfile(g_nCurrentProfile);
 
@@ -2285,6 +2300,22 @@ void loop() {
         }
       }
 
+      /* TODO: Esto en realidad está mal. porque yo puedo definir un esquema de riego que sea así:
+        Día | CC
+         0  |  0
+        ----------
+         7  |  10
+        ----------
+         14  |  20
+        ----------
+         21  |  40
+        ----------
+         28  |  60
+        ----------
+
+        Defino 0 a proposito para no regar hasta el día 7. Pero el contador nunca incrementa porque no entra en el if por causa del bIsTheLastPulse. Una opción ya que uso el check de la luz, es simplementa eliminar la lógica de esa variable y simplemente usar las otras 2
+          UPDATE: No es tan simple como usar !bApplyIrrigation && digitalRead(RELAYS_MAP[LIGHTS].Pin) porque se va a incrementar constantemente. Así que... puedo definir una variable estática, una vez incrementado el g_nIrrigationDayCounter, poner la val en true y no volver a ponerla en false hasta que se prenda la luz. aun que no se, suena sucio. tiene que haber una forma mas inteligente de hacerlo... porque si no voy a tener problemas en caso de reinicio del controlador y demás mierdas
+      */
       if (!bApplyIrrigation && // Si no se está aplicando un Pulso de Riego
           bIsTheLastPulse &&  // Si es/fue el último Pulso de Riego
           digitalRead(RELAYS_MAP[LIGHTS].Pin)) {  // El relé se apagó (Completo el fotoperiodo)
