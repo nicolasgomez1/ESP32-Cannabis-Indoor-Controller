@@ -1,9 +1,9 @@
-const JSVersion='V420260321_184353';
+const JSVersion='V420260321_201750';
 let bFirst=true;
 
-function GetElement(n){return document.getElementById(n);}
+function GetElement(n){return document.getElementById(n)}
 
-function SetWheelSpinRange(e,min,max,step=1){
+function SetWheelSpinRange(e,min,max,step){
 	e=GetElement(e);
 	e.min=min;
 	e.step=step;
@@ -21,20 +21,31 @@ function SetWheelSpinValue(e,v){
 	e.scrollTop=Math.round((v-e.min)/e.step)*15;
 }
 
-function GetWheelValue(e){return parseFloat(e.children[Math.round(e.scrollTop/15)].textContent);}
+function GetWheelValue(e){return parseFloat(e.children[Math.round(e.scrollTop/15)].textContent)}
 
 let elements=[
-	'lightstart','lightstop',
-	'idc',
-	'ifts','rfts','rfhs',
-	'temphys','humhys',
-	'restint','restdur',
-	'ifpm',
-	'pumpfpm0','pumpfpm1','pumpfpm2',
-	'mixdur','lrlw','saint'
+	{e:'lightstart',min:1,max:24,step:1},
+	{e:'lightstop',min:1,max:24,step:1},
+	{e:'idc',min:1,max:365,step:1},
+	{e:'ifts',min:0,max:100,step:1},
+	{e:'rfts',min:0,max:100,step:1},
+	{e:'rfhs',min:0,max:100,step:1},
+	{e:'temphys',min:0,max:100,step:1},
+	{e:'humhys',min:0,max:100,step:1},
+	{e:'restint',min:0,max:1440,step:1},
+	{e:'restdur',min:0,max:1440,step:1},
+	{e:'ifpm',min:0,max:1000,step:1},
+	{e:'pumpfpm0',min:0,max:1000,step:1},
+	{e:'pumpfpm1',min:0,max:1000,step:1},
+	{e:'pumpfpm2',min:0,max:1000,step:1},
+	{e:'mixdur',min:0,max:1330,step:1},
+	{e:'lrlw',min:0,max:100,step:1},
+	{e:'saint',min:1,max:1440,step:1}
 ];
 
-let e_profile=GetElement('profile'),e_lightstart=GetElement(elements[0]),e_lightstop=GetElement(elements[1]),e_fim=GetElement('fim');
+elements.forEach(_e=>SetWheelSpinRange(_e.e,_e.min,_e.max,_e.step));
+
+let e_profile=GetElement('profile'),e_lightstart=GetElement(elements[0].e),e_lightstop=GetElement(elements[1].e),e_fim=GetElement('fim');
 
 let rc=['#EC6066','#6699CC','#99C794','#F9AE58'];
 
@@ -68,41 +79,15 @@ let Chart1Labels=[
 	{label:'Fertilizante de Floración',borderColor:'#ED6D58'}
 ];
 
-SetWheelSpinRange(elements[0],1,24);
-SetWheelSpinRange(elements[1],1,24);
-
-SetWheelSpinRange(elements[2],1,365);
-
-SetWheelSpinRange(elements[3],0,100);
-
-SetWheelSpinRange(elements[4],0,100);
-SetWheelSpinRange(elements[5],0,100);
-
-SetWheelSpinRange(elements[6],0,100);
-SetWheelSpinRange(elements[7],0,100);
-
-SetWheelSpinRange(elements[8],1,1440);
-SetWheelSpinRange(elements[9],1,1440);
-
-SetWheelSpinRange(elements[10],0,1000);
-SetWheelSpinRange(elements[11],0,1000);
-SetWheelSpinRange(elements[12],0,1000);
-SetWheelSpinRange(elements[13],0,1000);
-
-SetWheelSpinRange(elements[14],0,1440);
-SetWheelSpinRange(elements[15],0,100);
-
-SetWheelSpinRange(elements[16],1,1440);
-
 function Flash(){
 	let e=GetElement('updateflash');
 
 	e.style.visibility='visible';
 
-	setTimeout(()=>{e.style.visibility='hidden';},300);
+	setTimeout(()=>{e.style.visibility='hidden'},300);
 }
 
-function GetLightStartStop(){return[GetWheelValue(e_lightstart),GetWheelValue(e_lightstop)];}
+function GetLightStartStop(){return[GetWheelValue(e_lightstart),GetWheelValue(e_lightstop)]}
 
 function CalcLightDur(){
 	let r=GetLightStartStop(),ch=new Date().getHours();
@@ -125,13 +110,13 @@ function SetPhoto(a,b){
 	ElementsValues[0]=parseInt(a);
 	ElementsValues[1]=parseInt(b);
 
-	SetWheelSpinValue(elements[0],a);
-	SetWheelSpinValue(elements[1],b);
+	SetWheelSpinValue(elements[0].e,a);
+	SetWheelSpinValue(elements[1].e,b);
 
 	CalcLightDur();
 }
 
-function CalcBright(v){return`Aprox: ${(Math.round(v/MaxLightBright*100)/100*1008).toFixed(0)}ppfd`;}
+function CalcBright(v){return`Aprox: ${(Math.round(v/MaxLightBright*100)/100*1008).toFixed(0)}ppfd`}
 
 function SetLightBright(s){
 	let e=GetElement('lb'),v=parseInt(e.value),p=Math.round(v/MaxLightBright*100);
@@ -247,7 +232,7 @@ function SendAction(action,...args){
 			if(idc!=ElementsValues[2]){
 				ElementsValues[2]=idc;
 
-				SetWheelSpinValue(elements[2],idc);
+				SetWheelSpinValue(elements[2].e,idc);
 			}
 
 			let wattimerem=parseInt(data[9]);
@@ -431,7 +416,7 @@ function SetFertsIncorporationMode(s){
 }
 
 function CalcFertsIncorporation(){
-	let m=parseInt(e_fim.value),idc=GetWheelValue(GetElement(elements[2]));
+	let m=parseInt(e_fim.value),idc=GetWheelValue(GetElement(elements[2].e));
 	let ids=ichart.data.datasets[0],fds=ichart.data.datasets.slice(1),hti=false,di=-1;
 
 	for(let i=ids.data.length-1;i>=0;i--){
@@ -692,8 +677,8 @@ let hchart=new Chart(GetElement('hchart'),{type:'line',data:{datasets:Chart2Labe
 	}]
 });
 
-elements.forEach((e,i)=>{
-	e=GetElement(e);
+elements.forEach((_e,i)=>{
+	let e=GetElement(_e.e);
 
 	e.addEventListener('wheel',ev=>{
 		ev.preventDefault();
@@ -866,7 +851,7 @@ GetElement('softwareform').addEventListener('submit',async ev=>{
 
 window.onload=function(){
 	SetSelectedProfile(true);
-	elements.forEach((e,i)=>{SetWheelSpinValue(e,ElementsValues[i]);});
+	elements.forEach((_e,i)=>{SetWheelSpinValue(_e.e,ElementsValues[i])});
 	CalcLightDur();
 	SetLightBright();
 	['ifm','rfm'].forEach(e=>SetFanMode(e));
@@ -875,5 +860,5 @@ window.onload=function(){
 	GetElement('cssver').innerText=getComputedStyle(document.documentElement).getPropertyValue('--CSSVersion');
 	GetElement('jsver').innerText=JSVersion;
 	SendAction('refresh');
-	setInterval(()=>{SendAction('refresh');},3000);
+	setInterval(()=>{SendAction('refresh')},3000);
 };
