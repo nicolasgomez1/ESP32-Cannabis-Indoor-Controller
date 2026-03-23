@@ -1,4 +1,4 @@
-const JSVersion='V420260321_201750';
+const JSVersion='V420260321_020141';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n)}
@@ -205,6 +205,8 @@ function SendAction(action,...args){
 			alert(r.substring(3));
 		}else if(r.substring(0,7)=='REFRESH'){
 			let data=r.substring(7).split(':');
+
+			CalcLightDur();
 
 			SetEnvValues(data[0],data[1]);
 
@@ -811,16 +813,16 @@ GetElement('tt').addEventListener('click',e=>{
 GetElement('otaform').addEventListener('submit',ev=>{
 	ev.preventDefault();
 
-	let file=GetElement('otafile').files[0];
-	if(!file)
+	let f=GetElement('otafile').files[0];
+	if(!f)
 		return;
 
 	GetElement('loaderoverlay').style.display='flex';
 
-	let formData=new FormData();
-	formData.append('file',file);
+	let fd=new FormData();
+	fd.append('file',f);
 
-	fetch('/ota',{method:'POST',body:formData}).catch(()=>{});
+	fetch('/ota',{method:'POST',body:fd}).catch(()=>{});
 });
 
 GetElement('softwareform').addEventListener('submit',async ev=>{
@@ -843,8 +845,8 @@ GetElement('softwareform').addEventListener('submit',async ev=>{
 		}
 	}
 
-	let resp=await fetch('/upload-commit',{method:'POST'});
-	alert(await resp.text());
+	let r=await fetch('/upload-commit',{method:'POST'});
+	alert(await r.text());
 
 	location.reload();
 });
