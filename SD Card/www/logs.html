@@ -1,6 +1,6 @@
 <html>
 	<head>
-		<!-- Version V420260319_033933 -->
+		<!-- Version V420260323_0339 -->
 		<meta name=viewport content=width=device-width,initial-scale=1.0>
 		<meta charset=utf-8>
 		<link rel=icon href=data:,>
@@ -16,7 +16,7 @@
 				<div style=display:flex>
 					<ul id=logslist></ul>
 					<ul id=metricslist></ul>
-				</div>
+				</div>&nbsp;
 			</card>
 		</div>
 		<script>
@@ -26,11 +26,28 @@
 				const parseDate=n=>{let m=n.match(/(\d+)_(\d+)_(\d+)/);return m?new Date(parseInt(m[3]),parseInt(m[2])-1,parseInt(m[1])):new Date(0);};
 
 				f.sort((a,b)=>parseDate(b)-parseDate(a)).forEach(n=>{
-					let i=document.createElement('li'),l=document.createElement('a');
+					let i=document.createElement('li'),l=document.createElement('a'),a=document.createElement('a');
 					l.href='../logs/'+n+(n==today?'#'+Date.now():'');
 					l.textContent=n.replace('.txt','');
 					l.target='_blank';
 					i.appendChild(l);
+					a.href='#';
+					a.textContent='❌';
+					a.style.textDecoration='none';
+					a.onclick=ev=>{
+						ev.preventDefault();
+
+						if(confirm('¿Eliminar archivo: '+n+'?')){
+							fetch('/?action=delete&folder=logs&file='+encodeURIComponent(n)).then(r=>{
+								if(!r.ok)
+									throw new Error();
+							}).then(()=>{
+								alert('Archivo borrado.');
+								i.remove();
+							}).catch(()=>alert('Error al eliminar'));
+						}
+					};
+					i.appendChild(a);
 					e.appendChild(i);
 				});
 			});

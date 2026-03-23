@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260323_022655" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260323_0613" // TODO: Update this value before export binary
 
 #include <map>
 #include <Secrets.h>
@@ -1214,15 +1214,15 @@ void setup() {
   g_pWebServer.serveStatic("/metrics", SD, "/metrics").setCacheControl("max-age=2592000, immutable"); // Cache it by 1 month
 
   // index.html server & Request handler
-  g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
-    if (request->hasArg("action")) {  // Process the request
-      if (request->arg("action") == "restart") {
+  g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* pRequest) {
+    if (pRequest->hasArg("action")) {  // Process the request
+      if (pRequest->arg("action") == "restart") {
         LOGGER(INFO, true, "Restarting Controller by Web command.");
 
         delay(1000);
 
         ESP.restart();
-      } else if (request->arg("action") == "cisl") {
+      } else if (pRequest->arg("action") == "cisl") {
         String strReturn = "La calibración falló. Intente nuevamente.";
         
         int16_t nLowerLevel = GetIrrigationReservoirLevel();
@@ -1238,14 +1238,14 @@ void setup() {
           CheckReservoirLevel();
         }
 
-        request->send(200, "text/plain", "MSG" + strReturn);
+        pRequest->send(200, F("text/plain"), "MSG" + strReturn);
         return;
-      } else if (request->arg("action") == "reload") {  // This is for reload Elements from the Panel based on selected Profile
+      } else if (pRequest->arg("action") == "reload") {  // This is for reload Elements from the Panel based on selected Profile
         // =============== Profile Selector =============== //
-        if (request->hasArg("profile")) {
+        if (pRequest->hasArg("profile")) {
           String strReturn = "";
           // =============== Profile Selector =============== //
-          uint8_t nSelectedProfile = request->arg("profile").toInt();
+          uint8_t nSelectedProfile = pRequest->arg("profile").toInt();
           // If asked profile doesn't match with current profile, change to asked one.
           if (nSelectedProfile != g_nCurrentProfile) {
             if (g_nIrrigationDuration != 0 || g_bApplyFertilizers) {
@@ -1256,7 +1256,7 @@ void setup() {
               else if (g_bApplyFertilizers)
                 strReturn += "porque se están aplicando Fertilizantes.";
 
-              request->send(200, "text/plain", "ERR0:" + String(g_nCurrentProfile) + ":" + strReturn);
+              pRequest->send(200, F("text/plain"), "ERR0:" + String(g_nCurrentProfile) + ":" + strReturn);
               return;
             } else {
               SaveProfile(g_nCurrentProfile); // Final save of old Profile
@@ -1303,10 +1303,10 @@ void setup() {
               strReturn += "|" + String(Watering.FertilizerToApply[i]);
           }
 
-          request->send(200, "text/plain", "RELOAD" + strReturn);
+          pRequest->send(200, F("text/plain"), "RELOAD" + strReturn);
           return;
         }
-      } else if (request->arg("action") == "applyferts") {
+      } else if (pRequest->arg("action") == "applyferts") {
         String strReturn = "No se pueden incorporar los Fertilizantes en este momento ";
 
         if (g_nIrrigationDuration == 0 && g_nTestPumpID == 0 && !g_bApplyFertilizers && !g_bManualMixing) {
@@ -1324,13 +1324,13 @@ void setup() {
             strReturn += "porque se está Mezclando la Solución de Riego.";
         }
 
-        request->send(200, "text/plain", "MSG" + strReturn);
+        pRequest->send(200, F("text/plain"), "MSG" + strReturn);
         return;
-      } else if (request->arg("action").startsWith("testpump")) {
+      } else if (pRequest->arg("action").startsWith("testpump")) {
         String strReturn = "La bomba no se puede probar en este momento.";
 
         if (g_nIrrigationDuration == 0 && g_nTestPumpID == 0 && !g_bApplyFertilizers && !g_bManualMixing) {
-          uint8_t nPumpID = request->arg("action").substring(8).toInt();
+          uint8_t nPumpID = pRequest->arg("action").substring(8).toInt();
 
           if (nPumpID > 0) {
             g_nTestPumpID = nPumpID;  // From IRRIGATION_PUMP(4) to FERTILIZER_PUMP_2(7)
@@ -1338,9 +1338,9 @@ void setup() {
           }
         }
 
-        request->send(200, "text/plain", "MSG" + strReturn);
+        pRequest->send(200, F("text/plain"), "MSG" + strReturn);
         return;
-      } else if (request->arg("action") == "mixis") {
+      } else if (pRequest->arg("action") == "mixis") {
         String strReturn = "No es posible Mezclar en este momento.";
 
         if (g_nIrrigationDuration == 0 && g_nTestPumpID == 0 && !g_bApplyFertilizers && g_nIrrigationSolutionLevel > 0 && !g_bManualMixing) {
@@ -1348,14 +1348,14 @@ void setup() {
           strReturn = "La bomba de Mezcla estará encendida durante los próximos " + String(TicksToSeconds(g_nMixingPumpDuration)) + " segundos.";
         }
 
-        request->send(200, "text/plain", "MSG" + strReturn);
+        pRequest->send(200, F("text/plain"), "MSG" + strReturn);
         return;
-      } else if (request->arg("action") == "update") {  // This is for update Settings
+      } else if (pRequest->arg("action") == "update") {  // This is for update Settings
         uint64_t nNewValue;
         String strReturn = "";
         // =============== Current DateTime =============== //
-        if (request->hasArg("time")) {
-          SetCurrentDatetime(request->arg("time").toInt());
+        if (pRequest->hasArg("time")) {
+          SetCurrentDatetime(pRequest->arg("time").toInt());
 
           struct tm currentTime;
           GetLocalTimeNow(&currentTime);
@@ -1364,14 +1364,14 @@ void setup() {
           strReturn += "Se sincronizó la Fecha actual.\r\n";
         }
         // =============== Light Start =============== //
-        if (CheckNSetValue(request, "lightstart", g_nStartLightTime, F("la Hora de Encendido de Luz"), strReturn))
+        if (CheckNSetValue(pRequest, "lightstart", g_nStartLightTime, F("la Hora de Encendido de Luz"), strReturn))
           g_nEffectiveStartLights = (g_nStartLightTime == 24) ? 0 : g_nStartLightTime;  // Stores the effective light start hour, converting hour 24 to 0 (midnight)
         // =============== Light Stop =============== //
-        if (CheckNSetValue(request, "lightstop", g_nStopLightTime, F("la Hora de Apagado de Luz"), strReturn))
+        if (CheckNSetValue(pRequest, "lightstop", g_nStopLightTime, F("la Hora de Apagado de Luz"), strReturn))
           g_nEffectiveStopLights = (g_nStopLightTime == 24) ? 0 : g_nStopLightTime; // Stores the effective light stop hour, converting hour 24 to 0 (midnight)
         // =============== Light Brightness =============== //
-        if (request->hasArg("lb")) {
-          nNewValue = request->arg("lb").toInt();
+        if (pRequest->hasArg("lb")) {
+          nNewValue = pRequest->arg("lb").toInt();
 
           if (nNewValue != g_nLightBrightness) {
             g_nLightBrightness = (nNewValue < 401) ? 0 : nNewValue; // WARNING: Hardcode offset
@@ -1382,24 +1382,24 @@ void setup() {
           }
         }
         // =============== Crop Begin Date =============== //
-        CheckNSetValue(request, "cb", g_nCropBegin, F("la Fecha de inicio de Cultivo"), strReturn);
+        CheckNSetValue(pRequest, "cb", g_nCropBegin, F("la Fecha de inicio de Cultivo"), strReturn);
         // =============== Current Irrigation Day =============== //
-        CheckNSetValue(request, "idc", g_nIrrigationDayCounter, F("los Días de Riego transcurridos"), strReturn);
+        CheckNSetValue(pRequest, "idc", g_nIrrigationDayCounter, F("los Días de Riego transcurridos"), strReturn);
         // =============== Internal Fan Mode =============== //
-        CheckNSetValue(request, "ifm", g_nInternalFanMode, F("el Modo de Ventilación Interna"), strReturn);
+        CheckNSetValue(pRequest, "ifm", g_nInternalFanMode, F("el Modo de Ventilación Interna"), strReturn);
         // =============== Internal Fan Start =============== //
-        CheckNSetValue(request, "ifts", g_nStartInternalFanTemperature, F("la Temperatura de Encendido del Ventilador Interno"), strReturn);
+        CheckNSetValue(pRequest, "ifts", g_nStartInternalFanTemperature, F("la Temperatura de Encendido del Ventilador Interno"), strReturn);
         // =============== Ventilation Fans Mode =============== //
-        CheckNSetValue(request, "rfm", g_nVentilationMode, F("el Modo de Recirculación de Aire"), strReturn);
+        CheckNSetValue(pRequest, "rfm", g_nVentilationMode, F("el Modo de Recirculación de Aire"), strReturn);
         // =============== Ventilation Temperature Start =============== //
-        CheckNSetValue(request, "rfts", g_nStartVentilationTemperature, F("la Temperatura de Encendido de Recirculación"), strReturn);
+        CheckNSetValue(pRequest, "rfts", g_nStartVentilationTemperature, F("la Temperatura de Encendido de Recirculación"), strReturn);
         // =============== Ventilation Humidity Start =============== //
-        CheckNSetValue(request, "rfhs", g_nStartVentilationHumidity, F("la Humedad de Encendido de la Recirculación"), strReturn);
+        CheckNSetValue(pRequest, "rfhs", g_nStartVentilationHumidity, F("la Humedad de Encendido de la Recirculación"), strReturn);
         // =============== Fertilizers Incorporation Mode =============== //
-        CheckNSetValue(request, "fim", g_nFertilizerIncorporationMode, F("el Modo de Incorporación de Fertilizantes"), strReturn);
+        CheckNSetValue(pRequest, "fim", g_nFertilizerIncorporationMode, F("el Modo de Incorporación de Fertilizantes"), strReturn);
         // =============== Irrigation Scheme =============== //
-        if (request->hasArg("ichart")) {
-          const String& refstrValues = request->arg("ichart");
+        if (pRequest->hasArg("ichart")) {
+          const String& refstrValues = pRequest->arg("ichart");
           const char* cBuffer = refstrValues.c_str();
           std::vector<WateringData> vecNewWateringStages;
 
@@ -1455,8 +1455,8 @@ void setup() {
           }
         }
         // =============== Fans Rest Interval =============== //
-        if (request->hasArg("restint")) {
-          nNewValue = MinutesToTicks(request->arg("restint").toInt());
+        if (pRequest->hasArg("restint")) {
+          nNewValue = MinutesToTicks(pRequest->arg("restint").toInt());
 
           if (nNewValue != g_nFansRestInterval) {
             g_nFansRestInterval = nNewValue;
@@ -1465,8 +1465,8 @@ void setup() {
           }
         }
         // =============== Fans Rest Duration =============== //
-        if (request->hasArg("restdur")) {
-          nNewValue = MinutesToTicks(request->arg("restdur").toInt());
+        if (pRequest->hasArg("restdur")) {
+          nNewValue = MinutesToTicks(pRequest->arg("restdur").toInt());
 
           if (nNewValue != g_nFansRestDuration) {
             g_nFansRestDuration = nNewValue;
@@ -1475,16 +1475,16 @@ void setup() {
           }
         }
         // =============== Environment Temperature Hysteresis =============== //
-        CheckNSetValue(request, "temphys", g_nTemperatureStopHysteresis, F("la Histéresis de Apagado por Temperatura"), strReturn);
+        CheckNSetValue(pRequest, "temphys", g_nTemperatureStopHysteresis, F("la Histéresis de Apagado por Temperatura"), strReturn);
         // =============== Environment Humidity Hysteresis =============== //
-        CheckNSetValue(request, "humhys", g_nHumidityStopHysteresis, F("la Histéresis de Apagado por Humedad"), strReturn);
+        CheckNSetValue(pRequest, "humhys", g_nHumidityStopHysteresis, F("la Histéresis de Apagado por Humedad"), strReturn);
         // =============== Irrigation Pump CC Flow Per Minute =============== //
-        CheckNSetValue(request, "ifpm", g_nIrrigationFlowPerMinute, F("el Caudal por Minuto de Bomba de Riego"), strReturn);
+        CheckNSetValue(pRequest, "ifpm", g_nIrrigationFlowPerMinute, F("el Caudal por Minuto de Bomba de Riego"), strReturn);
         // =============== Each Fertilizer Pump CC Flow Per Minute =============== //
         for (uint8_t i = 0; i < MAX_FERTILIZER_PUMPS; i++) {
           String strArg = "pumpfpm" + String(i);
-          if (request->hasArg(strArg)) {
-            nNewValue = request->arg(strArg).toInt();
+          if (pRequest->hasArg(strArg)) {
+            nNewValue = pRequest->arg(strArg).toInt();
 
             if (nNewValue != g_nFertilizersPumpsFlowPerMinute[i]) {
               g_nFertilizersPumpsFlowPerMinute[i] = nNewValue;
@@ -1494,8 +1494,8 @@ void setup() {
           }
         }
         // =============== Mixing Pump Duration =============== //
-        if (request->hasArg("mixdur")) {
-          nNewValue = SecondsToTicks(request->arg("mixdur").toInt());
+        if (pRequest->hasArg("mixdur")) {
+          nNewValue = SecondsToTicks(pRequest->arg("mixdur").toInt());
 
           if (nNewValue != g_nMixingPumpDuration) {
             g_nMixingPumpDuration = nNewValue;
@@ -1504,10 +1504,10 @@ void setup() {
           }
         }
         // =============== Low Reservoir Level Warning =============== //
-        CheckNSetValue(request, "lrlw", g_nLowReservoirLevelWarning, F("el nivel mínimo del reservorio para notificación"), strReturn);
+        CheckNSetValue(pRequest, "lrlw", g_nLowReservoirLevelWarning, F("el nivel mínimo del reservorio para notificación"), strReturn);
         // =============== Sampling take Intervals =============== //
-        if (request->hasArg("saint")) {
-          nNewValue = MinutesToTicks(request->arg("saint").toInt());
+        if (pRequest->hasArg("saint")) {
+          nNewValue = MinutesToTicks(pRequest->arg("saint").toInt());
 
           if (nNewValue != g_nSamplingInterval) {
             g_nSamplingInterval = nNewValue;
@@ -1518,13 +1518,13 @@ void setup() {
         // =============== WiFi =============== //
         bool bWiFiChanges = false;
 
-        if (request->hasArg("ssid") && strcmp(request->arg("ssid").c_str(), g_cSSID) != 0) {
+        if (pRequest->hasArg("ssid") && strcmp(pRequest->arg("ssid").c_str(), g_cSSID) != 0) {
           bWiFiChanges = true;
 
           strReturn += "Se actualizó el SSID de Wifi.\r\n";
         }
 
-        if (request->hasArg("ssidpwd") && strcmp(request->arg("ssidpwd").c_str(), g_cSSIDPWD) != 0) {
+        if (pRequest->hasArg("ssidpwd") && strcmp(pRequest->arg("ssidpwd").c_str(), g_cSSIDPWD) != 0) {
           bWiFiChanges = true;
 
           strReturn += "Se actualizó la Contraseña de Wifi.\r\n";
@@ -1539,13 +1539,13 @@ void setup() {
         }
         //////////////////////////////////////////////////
         if (strReturn != "") {  // If have some change, send response to web client and finally save new settings values
-          request->send(200, "text/plain", "MSG" + strReturn);
+          pRequest->send(200, F("text/plain"), "MSG" + strReturn);
 
           if (bWiFiChanges) { // Update Wifi values after response the request. in otherwise the message is not sended.
-            strncpy(g_cSSID, request->arg("ssid").c_str(), sizeof(g_cSSID) - 1);
+            strncpy(g_cSSID, pRequest->arg("ssid").c_str(), sizeof(g_cSSID) - 1);
             g_cSSID[sizeof(g_cSSID) - 1] = '\0';
 
-            strncpy(g_cSSIDPWD, request->arg("ssidpwd").c_str(), sizeof(g_cSSIDPWD) - 1);
+            strncpy(g_cSSIDPWD, pRequest->arg("ssidpwd").c_str(), sizeof(g_cSSIDPWD) - 1);
             g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
           }
 
@@ -1564,7 +1564,7 @@ void setup() {
 
           return;
         }
-      } else if (request->arg("action") == "refresh") { // This is for refresh Panel values constantly
+      } else if (pRequest->arg("action") == "refresh") { // This is for refresh Panel values constantly
         // ================================================== Environment Section ================================================== //
 #ifdef USE_DHT11
         String strResponse = String(g_nEnvironmentTemperature) + ":" + String(g_nEnvironmentHumidity);
@@ -1642,14 +1642,14 @@ void setup() {
           data[10] → Firmware Version
           data[11] → <History Chart values Array> Example: Unix Timestamp|Environment Temperature|Environment Humidity|VPD|<Soil Moistures values Array>
         */
-        request->send(200, "text/plain", "REFRESH" + strResponse);
+        pRequest->send(200, F("text/plain"), "REFRESH" + strResponse);
         return;
-      } else if (request->arg("action") == "list") {  // This returns the file list in logs folder
-        if (request->hasArg("logs") || request->hasArg("metrics")) {
+      } else if (pRequest->arg("action") == "list") {  // This returns the file list in logs folder
+        if (pRequest->hasArg("logs") || pRequest->hasArg("metrics")) {
           if (!SafeSDAccess([&]() {
             bool bFirst = true;
             String strFileName, strResponse;
-            String strFolder = request->hasArg("logs") ? "logs" : "metrics";
+            String strFolder = pRequest->hasArg("logs") ? "logs" : "metrics";
             File pLogsDir = SD.open("/" + strFolder);
             File pFile = pLogsDir.openNextFile();
 
@@ -1676,9 +1676,28 @@ void setup() {
 
             pLogsDir.close();
 
-            request->send(200, "text/plain", strResponse);
+            pRequest->send(200, F("text/plain"), strResponse);
           })) {
-            request->send(500, "text/plain", "No hay una Tarjeta SD conectada.");
+            pRequest->send(500, F("text/plain"), F("No hay una Tarjeta SD conectada."));
+          }
+        }
+
+        return;
+      } else if (pRequest->arg("action") == "delete") { // Delete files from SD folders
+        if (pRequest->hasArg("folder") && pRequest->hasArg("file")) {
+          if (!SafeSDAccess([&]() {
+            String strPath = "/" + pRequest->arg("folder") + "/" + pRequest->arg("file");
+
+            if (SD.exists(strPath)) {
+              if (SD.remove(strPath))
+                pRequest->send(200, F("text/plain"), F("OK"));
+              else
+                pRequest->send(500, F("text/plain"), F("FAIL"));
+            } else {
+              pRequest->send(500, F("text/plain"), F("FAIL"));
+            }
+          })) {
+            pRequest->send(500, F("text/plain"), F("No hay una Tarjeta SD conectada."));
           }
         }
 
@@ -1686,20 +1705,20 @@ void setup() {
       }
     } else {  // Return Panel content
       if (!SafeSDAccess([&]() {
-        request->send(SD, "/www/index.html", "text/html", false, HTMLProcessor);
+        pRequest->send(SD, "/www/index.html", "text/html", false, HTMLProcessor);
       })) {
-        request->send(500, "text/plain", "No hay una Tarjeta SD conectada.");
+        pRequest->send(500, F("text/plain"), F("No hay una Tarjeta SD conectada."));
       }
 
       return;
     }
 
-    request->send(500, "text/plain", "HTTP 500");
+    pRequest->send(500, F("text/plain"), F("HTTP 500"));
   });
 
-  g_pWebServer.onNotFound([](AsyncWebServerRequest* request) { request->send(404, "text/plain", "HTTP 404"); });
+  g_pWebServer.onNotFound([](AsyncWebServerRequest* pRequest) { pRequest->send(404, F("text/plain"), F("HTTP 404")); });
 
-  g_pWebServer.on("/ota", HTTP_POST, [](AsyncWebServerRequest* request) {
+  g_pWebServer.on("/ota", HTTP_POST, [](AsyncWebServerRequest* pRequest) {
     bool bUpdate = !Update.hasError();
 
     if (bUpdate) {
@@ -1719,7 +1738,7 @@ void setup() {
 
       ESP.restart();
     }
-  }, [](AsyncWebServerRequest* request, String strFileName, size_t nIndex, uint8_t* nData, size_t nLen, bool bFinal) {
+  }, [](AsyncWebServerRequest* pRequest, String strFileName, size_t nIndex, uint8_t* nData, size_t nLen, bool bFinal) {
     static bool bUpdateError = false;
 
     if (!nIndex) {
@@ -1758,7 +1777,7 @@ void setup() {
     }
   });
 
-  g_pWebServer.on("/upload-clean", HTTP_POST, [](AsyncWebServerRequest* request) {
+  g_pWebServer.on("/upload-clean", HTTP_POST, [](AsyncWebServerRequest* pRequest) {
     SafeSDAccess([&]() {
       File pWWW = SD.open("/www");
       std::vector<String> vecTmpFiles;
@@ -1778,19 +1797,19 @@ void setup() {
       for (auto& strTmpFull : vecTmpFiles)
         SD.remove(strTmpFull.c_str());
 
-      LOGGER(INFO, false, "Cancelled: %d temporary files removed.", vecTmpFiles.size());
+      LOGGER(INFO, false, "Software Upload > Cleaned: %d temporary files removed.", vecTmpFiles.size());
     });
 
-    request->send(200, "text/plain", "OK.");
+    pRequest->send(200, F("text/plain"), "OK.");
   });
 
-  g_pWebServer.on("/upload", HTTP_POST, [](AsyncWebServerRequest* request) {
-    if (request->_tempObject)
-      request->send(500, "text/plain", "SD open failed.");
+  g_pWebServer.on("/upload", HTTP_POST, [](AsyncWebServerRequest* pRequest) {
+    if (pRequest->_tempObject)
+      pRequest->send(500, F("text/plain"), F("FAIL"));
     else
-      request->send(200, "text/plain", "OK");
-  }, [](AsyncWebServerRequest* request, String strFileName, size_t nIndex, uint8_t* nData, size_t nLen, bool bFinal) {
-    if (request->_tempObject)
+      pRequest->send(200, F("text/plain"), F("OK"));
+  }, [](AsyncWebServerRequest* pRequest, String strFileName, size_t nIndex, uint8_t* nData, size_t nLen, bool bFinal) {
+    if (pRequest->_tempObject)
       return;
 
     SafeSDAccess([&]() {
@@ -1805,16 +1824,16 @@ void setup() {
 
           g_mapUploadFiles.erase(it);
 
-          LOGGER(WARN, false, "Recovered aborted upload: %s", strFileName.c_str());
+          LOGGER(WARN, false, "Software Upload > Recovered aborted upload: %s", strFileName.c_str());
         }
 
-        LOGGER(INFO, false, "Uploading: %s", strFileName.c_str());
+        LOGGER(INFO, false, "Software Upload > Uploading: %s", strFileName.c_str());
 
         File pFile = SD.open(strTmpPath, FILE_WRITE);
         if (!pFile) {
-          request->_tempObject = (void*)1;
+          LOGGER(ERROR, false, "Software Upload > Failed to open: %s", strTmpPath.c_str());
 
-          LOGGER(ERROR, false, "Failed to open: %s", strTmpPath.c_str());
+          pRequest->_tempObject = malloc(1);
 
           return;
         }
@@ -1831,32 +1850,33 @@ void setup() {
 
           g_mapUploadFiles.erase(it);
 
-          String strExpectedSize = request->getHeader("File-Size") ? request->getHeader("File-Size")->value() : "";
-          if (strExpectedSize.length() > 0) {
+          const char* cExpectedSize = pRequest->getHeader("File-Size") ? pRequest->getHeader("File-Size")->value().c_str() : nullptr;
+          if (cExpectedSize) {
             File pFile = SD.open(strTmpPath, FILE_READ);
             if (pFile) {
-              bool bSizeMismatch = pFile.size() != (size_t)strExpectedSize.toInt();
+              bool bSizeMismatch = pFile.size() != (size_t)atoi(cExpectedSize);
+
               pFile.close();
 
               if (bSizeMismatch) {
                 SD.remove(strTmpPath);
 
-                request->_tempObject = (void*)1;
+                LOGGER(ERROR, false, "Software Upload > File size mismatch: %s", strFileName.c_str());
 
-                LOGGER(ERROR, false, "File size mismatch: %s", strFileName.c_str());
+                pRequest->_tempObject = malloc(1);
               } else {
-                LOGGER(INFO, false, "Temporary file saved: %s", strTmpPath.c_str());
+                LOGGER(INFO, false, "Software Upload > Temporary file saved: %s", strTmpPath.c_str());
               }
             }
           } else {
-            LOGGER(WARN, false, "Temporary file: %s saved, but missing File-Size Header.", strFileName.c_str());
+            LOGGER(WARN, false, "Software Upload > Temporary file: %s saved, but missing File-Size Header.", strFileName.c_str());
           }
         }
       }
     });
   });
 
-  g_pWebServer.on("/upload-commit", HTTP_POST, [](AsyncWebServerRequest* request) {
+  g_pWebServer.on("/upload-commit", HTTP_POST, [](AsyncWebServerRequest* pRequest) {
     bool bAllOk = false;
 
     SafeSDAccess([&]() {
@@ -1883,14 +1903,14 @@ void setup() {
         SD.remove(strFinalFull);
 
         if (!SD.rename(strTmpFull, strFinalFull)) {
-          LOGGER(ERROR, false, "File rename failed: %s", strTmpFull.c_str());
+          LOGGER(ERROR, false, "Software Upload > File rename failed: %s", strTmpFull.c_str());
 
           bAllOk = false;
         }
       }
     });
 
-    request->send(200, "text/plain", bAllOk ? "Actualización completa." : "Error en el reemplazo.");
+    pRequest->send(200, F("text/plain"), bAllOk ? "Actualización completa." : "Error en el reemplazo.");
   });
 
   g_pWebServer.begin();
@@ -2166,7 +2186,7 @@ void loop() {
           bIsTheLastPulse = true;
 
         if (((currentTime.tm_hour - g_nLastWateredHour + 24) % 24) > 0 && !bIsTheLastPulse && !digitalRead(RELAYS_MAP[LIGHTS].Pin)) {  // Cada Hora en punto verificar si se puede Aplicar un Pulso de Riego
-          CheckReservoirLevel();  // Check Reservoir level before try anything (This is not very usefull cuz after that, checks for g_nIrrigationSolutionLevel > 0, but is better than nothing)
+          CheckReservoirLevel();  // Check Reservoir level before try anything (This is not very usefull cuz after this, checks for g_nIrrigationSolutionLevel > 0, but is better than nothing)
 
           // Permitir regar si: se están incorporando los fertilizantes. Ni si se está haciendo una prueba de flujo de las Bombas. Ni si se está mezclando la solución de Riego. Ó se está ejecutando un riego.
           // NOTE: Estos checks son livianos así que por esa parte no hay Drama. En cambio, el check para verificar si TargetCC es > 0 es algo más pesado; Así que lo pongo por separado luego de hacer estos checks livianos.

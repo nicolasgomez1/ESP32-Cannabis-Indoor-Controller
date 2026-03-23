@@ -1,4 +1,4 @@
-const JSVersion='V420260323_020141';
+const JSVersion='V420260323_0602';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n)}
@@ -212,6 +212,8 @@ function SendAction(action,...args){
 
 			TrapezoidIndicator('reservoirlevel',data[2]);
 
+			CalcCDC();
+
 			let soils=data[3].split(',');
 
 			for(let i=0;i<soils.length;i++)
@@ -323,16 +325,19 @@ function Send(e,v){
 	sdb=setTimeout(()=>SendAction('update',e.id,v),1000);
 }
 
-function SetCropBegin(){
-	let e=GetElement('cb'),uts=Math.floor(Date.now()/1000);
-
-	e.innerText=new Date(uts*1000).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
-
-	let date=e.innerText.split('/');
-
+function CalcCDC(){
+	let date=GetElement('cb').innerText.split('/');
 	GetElement('cdc').innerText=Math.floor((new Date()-new Date(parseInt(date[2],10),parseInt(date[1],10)-1,parseInt(date[0],10)))/(1000*60*60*24));
+}
 
-	SendAction('update',e.id,uts);
+function SetCropBegin(){
+	let e=GetElement('cb'),utc=Math.floor(Date.now()/1000);
+
+	e.innerText=new Date(utc*1000).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+
+	CalcCDC();
+
+	SendAction('update',e.id,utc);
 }
 
 function SetFanMode(n,s){
