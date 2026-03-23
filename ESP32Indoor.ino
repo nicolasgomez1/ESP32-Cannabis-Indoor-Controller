@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260323_021917" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260323_022655" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -1835,9 +1835,10 @@ void setup() {
           if (strExpectedSize.length() > 0) {
             File pFile = SD.open(strTmpPath, FILE_READ);
             if (pFile) {
+              bool bSizeMismatch = pFile.size() != (size_t)strExpectedSize.toInt();
               pFile.close();
 
-              if (pFile && pFile.size() != (size_t)strExpectedSize.toInt()) {
+              if (bSizeMismatch) {
                 SD.remove(strTmpPath);
 
                 request->_tempObject = (void*)1;
