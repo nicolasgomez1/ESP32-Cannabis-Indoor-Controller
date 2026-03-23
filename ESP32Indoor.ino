@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260321_175522" // TODO: Actualizar esto antes de compilar.
+#define FIRMWAREVERSION "V420260323_021917" // TODO: Actualizar esto antes de compilar.
 
 #include <map>
 #include <Secrets.h>
@@ -1834,19 +1834,19 @@ void setup() {
           String strExpectedSize = request->getHeader("File-Size") ? request->getHeader("File-Size")->value() : "";
           if (strExpectedSize.length() > 0) {
             File pFile = SD.open(strTmpPath, FILE_READ);
-
-            if (pFile && pFile.size() != (size_t)strExpectedSize.toInt()) {
-              SD.remove(strTmpPath);
-
-              request->_tempObject = (void*)1;
-
-              LOGGER(ERROR, false, "File size mismatch: %s", strFileName.c_str());
-            } else {
-              LOGGER(INFO, false, "Temporary file saved: %s", strTmpPath.c_str());
-            }
-
-            if (pFile)
+            if (pFile) {
               pFile.close();
+
+              if (pFile && pFile.size() != (size_t)strExpectedSize.toInt()) {
+                SD.remove(strTmpPath);
+
+                request->_tempObject = (void*)1;
+
+                LOGGER(ERROR, false, "File size mismatch: %s", strFileName.c_str());
+              } else {
+                LOGGER(INFO, false, "Temporary file saved: %s", strTmpPath.c_str());
+              }
+            }
           } else {
             LOGGER(WARN, false, "Temporary file: %s saved, but missing File-Size Header.", strFileName.c_str());
           }
