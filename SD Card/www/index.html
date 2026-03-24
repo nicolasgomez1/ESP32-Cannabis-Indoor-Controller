@@ -8,7 +8,7 @@
 		<link rel=stylesheet type=text/css href=www/style.css>
 		<script src=www/chart.js></script>
 		<script>
-			let HTMLVersion='V420260321_1843',MaxLightBright=%MAXBRIGHT%,ElementsValues=[%ELEMENTVALUES%];
+			let HTMLVersion='V420260324_1750',MaxLightBright=%MAXBRIGHT%,ElementsValues=[%ELEMENTVALUES%];
 			let Chart2Labels=[
 				{label:'Temperatura Ambiente',borderColor:'#E3792B',symbol:'°C'},
 				{label:'Humedad Ambiente',borderColor:'#87B4BC',symbol:'%%'},
@@ -76,7 +76,7 @@
 			<card>
 				<ct>Contador de Días</ct>
 				<container>Inicio de inicio Cultivo: <ind id=cb>%CROPBEGIN%</ind><button onclick=SetCropBegin()>Definir</button></container>
-				<container>Días de Cultivo transcurridos: <ind id=cdc>%CROPDAYCOUNTER%</ind></container>
+				<container>Días de Cultivo transcurridos: <ind id=cdc></ind></container>
 				<container>Días de Riego transcurridos:<wheelcontainer><div class=wheel id=idc></div></wheelcontainer></container>
 				<div class=state id=ind_irrstate></div>
 			</card>

@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260323_0613" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260324_1750" // TODO: Update this value before export binary
 
 #include <map>
 #include <Secrets.h>
@@ -814,13 +814,21 @@ uint8_t GetSoilHumidity(uint8_t nSensorNumber) {
 // Reads the irrigation reservoir sensor and updates the global reservoir level percentage.
 // The level is calculated relative to the configured lower reference level and clamped to 0–100%.
 // The update occurs only if the reference level is valid (>0) and the sensor reading is valid (-1 indicates an error).
+// If the sensor reading is >= the lower reference level (tank empty or out of range), the level is set to 0%.
 void CheckReservoirLevel() {
-  if (g_nIrrigationReservoirLowerLevel > 0) {
-    int16_t nLowerLevel = GetIrrigationReservoirLevel();
+	if (g_nIrrigationReservoirLowerLevel > 0) {
+		int16_t nLowerLevel = GetIrrigationReservoirLevel();
 
-    if (nLowerLevel != -1) 
-      g_nIrrigationSolutionLevel = std::clamp(static_cast<uint8_t>(100.0f * (g_nIrrigationReservoirLowerLevel - nLowerLevel) / g_nIrrigationReservoirLowerLevel), static_cast<uint8_t>(0), static_cast<uint8_t>(100));
-  }
+    if (nLowerLevel == -1)
+			return;
+
+		if (nLowerLevel >= g_nIrrigationReservoirLowerLevel) {
+			g_nIrrigationSolutionLevel = 0;
+			return;
+		}
+
+		g_nIrrigationSolutionLevel = std::clamp(static_cast<uint8_t>(100.0f * (g_nIrrigationReservoirLowerLevel - nLowerLevel) / g_nIrrigationReservoirLowerLevel), static_cast<uint8_t>(0), static_cast<uint8_t>(100));
+	}
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Reads all configured soil moisture sensors and updates the global humidity array.
@@ -953,14 +961,6 @@ String HTMLProcessor(const String& var) {
     char cBuffer[11];
     snprintf(cBuffer, sizeof(cBuffer), "%02d/%02d/%04d", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900);
     return String(cBuffer);
-  } else if (var == "CROPDAYCOUNTER") {
-    uint32_t ElapsedCropDays = 0;
-
-    time_t pTimeNow = time(nullptr);
-    if (g_nCropBegin > 0 && pTimeNow >= g_nCropBegin)
-      ElapsedCropDays = (pTimeNow - g_nCropBegin) / 86400;
-
-    return String(ElapsedCropDays);
   } else if (var == "INTERNALFANMODE") {
     return String(g_nInternalFanMode);
   } else if (var == "RECIRCULATIONFANSMODE") {
