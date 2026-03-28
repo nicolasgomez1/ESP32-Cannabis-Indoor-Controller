@@ -423,7 +423,7 @@ function SetFertsIncorporationMode(s){
 }
 
 function CalcFertsIncorporation(){
-	let m=parseInt(e_fim.value),idc=parseInt(GetElement('idc').innerText);
+	let m=parseInt(e_fim.value),idc=GetWheelValue(GetElement(elements[2].e));
 	let ids=ichart.data.datasets[0],fds=ichart.data.datasets.slice(1),hti=false,di=-1;
 
 	if(m==0){
