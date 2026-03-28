@@ -104,7 +104,7 @@
 				<container>Intervalo entre Hora de Encendido de Luz y el primer Pulso de Riego:<wheelcontainer><div class=wheel id=pias></div></wheelcontainer>Horas</container>
 				<container>Intervalo entre Hora de Apagado de Luz y el último Pulso de Riego:<wheelcontainer><div class=wheel id=pibe></div></wheelcontainer>Horas</container>
 				<ct>Fertilización</ct>
-				<container>Modo de Incorporación: <input type=range class=slider id=fim min=0 max=1 step=1 value=0 oninput=SetFertsIncorporationMode(true)> <ind id=ind_fim></ind></container>
+				<container>Modo de Incorporación: <input type=range class=slider id=fim min=0 max=1 step=1 value=%FERTILIZERSINCORPORATIONMODE% oninput=SetFertsIncorporationMode(true)> <ind id=ind_fim></ind></container>
 				<ind id=fti></ind>
 				<button onclick=SendAction('applyferts')>Incorporar Fertilizantes</button>
 			</card>
