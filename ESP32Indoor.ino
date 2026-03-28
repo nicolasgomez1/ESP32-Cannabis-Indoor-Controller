@@ -2045,6 +2045,7 @@ void loop() {
                 continue;
 
               bool bFertilizerFound = false;
+
               for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {
                 if (Watering.FertilizerToApply[j] > 0.001f) {
                   bFertilizerFound = true;
