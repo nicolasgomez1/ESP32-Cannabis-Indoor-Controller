@@ -8,7 +8,7 @@
 		<link rel=stylesheet type=text/css href=style.css>
 		<script src=chart.js></script>
 		<script>
-			let HTMLVersion='V420260320_173956',MaxLightBright=4095,ElementsValues=[7,1,27,27,70,3,5,60,5,10,100,80,100,30,25,45,0.0,6.27,18,26,50,70,0.6,1,15];
+			let HTMLVersion='V420260320_173956',MaxLightBright=4095,ElementsValues=[7,1,27,27,70,3,5,60,5,10,100,80,100,30,25,45,0.0,6.27,15,18,26,50,70,0.6,1.0,1,1,2];
 			let Chart2Labels=[
 				{label:'Temperatura Ambiente',borderColor:'#E3792B',symbol:'°C'},
 				{label:'Humedad Ambiente',borderColor:'#87B4BC',symbol:'%'},
@@ -92,7 +92,6 @@
 				<container>Humedad de Encendido:<wheelcontainer><div class=wheel id=rfhs></div></wheelcontainer>%</container>
 				<div class=state id=ind_fansrest></div>
 			</card>
-
 			<card>
 				<ct>Control Automático de DPV</ct>
 				<container>Rango de Temperatura: <wheelcontainer><div class=wheel id=t0></div></wheelcontainer>~<wheelcontainer><div class=wheel id=t1></div></wheelcontainer></container>
@@ -101,16 +100,11 @@
 				<container>Prioridad: <input type=range class=slider id=priority min=0 max=1 step=1 value=0 oninput=UpdateVPDCorrectorPriority()> <ind id=ind_priority></ind></container>
 				<div class=state id=ind_vpd></div>
 			</card>
-
-
-
-
-
 			<card>
 				<ct>Riego</ct>
-				<container>Intervalo entre Pulsos de Riego:<wheelcontainer><div class=wheel id=pvd></div></wheelcontainer>Horas</container>
-				<container>Duración de Reposo de Ventiladores:<wheelcontainer><div class=wheel id=restdur></div></wheelcontainer>Minutos</container>
-				<container>Duración de Reposo de Ventiladores:<wheelcontainer><div class=wheel id=restdur></div></wheelcontainer>Minutos</container>
+				<container>Intervalo entre Pulsos de Riego:<wheelcontainer><div class=wheel id=pid></div></wheelcontainer>Horas</container>
+				<container>Intervalo entre Hora de Encendido de Luz y el primer Pulso de Riego:<wheelcontainer><div class=wheel id=pias></div></wheelcontainer>Horas</container>
+				<container>Intervalo entre Hora de Apagado de Luz y el último Pulso de Riego:<wheelcontainer><div class=wheel id=pibe></div></wheelcontainer>Horas</container>
 				<ct>Fertilización</ct>
 				<container>Modo de Incorporación: <input type=range class=slider id=fim min=0 max=1 step=1 value=0 oninput=SetFertsIncorporationMode(true)> <ind id=ind_fim></ind></container>
 				<ind id=fti></ind>
@@ -155,7 +149,7 @@
 				<hr>
 				<container>Intervalo de toma de Muestras:<wheelcontainer><div class=wheel id=saint></div></wheelcontainer>Minutos</container>
 				<hr>
-				<container>Rango general de DPV: Min<wheelcontainer><div class=wheel id=vpdmin></div></wheelcontainer>Max<wheelcontainer><div class=wheel id=vpdmax></div></wheelcontainer></container>
+				<container>Rango General de DPV: Min<wheelcontainer><div class=wheel id=vpdmin></div></wheelcontainer>Max<wheelcontainer><div class=wheel id=vpdmax></div></wheelcontainer></container>
 				<hr>
 				<container>Intervalo de verificación de recomendación: <wheelcontainer><div class=wheel id=rci></div></wheelcontainer>Minutos</container>
 				<hr>

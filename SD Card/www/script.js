@@ -42,13 +42,17 @@ let elements=[
 	{e:'saint',min:1,max:1440,step:1},
 	{e:'vpdmin',min:0,max:6.27,step:.01},
 	{e:'vpdmax',min:0,max:6.27,step:.01},
+	{e:'rci',min:1,max:1440,step:1},
 	{e:'t0',min:0,max:100,step:1},
 	{e:'t1',min:0,max:100,step:1},
 	{e:'h0',min:0,max:100,step:1},
 	{e:'h1',min:0,max:100,step:1},
 	{e:'vpd0',min:0,max:6.27,step:.01},
 	{e:'vpd1',min:0,max:6.27,step:.01},
-	{e:'rci',min:1,max:1440,step:1}
+	// TODO: Estos 3 valores ↓ deberían ir entre 1 y cuanto?
+	{e:'pid',min:1,max:23,step:1},
+	{e:'pias',min:1,max:23,step:1},
+	{e:'pibe',min:1,max:23,step:1}
 ];
 
 elements.forEach(_e=>SetWheelSpinRange(_e.e,_e.min,_e.max,_e.step));
@@ -142,6 +146,7 @@ function SendAction(action,...args){
 
 	if(args.length%2===0){
 		if(args[0]==e_lightstart.id||args[0]==e_lightstop.id){
+			// TODO: Rehacer esto ahora tiene que depender de pid, pias y pibe
 			let r=GetLightStartStop(),min=parseInt(e_profile.value)==1?5:4;
 			if((r[1]-r[0]+24)%24<min){
 				alert(`No se puede definir un Fotoperiodo inferior a ${min} Horas.`);
@@ -184,16 +189,18 @@ function SendAction(action,...args){
 					}else if(e=='lightstartstop'){
 						let s=v.split(',');
 						SetPhoto(s[0],s[1]);
-					}else if(e=='lb'||e=='ifm'||e=='rfm'||e=='fim'){	// TODO: ...
+					}else if(e=='lb'||e=='fim'||e=='ifm'||e=='rfm'||e=='priority'){
 						GetElement(e).value=v;
 
 						if(e=='lb')
 							SetLightBright();
 						else if(e=='fim')
 							SetFertsIncorporationMode();
-						else
+						else if (e=='ifm'||e=='rfm')
 							SetFanMode(e);
-					}else{	// TODO: ...
+						else if (e=='priority')
+							UpdateVPDCorrectorPriority();
+					}else{
 						SetWheelSpinValue(e,v);
 					}
 				}

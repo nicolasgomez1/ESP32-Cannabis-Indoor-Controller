@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V520260323_0613" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260328_" // TODO: Update this value before export binary
 
 #include <map>
 #include <Secrets.h>
@@ -20,17 +20,16 @@
 #include <SimpleDHT.h>  // DHT22: 0~100%RH ±2-5% | -40~80°C ±0.5°C (FMD)
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
-// TODO: A futuro podría reescribir toda la lógica para poder funcionar con días de mas de 24 horas (trabajar con marcas de tiempo transcurrido en lugar de horas y días).
 // TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado. (En caso de hacerlo, poner esto es // NOTES: // After unexpected energy shutdown, the fertilizer incorporation process gonna continue with the remaining CC and/or remaining stages to be incorporated.)
 /* TODO: Capaz me tenga que replantear cómo carajos va a ser tema de los perfiles. por qué el panel web necesita saber los rangos de humedad, temperatura y vpd...
 			-	Capaz cambiar perfiles por etapas de cultivo, pero todo dentro de un solo archivo. cachear todo eso es mas complicado pero mas simple para trabajar luego
 			TODO:
 				1) Crear un Endpoint para crear perfiles en la carpeta profiles. Usar un archivo .dummy cómo base para cada perfil nuevo. (Así evito consumir memoria FLASH con los valores base)
 				2) Crear un Endpoint que componga la lista de perfiles (Esto es medio tricky, porque listar todo el tiempo la SD es una mierda, capaz es mejor obtener esa info y cachearla en el lado del cliente)
-					2.1) En realidad puedo enviar el total de perfiles directo del HTMLProccessor.
+					2.1) En realidad puedo enviar el total de perfiles directo del HTMLProcessor.
 				3) Crear un Endpoint para cargar perfiles.
 */
-// TODO: Los Circle Gauges se tienen que adaptar los valores de las etapas? va a ser un re quilombo eso...
+// TODO: Los Circle Gauges se tienen que adaptar los valores de las etapas? va a ser un re quilombo eso... Podria en base a los valores de t0,t1,h0,h1 y vpd0,vpd1 poner unas marcas en los indicadores..
 // TODO: Re escribir todas las descripciones
 
 // NOTES:
@@ -39,9 +38,11 @@
 // If Light Start & Stop Times Is 0, the light never gonna start.
 // All logics assume/is for Days of 24 Hours max.
 // After unexpected energy shutdown, the irrigation process gonna re-do the last pulse if is needed, but it gonna do entire pulse, not just remaining time.
+
 /* Error Codes: (Respect the order)
-		 ERR0: Cannot change the Profile at this time.
+		  ERR0: Cannot change the Profile at this time.
 */
+
 /* Fertilizer Incorporation Logic:
      The fertilizer incorporation process is controlled by the g_bApplyFertilizers flag.
      When triggered, the system inspects past irrigation days (g_vecWateringStages) to determine whether to apply fertilizers, based on the current incorporation mode (g_nFertilizerIncorporationMode).
@@ -242,7 +243,7 @@ uint8_t g_nLowReservoirLevelWarning = 0;
 char g_cCALLMEBOT_API_KEY[8];
 char g_cCALLMEBOT_PHONE[15];
 float g_fVPDMinMaxRanges[2] = { 0.0f, 0.0f };
-uint64_t g_nRecommendationCheckInterval = 0;
+uint64_t g_nRecommendationCheckInterval = 0;	// TODO: Poner un check en la función loop, para llamar a GetVPDRecommendation (y ejecutar dicha recomendación???)
 
 // Profiles Variables
 uint8_t g_nStartLightTime = 0;
@@ -256,16 +257,13 @@ uint8_t g_nStartVentilationHumidity = 0;
 uint16_t g_nIrrigationDayCounter = 1;
 int8_t g_nLastWateredHour = -1;
 uint8_t g_nFertilizerIncorporationMode = 0;
-/////////////// TODO: poner los endpoints para asignar estos parametros, además agregar esto en HTMLProcessor
 float g_fTemperatureRanges[2] = { 0.0f, 0.0f };
 float g_fHumidityRanges[2] = { 0.0f, 0.0f };
 float g_fVPDRanges[2] = { 0.0f, 0.0f };
 uint8_t g_nVPDCorrectionPriority = 0;	// 0 = humidity | 1 = temperature
-
-uint8_t g_nPulseIntervalDivider = 1;	// HTML Control name: pvd
+uint8_t g_nPulseIntervalDivider = 1;
 uint8_t g_nPulseIntervalAfterStart = 1;
 uint8_t g_nPulseIntervalBeforeEnd = 2;
-/////////////// TODO END
 std::vector<WateringData> g_vecWateringStages;
 ///////////////////////////////////////////
 
@@ -284,6 +282,7 @@ uint64_t g_nFansRestTimeStartedAt = 0;
 uint8_t g_nTestPumpID = 0;  // 0 Equals to no pump to test
 bool g_bApplyFertilizers = false;
 bool g_bManualMixing = false;
+// TODO: Agregar una varible que va a contener la última recomendación hecha. (Esta hay que enviarlda en data[2] del caso refresh)
 char g_strArrayGraphData[MAX_GRAPH_MARKS][MAX_GRAPH_MARKS_LENGTH] = {};
 
 // Global Handles, Interface & Instances
@@ -1080,10 +1079,11 @@ String HTMLProcessor(const String& var) {
 		strReturn += "," + String(g_nLowReservoirLevelWarning);
 		strReturn += "," + String(TicksToMinutes(g_nSamplingInterval));
 		strReturn += "," + String(g_fVPDMinMaxRanges[0]) + "," + String(g_fVPDMinMaxRanges[1]);
+		strReturn += "," + String(TicksToMinutes(g_nRecommendationCheckInterval));
 		strReturn += "," + String(g_fTemperatureRanges[0]) + "," + String(g_fTemperatureRanges[1]);
 		strReturn += "," + String(g_fHumidityRanges[0]) + "," + String(g_fHumidityRanges[1]);
 		strReturn += "," + String(g_fVPDRanges[0]) + "," + String(g_fVPDRanges[1]);
-		strReturn += "," + String(TicksToMinutes(g_nRecommendationCheckInterval));
+		strReturn += "," + String(g_nPulseIntervalDivider) + "," + String(g_nPulseIntervalAfterStart) + "," + String(g_nPulseIntervalBeforeEnd);
 
 		return strReturn;
 	} else if (var == "SOILLABELS") {
@@ -1454,20 +1454,13 @@ void setup() {
 					strReturn += ":ifm:" + String(g_nInternalFanMode);
 					strReturn += ":ifts:" + String(g_nStartInternalFanTemperature);
 					strReturn += ":rfm:" + String(g_nVentilationMode);
-					strReturn += ":rfts:" + String(g_nStartVentilationTemperature);
-					strReturn += ":rfhs:" + String(g_nStartVentilationHumidity);
-					strReturn += ":fim:" + String(g_nFertilizerIncorporationMode);
+					strReturn += ":rfts:" + String(g_nStartVentilationTemperature) + ":rfhs:" + String(g_nStartVentilationHumidity) + ":fim:" + String(g_nFertilizerIncorporationMode);
 					strReturn += ":idc:" + String(g_nIrrigationDayCounter);
-
-					// TODO: Acá hay que enviar los rangos de temp,hum y vpd, además de la prioridad
-					float g_fTemperatureRanges[2] = { 0.0f, 0.0f };
-float g_fHumidityRanges[2] = { 0.0f, 0.0f };
-float g_fVPDRanges[2] = { 0.0f, 0.0f };
-uint8_t g_nVPDCorrectionPriority = 0;	// 0 = humidity | 1 = temperature
-
-uint8_t g_nPulseIntervalDivider = 1;
-uint8_t g_nPulseIntervalAfterStart = 1;
-uint8_t g_nPulseIntervalBeforeEnd = 2;
+					strReturn += ":t0:" + String(g_fTemperatureRanges[0]) + ":t1:" + String(g_fTemperatureRanges[0]);
+					strReturn += ":h0:" + String(g_fHumidityRanges[0]) + ":h1:" + String(g_fHumidityRanges[0]);
+					strReturn += ":vpd0:" + String(g_fVPDRanges[0]) + ":vpd1:" + String(g_fVPDRanges[0]);
+					strReturn += ":priority:" + String(g_nVPDCorrectionPriority);
+					strReturn += ":pid:" + String(g_nPulseIntervalDivider) + ":pias:" + String(g_nPulseIntervalAfterStart) + ":pibe:" + String(g_nPulseIntervalBeforeEnd);
 					///////////////////////////////////////////////////
 					strReturn += ":ichart:";
 
@@ -1636,6 +1629,23 @@ uint8_t g_nPulseIntervalBeforeEnd = 2;
 						strReturn += "Se actualizó el Esquema de Riego Y Fertilización.\r\n";
 					}
 				}
+				// =============== Profile Temperature Range =============== //
+				CheckNSetValue(pRequest, "t0", g_fTemperatureRanges[0], F("el mínimo del Rango de Temperatura"), strReturn);
+				CheckNSetValue(pRequest, "t1", g_fTemperatureRanges[1], F("el máximo del Rango de Temperatura"), strReturn);
+				// =============== Profile Humidity Range =============== //
+				CheckNSetValue(pRequest, "h0", g_fHumidityRanges[0], F("el mínimo del Rango de Humedad"), strReturn);
+				CheckNSetValue(pRequest, "h1", g_fHumidityRanges[1], F("el máximo del Rango de Humedad"), strReturn);
+				// =============== Profile VPD Range =============== //
+				CheckNSetValue(pRequest, "vpd0", g_fVPDRanges[0], F("el mínimo del Rango de DPV"), strReturn);
+				CheckNSetValue(pRequest, "vpd1", g_fVPDRanges[1], F("el máximo del Rango de DPV"), strReturn);
+				// =============== Profile VPD Correction Priority =============== //
+				CheckNSetValue(pRequest, "priority", g_nVPDCorrectionPriority, F("la Prioridad de Correción de DPV"), strReturn);
+				// =============== Profile Pulses Interval Divider =============== //
+				CheckNSetValue(pRequest, "pid", g_nPulseIntervalDivider, F("el Intervalo entre Pulsos de Riego"), strReturn);
+				// =============== Profile Interval between Lights turn ON and First Irrigation Pulse =============== //
+				CheckNSetValue(pRequest, "pias", g_nPulseIntervalAfterStart, F("el Intervalo entre Hora de Encendido de Luz y el primer Pulso de Riego"), strReturn);
+				// =============== Profile Interval between Lights turn OFF and Last Irrigation Pulse =============== //
+				CheckNSetValue(pRequest, "pibe", g_nPulseIntervalBeforeEnd, F("el Intervalo entre Hora de Apagado de Luz y el último Pulso de Riego"), strReturn);
 				// =============== Fans Rest Interval =============== //
 				if (pRequest->hasArg("restint")) {
 					nNewValue = MinutesToTicks(pRequest->arg("restint").toInt());
@@ -1661,7 +1671,7 @@ uint8_t g_nPulseIntervalBeforeEnd = 2;
 				// =============== Environment Humidity Hysteresis =============== //
 				CheckNSetValue(pRequest, "humhys", g_nHumidityStopHysteresis, F("la Histéresis de Apagado por Humedad"), strReturn);
 				// =============== Irrigation Pump CC Flow Per Minute =============== //
-				CheckNSetValue(pRequest, "ifpm", g_nIrrigationFlowPerMinute, F("el Caudal por Minuto de Bomba de Riego"), strReturn);	// TODO: Actualizar, ya no es por minuto	TicksToSeconds(FLOW_TEST_DURATION)
+				CheckNSetValue(pRequest, "ifpm", g_nIrrigationFlowPerMinute, F("el Caudal por 10 Segundos de Bomba de Riego"), strReturn);	// WARNING: Hardcode value
 				// =============== Each Fertilizer Pump CC Flow Per Minute =============== //
 				for (uint8_t i = 0; i < MAX_FERTILIZER_PUMPS; i++) {
 					String strArg = "pumpfpm" + String(i);
@@ -1671,7 +1681,7 @@ uint8_t g_nPulseIntervalBeforeEnd = 2;
 						if (nNewValue != g_nFertilizersPumpsFlowPerMinute[i]) {
 							g_nFertilizersPumpsFlowPerMinute[i] = nNewValue;
 
-							strReturn += "Se actualizó el Caudal por Minuto de Bomba de " + String((i == 0) ? "Reductor de pH" : (i == 1 ? "Fertilizante de Vegetativo" : "Fertilizante de Floración")) + ".\r\n";	// TODO: Actualizar, ya no es por minuto	TicksToSeconds(FLOW_TEST_DURATION)
+							strReturn += "Se actualizó el Caudal por " + String(TicksToSeconds(FLOW_TEST_DURATION)) + " Segundos de Bomba de " + String((i == 0) ? "Reductor de pH" : (i == 1 ? "Fertilizante de Vegetativo" : "Fertilizante de Floración")) + ".\r\n";
 						}
 					}
 				}
