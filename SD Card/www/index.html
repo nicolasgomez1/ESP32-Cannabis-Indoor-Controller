@@ -26,7 +26,7 @@
 				<div style=display:flex>
 					<div><div style=font-size:19 id=currenttime></div></div>
 					<div style=margin-left:auto>
-						<a href=www/logs.html target=_blank><button>Ver Logs/Metrics</button></a> <button onclick=SendAction('update','time',Math.floor(Date.now()/1000))>Sincronizar Fecha</button> <button onclick=SendAction('restart')>Reiniciar</button>
+						<a href=www/logs.html target=_blank><button>Registros/Metricas</button></a> <button onclick=SendAction('update','time',Math.floor(Date.now()/1000))>Sincronizar Fecha</button> <button onclick=SendAction('restart')>Reiniciar</button>
 					</div>
 				</div>
 			</card_header>
@@ -77,7 +77,7 @@
 				<ct>Contador de Días</ct>
 				<container>Inicio de inicio Cultivo: <ind id=cb>%CROPBEGIN%</ind><button onclick=SetCropBegin()>Definir</button></container>
 				<container>Días de Cultivo transcurridos: <ind id=cdc></ind></container>
-				<container>Días de Riego transcurridos:<wheelcontainer><div class=wheel id=idc></div></wheelcontainer></container>
+				<container>Días de Riego transcurridos: <ind id=idc></ind></container>
 				<div class=state id=ind_irrstate></div>
 			</card>
 			<card>
@@ -89,6 +89,14 @@
 				<container>Temperatura de Encendido:<wheelcontainer><div class=wheel id=rfts></div></wheelcontainer>°C</container>
 				<container>Humedad de Encendido:<wheelcontainer><div class=wheel id=rfhs></div></wheelcontainer>%%</container>
 				<div class=state id=ind_fansrest></div>
+			</card>
+			<card>
+				<ct>Control Automático de DPV</ct>
+				<container>Rango de Temperatura: <wheelcontainer><div class=wheel id=t0></div></wheelcontainer>~<wheelcontainer><div class=wheel id=t1></div></wheelcontainer></container>
+				<container>Rango de Humedad: <wheelcontainer><div class=wheel id=h0></div></wheelcontainer>~<wheelcontainer><div class=wheel id=h1></div></wheelcontainer></container>
+				<container>Rango de DPV: <wheelcontainer><div class=wheel id=vpd0></div></wheelcontainer>~<wheelcontainer><div class=wheel id=vpd1></div></wheelcontainer></container>
+				<container>Prioridad: <input type=range class=slider id=priority min=0 max=1 step=1 value=%VPDCORRECTIONPRIORITY% oninput=UpdateVPDCorrectorPriority()> <ind id=ind_priority></ind></container>
+				<div class=state id=ind_vpd></div>
 			</card>
 			<card>
 				<ct>Fertilización</ct>
@@ -125,8 +133,19 @@
 				<container>Duración de Mezclado de Solución de Riego:<wheelcontainer><div class=wheel id=mixdur></div></wheelcontainer>Segundos<button onclick=SendAction('mixis')>Mezclar</button></container>
 				<hr>
 				<container>Nivel mínimo del Reservorio para notificación:<wheelcontainer><div class=wheel id=lrlw></div></wheelcontainer>%%</container>
+				<div style=display:flex>
+					<div>
+						<container>CallmeBot API Key:<input id=apikey value='%APIKEY%'></container>
+						<container>Número de Celular:<input id=phone value='%PHONE%'></container>
+					</div>
+					&nbsp;<button onclick=SendAction('update','apikey',document.getElementById('apikey').value,'phone',document.getElementById('phone').value)>Actualizar</button>
+				</div>
 				<hr>
 				<container>Intervalo de toma de Muestras:<wheelcontainer><div class=wheel id=saint></div></wheelcontainer>Minutos</container>
+				<hr>
+				<container>Rango general de DPV: Min<wheelcontainer><div class=wheel id=vpdmin></div></wheelcontainer>Max<wheelcontainer><div class=wheel id=vpdmax></div></wheelcontainer></container>
+				<hr>
+				<container>Intervalo de verificación de recomendación: <wheelcontainer><div class=wheel id=rci></div></wheelcontainer>Minutos</container>
 				<hr>
 				<div style=display:flex>
 					<div>

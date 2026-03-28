@@ -1,6 +1,6 @@
-const JSVersion='V420260328_0711';
+const JSVersion='V420260323_0602';
 let bFirst=true;
-
+// TODO: el slider de intensidad de la luz, es muy sensible en pantallas touch
 function GetElement(n){return document.getElementById(n)}
 
 function SetWheelSpinRange(e,min,max,step){
@@ -26,7 +26,6 @@ function GetWheelValue(e){return parseFloat(e.children[Math.round(e.scrollTop/15
 let elements=[
 	{e:'lightstart',min:1,max:24,step:1},
 	{e:'lightstop',min:1,max:24,step:1},
-	{e:'idc',min:1,max:365,step:1},
 	{e:'ifts',min:0,max:100,step:1},
 	{e:'rfts',min:0,max:100,step:1},
 	{e:'rfhs',min:0,max:100,step:1},
@@ -40,12 +39,21 @@ let elements=[
 	{e:'pumpfpm2',min:0,max:1000,step:1},
 	{e:'mixdur',min:0,max:1330,step:1},
 	{e:'lrlw',min:0,max:100,step:1},
-	{e:'saint',min:1,max:1440,step:1}
+	{e:'saint',min:1,max:1440,step:1},
+	{e:'vpdmin',min:0,max:6.27,step:.01},
+	{e:'vpdmax',min:0,max:6.27,step:.01},
+	{e:'t0',min:0,max:100,step:1},
+	{e:'t1',min:0,max:100,step:1},
+	{e:'h0',min:0,max:100,step:1},
+	{e:'h1',min:0,max:100,step:1},
+	{e:'vpd0',min:0,max:6.27,step:.01},
+	{e:'vpd1',min:0,max:6.27,step:.01},
+	{e:'rci',min:1,max:1440,step:1}
 ];
 
 elements.forEach(_e=>SetWheelSpinRange(_e.e,_e.min,_e.max,_e.step));
 
-let e_profile=GetElement('profile'),e_lightstart=GetElement(elements[0].e),e_lightstop=GetElement(elements[1].e),e_fim=GetElement('fim');
+let e_profile=GetElement('profile'),e_priority=GetElement('priority'),e_lightstart=GetElement(elements[0].e),e_lightstop=GetElement(elements[1].e),e_fim=GetElement('fim');
 
 let rc=['#EC6066','#6699CC','#99C794','#F9AE58'];
 
@@ -176,7 +184,7 @@ function SendAction(action,...args){
 					}else if(e=='lightstartstop'){
 						let s=v.split(',');
 						SetPhoto(s[0],s[1]);
-					}else if(e=='lb'||e=='ifm'||e=='rfm'||e=='fim'){
+					}else if(e=='lb'||e=='ifm'||e=='rfm'||e=='fim'){	// TODO: ...
 						GetElement(e).value=v;
 
 						if(e=='lb')
@@ -185,10 +193,7 @@ function SendAction(action,...args){
 							SetFertsIncorporationMode();
 						else
 							SetFanMode(e);
-					}else{
-						if(e=='idc')
-							ElementsValues[2]=parseInt(v);
-
+					}else{	// TODO: ...
 						SetWheelSpinValue(e,v);
 					}
 				}
@@ -208,7 +213,7 @@ function SendAction(action,...args){
 
 			CalcLightDur();
 
-			SetEnvValues(data[0],data[1]);
+			SetEnvValues(data[0],data[1],data[2]);	// TODO: Ahora hay que enviar la recomendación en data[2] y acá hay que shiftear todos +1
 
 			TrapezoidIndicator('reservoirlevel',data[2]);
 
@@ -231,13 +236,7 @@ function SendAction(action,...args){
 			for(let i=0;i<2;i++)
 				document.querySelector('.f'+i).style.animationPlayState=data[6+i]=='0'?'running':'paused';
 
-			let idc=parseInt(data[8]);
-
-			if(idc!=ElementsValues[2]){
-				ElementsValues[2]=idc;
-
-				SetWheelSpinValue(elements[2].e,idc);
-			}
+			GetElement('idc').innerText=data[8];
 
 			let wattimerem=parseInt(data[9]);
 			result='';
@@ -349,7 +348,7 @@ function SetFanMode(n,s){
 		SendAction('update',e.id,v);
 }
 
-function GetStateOfVPD(v){
+function GetStateOfVPD(v){	// TODO: Esto de tempranges, humranges y vpdranges va a desaparecer. hay que usar los parametros que salen directo del Servidor o no se todavía cómo mierda va a ser...
 	if(v<=vpdranges[4].max){
 		for(let i=0;i<vpdranges.length;i++){
 			let r=vpdranges[i],il=i==vpdranges.length-1;
@@ -411,6 +410,12 @@ function SetSelectedProfile(s){
 		SendAction('reload',e_profile.id,v);
 }
 
+function UpdateVPDCorrectorPriority(){
+	let v=parseInt(e_priority.value);
+
+	GetElement('ind_priority').innerText=v==0?'Humedad':'Temperatura';
+}
+
 function SetFertsIncorporationMode(s){
 	let v=parseInt(e_fim.value);
 
@@ -423,7 +428,7 @@ function SetFertsIncorporationMode(s){
 }
 
 function CalcFertsIncorporation(){
-	let m=parseInt(e_fim.value),idc=GetWheelValue(GetElement(elements[2].e));
+	let m=parseInt(e_fim.value),idc=parseInt(GetElement('idc').innerText);
 	let ids=ichart.data.datasets[0],fds=ichart.data.datasets.slice(1),hti=false,di=-1;
 
 	if(m==0){
@@ -522,12 +527,15 @@ function SemiCircleGauge(e,ranges,p,...t){
 		ctx.fillText(t[1],cx,ty+10);
 }
 
-function SetEnvValues(t,h){
+function SetEnvValues(t,h,r){
 	let vpd=CalcVPD(t,h);
 
+	// TODO: Esto de tempranges, humranges y vpdranges va a desaparecer. hay que usar los parametros que salen directo del Servidor o no se todavía cómo mierda va a ser...
 	SemiCircleGauge('meter_temp',tempranges,t,'°C');
 	SemiCircleGauge('meter_hum',humranges,h,'%');
 	SemiCircleGauge('meter_vpd',vpdranges,vpd,'kPa',GetStateOfVPD(vpd));
+
+	GetElement('ind_vpd').innerText=r;
 }
 
 function TrapezoidIndicator(e,l){
@@ -685,12 +693,8 @@ elements.forEach((_e,i)=>{
 
 		let r=GetWheelValue(e);
 
-		if(i<3){
-			if(i<2)
-				CalcLightDur();
-			else
-				CalcFertsIncorporation();
-		}
+		if(i<2)
+			CalcLightDur();
 
 		Send(e,r);
 	});
@@ -716,12 +720,8 @@ elements.forEach((_e,i)=>{
 
 		let r=GetWheelValue(e);
 
-		if(i<3){
-			if(i<2)
-				CalcLightDur();
-			else
-				CalcFertsIncorporation();
-		}
+		if(i<2)
+			CalcLightDur();
 
 		Send(e,r);
 	},{passive:false});
@@ -755,8 +755,12 @@ ichart.canvas.addEventListener('pointerup',e=>{
 		}
 	}else{
 		let d=prompt('Día',Math.round(ichart.scales.x.getValueForPixel(e.clientX-r.left)));
-
 		if(d!==null&&!isNaN(d)&&d>0){
+			if(ichart.data.datasets[0].data.some(p=>p.x==parseInt(d))){
+				alert('Ya existe un registro para ese día.');
+				return;
+			}
+
 			let c=false,td=[];
 
 			for(let i=0;i<Chart1Labels.length;i++){
@@ -854,10 +858,11 @@ window.onload=function(){
 	CalcLightDur();
 	SetLightBright();
 	['ifm','rfm'].forEach(e=>SetFanMode(e));
+	UpdateVPDCorrectorPriority();
 	SetFertsIncorporationMode();
 	GetElement('htmlver').innerText=HTMLVersion;
 	GetElement('cssver').innerText=getComputedStyle(document.documentElement).getPropertyValue('--CSSVersion');
 	GetElement('jsver').innerText=JSVersion;
-	SendAction('refresh');
-	setInterval(()=>{SendAction('refresh')},3000);
+	//SendAction('refresh');
+	//setInterval(()=>{SendAction('refresh')},3000);
 };
