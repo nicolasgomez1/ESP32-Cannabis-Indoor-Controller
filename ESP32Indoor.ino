@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260324_1750" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260328_0711" // TODO: Update this value before export binary
 
 #include <map>
 #include <Secrets.h>
@@ -38,28 +38,25 @@
      When triggered, the system inspects past irrigation days (g_vecWateringStages) to determine whether to apply fertilizers, based on the current incorporation mode (g_nFertilizerIncorporationMode).
 
 Modes of operation:
-  - Mode 0 (Permissive):
-    If the current irrigation day (g_nIrrigationDayCounter) has TargetCC > 0,
-    the system searches backward through previous days to find the most recent day
-    containing at least one fertilizer value > 0.0cc.
-    Fertilizer values from that day are then used for incorporation.
+    - Mode 0 (Permissive):
+        The system searches backward through previous days (up to the current irrigation day) to find the most recent day containing at least one fertilizer value > 0.0cc.
+        Fertilizer values from that day are then used for incorporation.
 
-  - Mode 1 (Strict):
-    Fertilizers are only incorporated if the current day has TargetCC > 0
-    AND contains at least one fertilizer value > 0.0cc.
-    No backward search is performed in this mode.
+    - Mode 1 (Strict):
+        Fertilizers are only incorporated if a day exists whose day number matches exactly the current irrigation day counter (g_nIrrigationDayCounter) AND contains at least one fertilizer value > 0.0cc.
+        No backward search is performed in this mode.
 
 Once a valid fertilizer day is identified (based on mode):
-  - The system prepares incorporation stages, one per fertilizer pump with a non-zero value.
-  - Each stage calculates the pump duration based on the volume to apply and the configured flow rate.
-  - The power supply is enabled, followed by a 1.5-second stabilization delay.
-  - Fertilizer pumps are activated in sequence based on the scheduled durations.
-  - After completion, the system shuts down the relays, resets internal state, and clears g_bApplyFertilizers.
+    - The system prepares incorporation stages, one per fertilizer pump with a non-zero value.
+    - Each stage calculates the pump duration based on the volume to apply and the configured flow rate.
+    - The power supply is enabled, followed by a 1.5-second stabilization delay.
+    - Fertilizer pumps are activated in sequence based on the scheduled durations.
+    - After completion, the system shuts down the relays, resets internal state, and clears g_bApplyFertilizers.
 
 Notes:
-  - If no valid day with fertilizer > 0.0cc is found (per mode), no fertilizers are applied.
-  - Minimum pump duration is enforced to be at least 1ms.
-  - The incorporation process only runs once per trigger (based on nMaxStages == 0).*/
+    - If no valid day with fertilizer > 0.0cc is found (per mode), no fertilizers are applied.
+    - Minimum pump duration is enforced to be at least 1ms.
+    - The incorporation process only runs once per trigger (based on nMaxStages == 0).*/
 
 // Definitions
 //#define ENABLE_AP_ALWAYS      // Use this to enable always the Access Point. Else it just enable when have no internet connection
@@ -989,7 +986,7 @@ void setup() {
 
   if (pReason != ESP_RST_POWERON && pReason != ESP_RST_SW) {
     const char* cReasons[] = {
-      "Unknown", "Power on", "External pin", "Software", 
+      "Unknown", "Power on", "External pin", "Software",
       "Panic/Exception", "Interrupt watchdog", "Task watchdog",
       "Other watchdog", "Deepsleep", "Brownout", "SDIO"
     };
@@ -1084,7 +1081,7 @@ void setup() {
       g_nLowReservoirLevelWarning = atoi(cBuffer);
       ///////////////////////////////////////////////////
       /*  // NOTE EXAMPLE: En caso de que necesite agregar un nuevo valor. para hacerlo es así:
-      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer)); 
+      ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));
       if (cBuffer[0] != '\0') // NOTE: Una vez se guarde el archivo con el nuevo formato, se puede borrar este check
         new_val = atoi(cBuffer);
       */
@@ -1224,7 +1221,7 @@ void setup() {
         ESP.restart();
       } else if (pRequest->arg("action") == "cisl") {
         String strReturn = "La calibración falló. Intente nuevamente.";
-        
+
         int16_t nLowerLevel = GetIrrigationReservoirLevel();
         if (nLowerLevel != -1) {
           g_nIrrigationReservoirLowerLevel = nLowerLevel;
@@ -2040,50 +2037,55 @@ void loop() {
         static uint8_t nMaxStages = 0;
 
         if (nMaxStages == 0) {
-          bool bCanIncorporateFerts = false;
-
           for (int8_t i = g_vecWateringStages.size() - 1; i >= 0; --i) {
             const auto& Watering = g_vecWateringStages[i];
 
-            if (!bCanIncorporateFerts && g_nIrrigationDayCounter >= Watering.Day && Watering.TargetCC > 0) {
-              if (g_nFertilizerIncorporationMode == 0) {  // Permissive mode: Incorporate ferts from last known day with ferts values
-                bCanIncorporateFerts = true;
-              } else if (g_nFertilizerIncorporationMode == 1) { // Strict mode: Incorporate ferts from current day (If have defined)
-                for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {
-                  if (Watering.FertilizerToApply[j] > 0.001f) {
-                    bCanIncorporateFerts = true;
+            if (g_nFertilizerIncorporationMode == 0) {  // Permissive: last day with ferts > 0 where day <= g_nIrrigationDayCounter
+              if (Watering.Day > g_nIrrigationDayCounter)
+                continue;
 
-                    break;
-                  }
+              bool bFertilizerFound = false;
+              for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {
+                if (Watering.FertilizerToApply[j] > 0.001f) {
+                  bFertilizerFound = true;
+                  break;
                 }
               }
-            }
 
-            if (!bCanIncorporateFerts && g_nIrrigationDayCounter >= Watering.Day)
-              break;
+              if (bFertilizerFound) {
+                for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {
+                  float fCCToApply = Watering.FertilizerToApply[j];
 
-            bool bFertilizerFound = false;
+                  if (fCCToApply > 0.001f) {
+                    uint64_t nDuration = static_cast<uint64_t>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j] + 0.5f);
+                    if (nDuration == 0)
+                      nDuration = 1;
 
-            for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {  // Check if really have values of ferts to be incorporated
-              if (Watering.FertilizerToApply[j] > 0.001f) {
-                bFertilizerFound = true;
+                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), nDuration };
+
+                    LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
+                  }
+                }
 
                 break;
               }
-            }
+            } else if (g_nFertilizerIncorporationMode == 1) {  // Strict: only if day == g_nIrrigationDayCounter exactly
+              if (Watering.Day > g_nIrrigationDayCounter)
+                continue;
 
-            if (bCanIncorporateFerts && bFertilizerFound) {
-              for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {
-                float fCCToApply = Watering.FertilizerToApply[j];
+              if (Watering.Day == g_nIrrigationDayCounter) {
+                for (uint8_t j = 0; j < MAX_FERTILIZER_PUMPS; ++j) {
+                  float fCCToApply = Watering.FertilizerToApply[j];
 
-                if (fCCToApply > 0.001f) {
-                  uint64_t nDuration = static_cast<uint64_t>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j] + 0.5f); // WARNING: Hardcode offset for round
-                  if (nDuration == 0)
-                    nDuration = 1;
+                  if (fCCToApply > 0.001f) {
+                    uint64_t nDuration = static_cast<uint64_t>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j] + 0.5f);
+                    if (nDuration == 0)
+                      nDuration = 1;
 
-                  Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), nDuration };
+                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), nDuration };
 
-                  LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
+                    LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
+                  }
                 }
               }
 

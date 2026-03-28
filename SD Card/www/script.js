@@ -1,4 +1,4 @@
-const JSVersion='V420260323_0602';
+const JSVersion='V420260328_0711';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n)}
@@ -423,31 +423,23 @@ function SetFertsIncorporationMode(s){
 }
 
 function CalcFertsIncorporation(){
-	let m=parseInt(e_fim.value),idc=GetWheelValue(GetElement(elements[2].e));
+	let m=parseInt(e_fim.value),idc=parseInt(GetElement('idc').innerText);
 	let ids=ichart.data.datasets[0],fds=ichart.data.datasets.slice(1),hti=false,di=-1;
 
-	for(let i=ids.data.length-1;i>=0;i--){
-		let d=parseInt(ids.data[i].x);
-
-		if(!hti&&idc>=d&&parseFloat(ids.data[i].y)>0){
-			if(m==0){
-				hti=true;
-			}else if(m==1){
-				for(let j=0;j<fds.length;j++){
-					if(parseFloat(fds[j].data[i].y)>.001){
-						hti=true;
-						break;
-					}
-				}
+	if(m==0){
+		for(let i=ids.data.length-1;i>=0;i--){
+			let d=parseInt(ids.data[i].x);
+			if(d<=idc&&fds.some(ds=>parseFloat(ds.data[i].y)>.001)){
+				di=i;
+				break;
 			}
 		}
-
-		if(!hti&&idc>=d)
-			break;
-
-		if(hti&&fds.some(ds=>parseFloat(ds.data[i].y)>.001)){
-			di=i;
-			break;
+	} else if(m==1){
+		for(let i=0;i<ids.data.length;i++){
+			if(parseInt(ids.data[i].x)==idc&&fds.some(ds=>parseFloat(ds.data[i].y)>.001)){
+				di=i;
+				break;
+			}
 		}
 	}
 

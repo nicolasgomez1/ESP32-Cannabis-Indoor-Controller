@@ -8,7 +8,7 @@
 		<link rel=stylesheet type=text/css href=www/style.css>
 		<script src=www/chart.js></script>
 		<script>
-			let HTMLVersion='V420260324_1750',MaxLightBright=%MAXBRIGHT%,ElementsValues=[%ELEMENTVALUES%];
+			let HTMLVersion='V420260328_0446',MaxLightBright=%MAXBRIGHT%,ElementsValues=[%ELEMENTVALUES%];
 			let Chart2Labels=[
 				{label:'Temperatura Ambiente',borderColor:'#E3792B',symbol:'°C'},
 				{label:'Humedad Ambiente',borderColor:'#87B4BC',symbol:'%%'},
@@ -91,7 +91,7 @@
 				<div class=state id=ind_fansrest></div>
 			</card>
 			<card>
-				<ct>Ferilización</ct>
+				<ct>Fertilización</ct>
 				<container>Modo de Incorporación: <input type=range class=slider id=fim min=0 max=1 step=1 value=%FERTILIZERSINCORPORATIONMODE% oninput=SetFertsIncorporationMode(true)> <ind id=ind_fim></ind></container>
 				<ind id=fti></ind>
 				<button onclick=SendAction('applyferts')>Incorporar Fertilizantes</button>
@@ -99,6 +99,14 @@
 			<card_header>
 				<ct>Esquema de Riego y Fertilización</ct>
 				<canvas id=ichart></canvas>
+			</card_header>
+			<card_header>
+				<ct>Historial de las últimas 48 muestras</ct>
+				<table id=legend>
+					<thead><tr><th>Indicadores<div style=float:right><button id=tt>Mostrar Valores</button></div></th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead>
+					<tbody></tbody>
+				</table>
+				<canvas id=hchart></canvas>
 			</card_header>
 			<card>
 				<ct>Configuración Interna (Estos valores no cambian según el Perfil)</ct>
@@ -115,7 +123,8 @@
 				<container>Fertilizante de Floración:<wheelcontainer><div class=wheel id=pumpfpm2></div></wheelcontainer>cc<button onclick=SendAction('testpump7')>Probar</button></container>
 				<hr>
 				<container>Duración de Mezclado de Solución de Riego:<wheelcontainer><div class=wheel id=mixdur></div></wheelcontainer>Segundos<button onclick=SendAction('mixis')>Mezclar</button></container>
-				<container>Nivel mínimo del reservorio para notificación:<wheelcontainer><div class=wheel id=lrlw></div></wheelcontainer>%%</container>
+				<hr>
+				<container>Nivel mínimo del Reservorio para notificación:<wheelcontainer><div class=wheel id=lrlw></div></wheelcontainer>%%</container>
 				<hr>
 				<container>Intervalo de toma de Muestras:<wheelcontainer><div class=wheel id=saint></div></wheelcontainer>Minutos</container>
 				<hr>
@@ -137,14 +146,6 @@
 				<container>JS Version: <ind id=jsver></ind></container>
 				<form id=softwareform><container>Software:<input type=file id=softwarefile multiple required><button type=submit>Subir</button></container></form>
 			</card>
-			<card_header>
-				<ct>Historial de las últimas 48 muestras</ct>
-				<table id=legend>
-					<thead><tr><th>Indicadores<div style=float:right><button id=tt>Mostrar Valores</button></div></th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead>
-					<tbody></tbody>
-				</table>
-				<canvas id=hchart></canvas>
-			</card_header>
 		</div>
 	</body>
 	<script src=www/script.js></script>
