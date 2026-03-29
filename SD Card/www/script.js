@@ -1,4 +1,4 @@
-const JSVersion='V420260329_1630';
+const JSVersion='V420260329_1640';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n)}
@@ -390,7 +390,7 @@ function CalcTime(s){
 }
 
 function CalcIrrigation(cc){
-	let r=GetLightStartStop(),dpm=GetWheelValue('ifpm');
+	let r=GetLightStartStop(),dpm=GetWheelValue(elements[10].e);
 	let effstart=r[0]==24?0:r[0],effstop=r[1]==24?0:r[1],irrstart=(effstart+1)%24,div=parseInt(e_profile.value)==1?2:1,avai=(((effstop-2+24)-irrstart)%24)/div,ccpp=cc/avai,hours=[];
 
 	for(let i=0;i<avai;i++){
@@ -423,7 +423,7 @@ function SetFertsIncorporationMode(s){
 }
 
 function CalcFertsIncorporation(){
-	let m=parseInt(e_fim.value),idc=GetWheelValue(GetElement(elements[2].e));
+	let m=parseInt(e_fim.value),idc=GetWheelValue(elements[2].e);
 	let ids=ichart.data.datasets[0],fds=ichart.data.datasets.slice(1),hti=false,di=-1;
 
 	if(m==0){
