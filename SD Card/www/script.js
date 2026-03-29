@@ -1,4 +1,4 @@
-const JSVersion='V420260329_0447';
+const JSVersion='V420260329_1630';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n)}
@@ -21,7 +21,7 @@ function SetWheelSpinValue(e,v){
 	e.scrollTop=Math.round((v-e.min)/e.step)*15;
 }
 
-function GetWheelValue(e){return parseFloat(e.children[Math.round(e.scrollTop/15)].textContent)}
+function GetWheelValue(e){e=GetElement(e);return parseFloat(e.children[Math.round(e.scrollTop/15)].textContent)}
 
 let elements=[
 	{e:'lightstart',min:1,max:24,step:1},
@@ -45,7 +45,7 @@ let elements=[
 
 elements.forEach(_e=>SetWheelSpinRange(_e.e,_e.min,_e.max,_e.step));
 
-let e_profile=GetElement('profile'),e_lightstart=GetElement(elements[0].e),e_lightstop=GetElement(elements[1].e),e_fim=GetElement('fim');
+let e_profile=GetElement('profile'),e_fim=GetElement('fim');
 
 let rc=['#EC6066','#6699CC','#99C794','#F9AE58'];
 
@@ -87,7 +87,7 @@ function Flash(){
 	setTimeout(()=>{e.style.visibility='hidden'},300);
 }
 
-function GetLightStartStop(){return[GetWheelValue(e_lightstart),GetWheelValue(e_lightstop)]}
+function GetLightStartStop(){return[GetWheelValue(elements[0].e),GetWheelValue(elements[1].e)]}
 
 function CalcLightDur(){
 	let r=GetLightStartStop(),ch=new Date().getHours();
@@ -133,7 +133,7 @@ function SendAction(action,...args){
 	currentUrl.searchParams.set('action',action);
 
 	if(args.length%2===0){
-		if(args[0]==e_lightstart.id||args[0]==e_lightstop.id){
+		if(args[0]==elements[0].e||args[0]==elements[1].e){
 			let r=GetLightStartStop(),min=parseInt(e_profile.value)==1?5:4;
 			if((r[1]-r[0]+24)%24<min){
 				alert(`No se puede definir un Fotoperiodo inferior a ${min} Horas.`);
@@ -390,7 +390,7 @@ function CalcTime(s){
 }
 
 function CalcIrrigation(cc){
-	let r=GetLightStartStop(),dpm=parseInt(GetWheelValue(GetElement('ifpm')));
+	let r=GetLightStartStop(),dpm=GetWheelValue('ifpm');
 	let effstart=r[0]==24?0:r[0],effstop=r[1]==24?0:r[1],irrstart=(effstart+1)%24,div=parseInt(e_profile.value)==1?2:1,avai=(((effstop-2+24)-irrstart)%24)/div,ccpp=cc/avai,hours=[];
 
 	for(let i=0;i<avai;i++){
@@ -683,7 +683,7 @@ elements.forEach((_e,i)=>{
 		ev.preventDefault();
 		e.scrollBy({top:Math.sign(ev.deltaY)*15});
 
-		let r=GetWheelValue(e);
+		let r=GetWheelValue(_e.e);
 
 		if(i<3){
 			if(i<2)
@@ -714,7 +714,7 @@ elements.forEach((_e,i)=>{
 
 		tsY=ev.touches[0].clientY;
 
-		let r=GetWheelValue(e);
+		let r=GetWheelValue(_e.e);
 
 		if(i<3){
 			if(i<2)
