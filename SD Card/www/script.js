@@ -1,6 +1,6 @@
-const JSVersion='V420260323_0602';
+const JSVersion='V420260329_0447';
 let bFirst=true;
-// TODO: el slider de intensidad de la luz, es muy sensible en pantallas touch
+
 function GetElement(n){return document.getElementById(n)}
 
 function SetWheelSpinRange(e,min,max,step){
@@ -21,7 +21,7 @@ function SetWheelSpinValue(e,v){
 	e.scrollTop=Math.round((v-e.min)/e.step)*15;
 }
 
-function GetWheelValue(e){return parseFloat(e.children[Math.round(e.scrollTop/15)].textContent)}
+function GetWheelValue(e){e=GetElement(e);return parseFloat(e.children[Math.round(e.scrollTop/15)].textContent)}
 
 let elements=[
 	{e:'lightstart',min:1,max:24,step:1},
@@ -34,7 +34,7 @@ let elements=[
 	{e:'restint',min:0,max:1440,step:1},
 	{e:'restdur',min:0,max:1440,step:1},
 	{e:'ifpm',min:0,max:1000,step:1},
-	{e:'pumpfpm0',min:0,max:1000,step:1},
+	{e:'pumpfpm0',min:0,max:1000,step:1},	// 10
 	{e:'pumpfpm1',min:0,max:1000,step:1},
 	{e:'pumpfpm2',min:0,max:1000,step:1},
 	{e:'mixdur',min:0,max:1330,step:1},
@@ -44,12 +44,11 @@ let elements=[
 	{e:'vpdmax',min:0,max:6.27,step:.01},
 	{e:'rci',min:1,max:1440,step:1},
 	{e:'t0',min:0,max:100,step:1},
-	{e:'t1',min:0,max:100,step:1},
+	{e:'t1',min:0,max:100,step:1},	// 20
 	{e:'h0',min:0,max:100,step:1},
 	{e:'h1',min:0,max:100,step:1},
 	{e:'vpd0',min:0,max:6.27,step:.01},
 	{e:'vpd1',min:0,max:6.27,step:.01},
-	// TODO: Estos 3 valores ↓ deberían ir entre 1 y cuanto?
 	{e:'pid',min:1,max:23,step:1},
 	{e:'pias',min:1,max:23,step:1},
 	{e:'pibe',min:1,max:23,step:1}
@@ -57,7 +56,7 @@ let elements=[
 
 elements.forEach(_e=>SetWheelSpinRange(_e.e,_e.min,_e.max,_e.step));
 
-let e_profile=GetElement('profile'),e_priority=GetElement('priority'),e_lightstart=GetElement(elements[0].e),e_lightstop=GetElement(elements[1].e),e_fim=GetElement('fim');
+let e_profile=GetElement('profile'),e_fim=GetElement('fim');
 
 let rc=['#EC6066','#6699CC','#99C794','#F9AE58'];
 
@@ -99,7 +98,7 @@ function Flash(){
 	setTimeout(()=>{e.style.visibility='hidden'},300);
 }
 
-function GetLightStartStop(){return[GetWheelValue(e_lightstart),GetWheelValue(e_lightstop)]}
+function GetLightStartStop(){return[GetWheelValue(elements[0].e),GetWheelValue(elements[1].e)]}
 
 function CalcLightDur(){
 	let r=GetLightStartStop(),ch=new Date().getHours();
@@ -109,7 +108,7 @@ function CalcLightDur(){
 
 	let e=GetElement('ind_ld'),h=(r[1]-r[0]+24)%24,c='#D8DEE9';
 
-	if(h<(parseInt(e_profile.value)==1?5:4))
+	if(h<(parseInt(e_profile.value)==1?5:4))	// TODO: Rehacer esto ahora tiene que depender de pid, pias y pibe
 		c='#FF1200';
 
 	e.style.color=c;
@@ -145,7 +144,7 @@ function SendAction(action,...args){
 	currentUrl.searchParams.set('action',action);
 
 	if(args.length%2===0){
-		if(args[0]==e_lightstart.id||args[0]==e_lightstop.id){
+		if(args[0]==elements[0].e||args[0]==elements[1].e){
 			// TODO: Rehacer esto ahora tiene que depender de pid, pias y pibe
 			let r=GetLightStartStop(),min=parseInt(e_profile.value)==1?5:4;
 			if((r[1]-r[0]+24)%24<min){
@@ -220,20 +219,20 @@ function SendAction(action,...args){
 
 			CalcLightDur();
 
-			SetEnvValues(data[0],data[1],data[2]);	// TODO: Ahora hay que enviar la recomendación en data[2] y acá hay que shiftear todos +1
+			SetEnvValues(data[0],data[1],data[2]);
 
-			TrapezoidIndicator('reservoirlevel',data[2]);
+			TrapezoidIndicator('reservoirlevel',data[3]);
 
 			CalcCDC();
 
-			let soils=data[3].split(',');
+			let soils=data[4].split(',');
 
 			for(let i=0;i<soils.length;i++)
 				GetElement('ind_soil'+i).innerText=`Maceta ${i}: ${soils[i]}%`;
 
-			GetElement('currenttime').innerText='Fecha: '+new Date(parseInt(data[4])*1000).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+			GetElement('currenttime').innerText='Fecha: '+new Date(parseInt(data[5])*1000).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
 
-			let result='',resttime=parseInt(data[5]);
+			let result='',resttime=parseInt(data[6]);
 
 			if(resttime>0)
 				result='En Reposo...<br>Tiempo Restante: '+CalcTime(resttime);
@@ -241,11 +240,11 @@ function SendAction(action,...args){
 			GetElement('ind_fansrest').innerHTML=result;
 
 			for(let i=0;i<2;i++)
-				document.querySelector('.f'+i).style.animationPlayState=data[6+i]=='0'?'running':'paused';
+				document.querySelector('.f'+i).style.animationPlayState=data[7+i]=='0'?'running':'paused';
 
-			GetElement('idc').innerText=data[8];
+			GetElement('idc').innerText=data[9];
 
-			let wattimerem=parseInt(data[9]);
+			let wattimerem=parseInt(data[10]);
 			result='';
 
 			if(wattimerem>0)
@@ -253,15 +252,15 @@ function SendAction(action,...args){
 
 			GetElement('ind_irrstate').innerHTML=result;
 
-			let v=data[10],fe=GetElement('firmver');
+			let v=data[11],fe=GetElement('firmver');
 
 			if(v!=fe.innerText){
 				GetElement('loaderoverlay').style.display='none';
 				fe.innerText=v;
 			}
 
-			if(data[11]){
-				let cd=data[11].split(',');
+			if(data[12]){
+				let cd=data[12].split(',');
 
 				for(let i=0;i<cd.length;i++){
 					let v=cd[i].split('|');
@@ -396,8 +395,8 @@ function CalcTime(s){
 }
 
 function CalcIrrigation(cc){
-	let r=GetLightStartStop(),dpm=parseInt(GetElement('ifpm').value);
-	let effstart=r[0]==24?0:r[0],effstop=r[1]==24?0:r[1],irrstart=(effstart+2)%24,div=parseInt(e_profile.value)==1?2:1,avai=(((effstop-2+24)-irrstart)%24)/div,ccpp=cc/avai,hours=[];
+	let r=GetLightStartStop(),dpm=GetWheelValue(elements[9].e),effstart=r[0]==24?0:r[0],effstop=r[1]==24?0:r[1];
+	let irrstart=(effstart+GetWheelValue(elements[26].e))%24,div=GetWheelValue(elements[25].e),avai=(((effstop-GetWheelValue(elements[27].e)+24)-irrstart)%24)/div,ccpp=cc/avai,hours=[];
 
 	for(let i=0;i<avai;i++){
 		let h=(irrstart+i*div)%24;
@@ -405,7 +404,7 @@ function CalcIrrigation(cc){
 		hours.push(h+(h>=12?'PM':'AM'));
 	}
 
-	return[avai,ccpp,dpm>0?(ccpp/dpm)*60:0,hours];
+	return[avai,ccpp,dpm>0?(ccpp/dpm)*parseInt(GetElement('ftd').innerText):0,hours];
 }
 
 function SetSelectedProfile(s){
@@ -418,7 +417,7 @@ function SetSelectedProfile(s){
 }
 
 function UpdateVPDCorrectorPriority(){
-	let v=parseInt(e_priority.value);
+	let v=parseInt(GetElement('priority').value);
 
 	GetElement('ind_priority').innerText=v==0?'Humedad':'Temperatura';
 }
@@ -608,17 +607,13 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 						return[
 							'Total de Pulsos: '+d[0],
 							`Cantidad de Riego por Pulso: ${d[1].toFixed(1)}cc (${(d[1]/items[0].raw.y*100).toFixed(1)}% de ${items[0].raw.y}cc)`,
-							`Duración de cada Pulso: ${d[2].toFixed(1)} segundos`,
+							`Duración de cada Pulso: ${d[2].toFixed(2)} segundos`,
 							'Horas de Riego: '+d[3].join(' '),
 						];
 					}
 				}
 			}
-		},animation:{duration:0},
-		scales:{
-			y:{display:false},s:{display:false},
-			x:{display:true,type:'linear',ticks:{stepSize:1,color:'#D8DEE9'},title:{color:'#D8DEE9',display:true,text:'Día'}}
-		}
+		},animation:{duration:0},scales:{y:{display:false},x:{display:true,type:'linear',ticks:{stepSize:1,color:'#D8DEE9'},title:{color:'#D8DEE9',display:true,text:'Día'}}}
 	},plugins:[{
 		afterDatasetsDraw(chart){
 			let{ctx,data}=chart;
@@ -698,7 +693,7 @@ elements.forEach((_e,i)=>{
 		ev.preventDefault();
 		e.scrollBy({top:Math.sign(ev.deltaY)*15});
 
-		let r=GetWheelValue(e);
+		let r=GetWheelValue(_e.e);
 
 		if(i<2)
 			CalcLightDur();
@@ -725,7 +720,7 @@ elements.forEach((_e,i)=>{
 
 		tsY=ev.touches[0].clientY;
 
-		let r=GetWheelValue(e);
+		let r=GetWheelValue(_e.e);
 
 		if(i<2)
 			CalcLightDur();

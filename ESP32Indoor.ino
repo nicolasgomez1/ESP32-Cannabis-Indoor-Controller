@@ -282,7 +282,7 @@ uint64_t g_nFansRestTimeStartedAt = 0;
 uint8_t g_nTestPumpID = 0;  // 0 Equals to no pump to test
 bool g_bApplyFertilizers = false;
 bool g_bManualMixing = false;
-// TODO: Agregar una varible que va a contener la última recomendación hecha. (Esta hay que enviarlda en data[2] del caso refresh)
+g_Recommendations g_nLastRecommendation = THIS_COULD_GET_UGLY;	// TODO: Agregar una varible que va a contener la última recomendación hecha. (Esta hay que enviarlda en data[2] del caso refresh)
 char g_strArrayGraphData[MAX_GRAPH_MARKS][MAX_GRAPH_MARKS_LENGTH] = {};
 
 // Global Handles, Interface & Instances
@@ -1778,6 +1778,8 @@ void setup() {
 			} else if (pRequest->arg("action") == "refresh") { // This is for refresh Panel values constantly
 				// ================================================== Environment Section ================================================== //
 				String strResponse = String(g_fEnvironmentTemperature, 1) + ":" + String(g_fEnvironmentHumidity, 1);
+				// ================================================== VPD Correction Recommendation Section ================================================== //
+				strResponse += ":" + String(g_cRecommends[g_nLastRecommendation]);
 				// ================================================== Irrigation Solution Level Section ================================================== //
 				strResponse += ":" + String(g_nIrrigationSolutionLevel);
 				// ================================================== Soil Section ================================================== //
@@ -1838,16 +1840,17 @@ void setup() {
 					Response structure example: each data[X] is divided by ':'
 					data[0] → Environment Temperature
 					data[1] → Environment Humidity
-					data[2] → Irrigation Solution Level
-					data[3] → <Soil Moistures values Array> Example: SOIL 1 MOISTURE VALUE,SOIL 2 MOISTURE VALUE
-					data[4] → Current Timestamp
-					data[5] → Fans Rest time Remaining
-					data[6] → Internal Fan State
-					data[7] → Ventilation Fan State
-					data[8] → Irrigation Day Counter
-					data[9] → Irrigation Time Remaining
-					data[10] → Firmware Version
-					data[11] → <History Chart values Array> Example: Unix Timestamp|Environment Temperature|Environment Humidity|VPD|<Soil Moistures values Array>
+					data[2] → Last VPD Correction Recommendation
+					data[3] → Irrigation Solution Level
+					data[4] → <Soil Moistures values Array> Example: SOIL 1 MOISTURE VALUE,SOIL 2 MOISTURE VALUE
+					data[5] → Current Timestamp
+					data[6] → Fans Rest time Remaining
+					data[7] → Internal Fan State
+					data[8] → Ventilation Fan State
+					data[9] → Irrigation Day Counter
+					data[0] → Irrigation Time Remaining
+					data[11] → Firmware Version
+					data[12] → <History Chart values Array> Example: Unix Timestamp|Environment Temperature|Environment Humidity|VPD|<Soil Moistures values Array>
 				*/
 				pRequest->send(200, F("text/plain"), "REFRESH" + strResponse);
 				return;
@@ -2346,17 +2349,6 @@ void loop() {
 		}
 		// ================================================== Irrigation Section ================================================== //
 		{
-			/*  TESTS: Verificar como se comporta en estos casos posibles.
-
-				1) Que pasa si cambia el perfil (g_nCurrentProfile) ✓
-				2) Que pasa si se reinicia el controlador (g_nLastWateredHour y g_nIrrigationDayCounter son persistentes) ✓
-				3) Que pasa si se ejecutó el último pulso y recién ahí el usuario cambia de perfil (g_nCurrentProfile)  ✓
-				4) Que pasa si if (!bIsTheLastPulse && g_nLastWateredHour == (int8_t)nLastPossibleIrrigationHour) es verdadero y se define bIsTheLastPulse true, se ejecutan el total de pulsos o se omite alguno?  ✓
-
-				Nuevos casos a verificar:
-				1) Que pasa si cambia el fotoperiodo (En cualquier situación, ya sea antes de el último pulso o después)  ✓
-				2) CRITICO: Ver que bajo ningún motivo si se está aplicando un pulso, se dejé de verificar si hay que apagar la bomba. Siempre siempre sin importar nada, tiene que eventualmente apagarse la bomba.  ✓
-			*/
 			static bool bIsTheLastPulse = false;
 			static bool bApplyIrrigation = false;
 			static uint8_t nTotalPulses = 0;  // Not need clean
@@ -2381,7 +2373,7 @@ void loop() {
 				nTotalPulses = ((nStopIrrigationHour - nStartIrrigationHour + 24) % 24) / g_nPulseIntervalDivider;
 
 				uint8_t nLastPossibleIrrigationHour = (nStartIrrigationHour + (nTotalPulses - 1) * g_nPulseIntervalDivider) % 24;
-				if (!bIsTheLastPulse && g_nLastWateredHour == (int8_t)nLastPossibleIrrigationHour)
+				if (!bIsTheLastPulse && g_nLastWateredHour == nLastPossibleIrrigationHour)
 					bIsTheLastPulse = true;
 
 				if (((currentTime.tm_hour - g_nLastWateredHour + 24) % 24) > 0 && !bIsTheLastPulse && !digitalRead(RELAYS_MAP[LIGHTS].Pin)) {  // Cada Hora en punto verificar si se puede Aplicar un Pulso de Riego
