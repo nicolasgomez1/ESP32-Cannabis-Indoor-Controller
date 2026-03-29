@@ -8,7 +8,7 @@
 		<link rel=stylesheet type=text/css href=style.css>
 		<script src=chart.js></script>
 		<script>
-			let HTMLVersion='V420260320_173956',MaxLightBright=4095,ElementsValues=[7,1,4,27,27,70,3,5,60,5,10,100,80,100,30,25,45];
+			let HTMLVersion='V420260329_0447',MaxLightBright=4095,ElementsValues=[7,1,4,27,27,70,3,5,60,5,10,100,80,100,30,25,45];
 			let Chart2Labels=[
 				{label:'Temperatura Ambiente',borderColor:'#E3792B',symbol:'°C'},
 				{label:'Humedad Ambiente',borderColor:'#87B4BC',symbol:'%'},
@@ -110,7 +110,7 @@
 				<container>Histéresis de Apagado por Temperatura:<wheelcontainer><div class=wheel id=temphys></div></wheelcontainer>°C</container>
 				<container>Histéresis de Apagado por Humedad:<wheelcontainer><div class=wheel id=humhys></div></wheelcontainer>%</container>
 				<hr>
-				<ct>Caudal en 10 segundos de cada Bomba</ct>
+				<ct>Caudal en <ind id=ftd>10</ind> segundos de cada Bomba</ct>
 				<container>Riego:<wheelcontainer><div class=wheel id=ifpm></div></wheelcontainer>cc<button onclick=SendAction('testpump4')>Probar</button></container>
 				<container>Reductor de pH:<wheelcontainer><div class=wheel id=pumpfpm0></div></wheelcontainer>cc<button onclick=SendAction('testpump5')>Probar</button></container>
 				<container>Fertilizante de Vegetativo:<wheelcontainer><div class=wheel id=pumpfpm1></div></wheelcontainer>cc<button onclick=SendAction('testpump6')>Probar</button></container>

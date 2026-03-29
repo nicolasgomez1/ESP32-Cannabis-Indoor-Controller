@@ -1,4 +1,4 @@
-const JSVersion='V420260328_0711';
+const JSVersion='V420260329_0447';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n)}
@@ -390,8 +390,8 @@ function CalcTime(s){
 }
 
 function CalcIrrigation(cc){
-	let r=GetLightStartStop(),dpm=parseInt(GetElement('ifpm').value);
-	let effstart=r[0]==24?0:r[0],effstop=r[1]==24?0:r[1],irrstart=(effstart+2)%24,div=parseInt(e_profile.value)==1?2:1,avai=(((effstop-2+24)-irrstart)%24)/div,ccpp=cc/avai,hours=[];
+	let r=GetLightStartStop(),dpm=parseInt(GetWheelValue(GetElement('ifpm')));
+	let effstart=r[0]==24?0:r[0],effstop=r[1]==24?0:r[1],irrstart=(effstart+1)%24,div=parseInt(e_profile.value)==1?2:1,avai=(((effstop-2+24)-irrstart)%24)/div,ccpp=cc/avai,hours=[];
 
 	for(let i=0;i<avai;i++){
 		let h=(irrstart+i*div)%24;
@@ -399,7 +399,7 @@ function CalcIrrigation(cc){
 		hours.push(h+(h>=12?'PM':'AM'));
 	}
 
-	return[avai,ccpp,dpm>0?(ccpp/dpm)*60:0,hours];
+	return[avai,ccpp,dpm>0?(ccpp/dpm)*parseInt(GetElement('ftd').innerText):0,hours];
 }
 
 function SetSelectedProfile(s){
@@ -593,7 +593,7 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 						return[
 							'Total de Pulsos: '+d[0],
 							`Cantidad de Riego por Pulso: ${d[1].toFixed(1)}cc (${(d[1]/items[0].raw.y*100).toFixed(1)}% de ${items[0].raw.y}cc)`,
-							`Duración de cada Pulso: ${d[2].toFixed(1)} segundos`,
+							`Duración de cada Pulso: ${d[2].toFixed(2)} segundos`,
 							'Horas de Riego: '+d[3].join(' '),
 						];
 					}
