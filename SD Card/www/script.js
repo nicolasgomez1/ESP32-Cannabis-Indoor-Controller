@@ -1,4 +1,4 @@
-const JSVersion='V420260330_0743';
+const JSVersion='V420260330_0749';
 let bFirst=true,nTentWork=-1;
 
 function GetElement(n){return document.getElementById(n)}
@@ -696,8 +696,6 @@ elements.forEach((_e,i)=>{
 	let e=GetElement(_e.e);
 
 	let Apply=()=>{
-		let r=GetWheelValue(_e.e);
-
 		if(i<3){
 			if(i<2)
 				CalcLightDur();
@@ -705,7 +703,7 @@ elements.forEach((_e,i)=>{
 				CalcFertsIncorporation();
 		}
 
-		Send(e,r);
+		Send(e,GetWheelValue(_e.e));
 	};
 
 	e.addEventListener('wheel',ev=>{
