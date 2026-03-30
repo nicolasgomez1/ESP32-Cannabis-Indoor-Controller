@@ -1,4 +1,4 @@
-const JSVersion='V420260330_0642';
+const JSVersion='V420260330_0743';
 let bFirst=true,nTentWork=-1;
 
 function GetElement(n){return document.getElementById(n)}
@@ -695,10 +695,7 @@ let hchart=new Chart(GetElement('hchart'),{type:'line',data:{datasets:Chart2Labe
 elements.forEach((_e,i)=>{
 	let e=GetElement(_e.e);
 
-	e.addEventListener('wheel',ev=>{
-		ev.preventDefault();
-		e.scrollBy({top:Math.sign(ev.deltaY)*15});
-
+	let Apply=()=>{
 		let r=GetWheelValue(_e.e);
 
 		if(i<3){
@@ -709,6 +706,13 @@ elements.forEach((_e,i)=>{
 		}
 
 		Send(e,r);
+	};
+
+	e.addEventListener('wheel',ev=>{
+		ev.preventDefault();
+		e.scrollBy({top:Math.sign(ev.deltaY)*15});
+
+		Apply();
 	});
 
 	let tsY=0;
@@ -730,16 +734,7 @@ elements.forEach((_e,i)=>{
 
 		tsY=ev.touches[0].clientY;
 
-		let r=GetWheelValue(_e.e);
-
-		if(i<3){
-			if(i<2)
-				CalcLightDur();
-			else
-				CalcFertsIncorporation();
-		}
-
-		Send(e,r);
+		Apply();
 	},{passive:false});
 });
 
