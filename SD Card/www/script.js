@@ -1,5 +1,5 @@
-const JSVersion='V420260329_2300';
-let bFirst=true;
+const JSVersion='V420260330_0642';
+let bFirst=true,nTentWork=-1;
 
 function GetElement(n){return document.getElementById(n)}
 
@@ -45,7 +45,7 @@ let elements=[
 
 elements.forEach(_e=>SetWheelSpinRange(_e.e,_e.min,_e.max,_e.step));
 
-let e_profile=GetElement('profile'),e_fim=GetElement('fim');
+let e_profile=GetElement('profile'),e_fim=GetElement('fim'),e_lb=GetElement('lb');
 
 let rc=['#EC6066','#6699CC','#99C794','#F9AE58'];
 
@@ -119,13 +119,25 @@ function SetPhoto(a,b){
 function CalcBright(v){return`Aprox: ${(Math.round(v/MaxLightBright*100)/100*1008).toFixed(0)}ppfd`}
 
 function SetLightBright(s){
-	let e=GetElement('lb'),v=parseInt(e.value),p=Math.round(v/MaxLightBright*100);
+	let v=parseInt(e_lb.value),p=Math.round(v/MaxLightBright*100);
 
 	GetElement('ind_lp').innerText=p+'%';
 	GetElement('ind_lb').innerText=p>0?CalcBright(v):'Apagado';
 
 	if(s)
-		Send(e,v);
+		Send(e_lb,v);
+}
+
+function TentWork(){
+	if(nTentWork==-1){
+		nTentWork=e_lb.value;
+		e_lb.value=e_lb.step;
+	}else{
+		e_lb.value=nTentWork;
+		nTentWork=-1;
+	}
+
+	SetLightBright(true);
 }
 
 function SendAction(action,...args){
@@ -400,7 +412,7 @@ function CalcIrrigation(cc){
 	for(let i=0;i<avai;i++){
 		let h=(irrstart+i*div)%24;
 
-		hours.push(((h%12==0)?12:h%12)+((h>=12)?'PM':'AM'));
+		hours.push((h%12==0?12:h%12)+(h>=12?'PM':'AM'));
 	}
 
 	return[avai,ccpp,dpm>0?(ccpp/dpm)*parseInt(GetElement('ftd').innerText):0,hours];
