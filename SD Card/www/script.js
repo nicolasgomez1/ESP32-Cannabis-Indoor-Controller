@@ -400,7 +400,7 @@ function CalcIrrigation(cc){
 	for(let i=0;i<avai;i++){
 		let h=(irrstart+i*div)%24;
 
-		hours.push(((h%12==0)?12:h%12)+(h>=12?'PM':'AM'));
+		hours.push((h%12==0?12:h%12)+(h>=12?'PM':'AM'));
 	}
 
 	return[avai,ccpp,dpm>0?(ccpp/dpm)*parseInt(GetElement('ftd').innerText):0,hours];
