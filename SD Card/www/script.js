@@ -1,5 +1,5 @@
 const JSVersion='V420260329_0447';
-let bFirst=true,nTentWork=-1;
+let bFirst=true,stl=false,nTentWork=-1;
 
 function GetElement(n){return document.getElementById(n)}
 
@@ -35,17 +35,15 @@ let elements=[
 	{e:'restint',min:0,max:1440,step:1},
 	{e:'restdur',min:0,max:1440,step:1},
 	{e:'ifpm',min:0,max:1000,step:1},
-	{e:'pumpfpm0',min:0,max:1000,step:1},	// 10
+	{e:'pumpfpm0',min:0,max:1000,step:1},
 	{e:'pumpfpm1',min:0,max:1000,step:1},
 	{e:'pumpfpm2',min:0,max:1000,step:1},
 	{e:'mixdur',min:0,max:1330,step:1},
 	{e:'lrlw',min:0,max:100,step:1},
 	{e:'saint',min:1,max:1440,step:1},
-	{e:'vpdmin',min:0,max:6.27,step:.01},
-	{e:'vpdmax',min:0,max:6.27,step:.01},
 	{e:'rci',min:1,max:1440,step:1},
 	{e:'t0',min:0,max:100,step:1},
-	{e:'t1',min:0,max:100,step:1},	// 20
+	{e:'t1',min:0,max:100,step:1},
 	{e:'h0',min:0,max:100,step:1},
 	{e:'h1',min:0,max:100,step:1},
 	{e:'vpd0',min:0,max:6.27,step:.01},
@@ -100,7 +98,7 @@ function Flash(){
 
 function GetLightStartStop(){return[GetWheelValue(elements[0].e),GetWheelValue(elements[1].e)]}
 
-function CalcIrrigationPulses(r){return Math.floor(((((((r[1]==24)?0:r[1])-GetWheelValue(elements[28].e)+24)%24)-((((r[0]==24)?0:r[0])+GetWheelValue(elements[27].e))%24)+24)%24)/GetWheelValue(elements[26].e))}
+function CalcIrrigationPulses(r){return Math.floor(((((((r[1]==24)?0:r[1])-GetWheelValue(elements[26].e)+24)%24)-((((r[0]==24)?0:r[0])+GetWheelValue(elements[25].e))%24)+24)%24)/GetWheelValue(elements[24].e))}
 
 function CalcLightDur(){
 	let r=GetLightStartStop(),pulses=CalcIrrigationPulses(r),ch=new Date().getHours();
@@ -161,7 +159,7 @@ function SendAction(action,...args){
 			let r=GetLightStartStop(),pulses=CalcIrrigationPulses(r);
 
 			if(pulses<1){
-				alert(`No se puede definir un Fotoperiodo inferior a ${GetWheelValue(elements[27].e)+GetWheelValue(elements[28].e)+GetWheelValue(elements[26].e)} Horas.`);
+				alert(`No se puede definir un Fotoperiodo inferior a ${GetWheelValue(elements[25].e)+GetWheelValue(elements[26].e)+GetWheelValue(elements[24].e)} Horas.`);
 				SetPhoto(ElementsValues[0],ElementsValues[1]);
 				return;
 			}else{
@@ -377,7 +375,7 @@ function SetFanMode(n,s){
 		SendAction('update',e.id,v);
 }
 
-function GetStateOfVPD(v){	// TODO: Esto de tempranges, humranges y vpdranges va a desaparecer. hay que usar los parametros que salen directo del Servidor o no se todavía cómo mierda va a ser...
+function GetStateOfVPD(v){
 	if(v<=vpdranges[4].max){
 		for(let i=0;i<vpdranges.length;i++){
 			let r=vpdranges[i],il=i==vpdranges.length-1;
@@ -418,8 +416,8 @@ function CalcTime(s){
 }
 
 function CalcIrrigation(cc){
-	let r=GetLightStartStop(),dpm=GetWheelValue(elements[10].e),div=GetWheelValue(elements[26].e),irrstart=((r[0]==24?0:r[0])+GetWheelValue(elements[27].e))%24;
-	let avai=Math.floor((((((r[1]==24?0:r[1])-GetWheelValue(elements[28].e)+24)%24)-irrstart+24)%24)/div);
+	let r=GetLightStartStop(),dpm=GetWheelValue(elements[10].e),div=GetWheelValue(elements[24].e),irrstart=((r[0]==24?0:r[0])+GetWheelValue(elements[25].e))%24;
+	let avai=Math.floor((((((r[1]==24?0:r[1])-GetWheelValue(elements[26].e)+24)%24)-irrstart+24)%24)/div);
 	if(avai<=0)
 		return[0,0,0,[]];
 
@@ -563,7 +561,7 @@ function SemiCircleGauge(e,ranges,p,...t){
 function SetEnvValues(t,h,r){
 	let vpd=CalcVPD(t,h);
 
-	// TODO: Esto de tempranges, humranges y vpdranges va a desaparecer. hay que usar los parametros que salen directo del Servidor o no se todavía cómo mierda va a ser...
+	// TODO: Acá tengo que obtener los valores deseados y mandarselos a semicirclegauge, y que en dicha función se dibujen 2 liñitas rojas indicando el rango en el que se debería mantener el valor actual
 	SemiCircleGauge('meter_temp',tempranges,t,'°C');
 	SemiCircleGauge('meter_hum',humranges,h,'%');
 	SemiCircleGauge('meter_vpd',vpdranges,vpd,'kPa',GetStateOfVPD(vpd));
@@ -663,8 +661,6 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 		}
 	}]
 });
-
-let stl=false;
 
 Chart2Labels.forEach((ds,i)=>{
 	ds.pointRadius=0;
@@ -837,7 +833,7 @@ document.querySelector('#legend').addEventListener('click',e=>{
 
 GetElement('tt').addEventListener('click',e=>{
 	stl=!stl;
-	e.textContent=stl?'Ocultar Valores':'Mostrar Valores';
+	e.textContent=(stl?'Ocultar':'Mostrar')+' Valores';
 	hchart.update();
 });
 
@@ -893,6 +889,6 @@ window.onload=function(){
 	GetElement('htmlver').innerText=HTMLVersion;
 	GetElement('cssver').innerText=getComputedStyle(document.documentElement).getPropertyValue('--CSSVersion');
 	GetElement('jsver').innerText=JSVersion;
-	//SendAction('refresh');
-	//setInterval(()=>{SendAction('refresh')},3000);
+	SendAction('refresh');
+	setInterval(()=>{SendAction('refresh')},3000);
 };

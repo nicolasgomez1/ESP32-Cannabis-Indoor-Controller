@@ -71,6 +71,9 @@ Notes:
 // Definitions
 //#define ENABLE_AP_ALWAYS      // Use this to enable always the Access Point. Else it just enable when have no internet connection
 
+#define GENERAL_VPD_RANGE_MIN 0.0f
+#define GENERAL_VPD_RANGE_MAX 6.27f
+
 #define FLOW_TEST_DURATION 10000 // 10 seconds
 
 #define MAX_FERTILIZER_PUMPS 3  // pH Reducer, Vegetative & Flowering Fertilizers
@@ -242,7 +245,6 @@ uint16_t g_nIrrigationReservoirLowerLevel = 0;
 uint8_t g_nLowReservoirLevelWarning = 0;
 char g_cCALLMEBOT_API_KEY[8];
 char g_cCALLMEBOT_PHONE[15];
-float g_fVPDMinMaxRanges[2] = { 0.0f, 0.0f };
 uint64_t g_nRecommendationCheckInterval = 0;	// TODO: Poner un check en la función loop, para llamar a GetVPDRecommendation (y ejecutar dicha recomendación???)
 
 // Profiles Variables
@@ -484,9 +486,6 @@ void SaveSettings() {
 
 			pSettingsFile.println(g_cCALLMEBOT_API_KEY);
 			pSettingsFile.println(g_cCALLMEBOT_PHONE);
-
-			pSettingsFile.println(g_fVPDMinMaxRanges[0]);
-			pSettingsFile.println(g_fVPDMinMaxRanges[1]);
 
 			pSettingsFile.println(g_nRecommendationCheckInterval);
 
@@ -824,7 +823,7 @@ g_Recommendations GetVPDRecommendation() {
 
 		float fVPD = CalculateVPD(pOptions[i].Temperature, pOptions[i].Humidity);
 
-		if (fVPD >= g_fVPDMinMaxRanges[0] && fVPD <= g_fVPDMinMaxRanges[1])	// General Range
+		if (fVPD >= GENERAL_VPD_RANGE_MIN && fVPD <= GENERAL_VPD_RANGE_MAX)	// General Range
 			pRecommendations[nCount++] = { pOptions[i].Recommendation, fVPD, pOptions[i].Priority };
 	}
 
@@ -1082,7 +1081,6 @@ String HTMLProcessor(const String& var) {
 		strReturn += "," + String(TicksToSeconds(g_nMixingPumpDuration));
 		strReturn += "," + String(g_nLowReservoirLevelWarning);
 		strReturn += "," + String(TicksToMinutes(g_nSamplingInterval));
-		strReturn += "," + String(g_fVPDMinMaxRanges[0]) + "," + String(g_fVPDMinMaxRanges[1]);
 		strReturn += "," + String(TicksToMinutes(g_nRecommendationCheckInterval));
 		strReturn += "," + String(g_fTemperatureRanges[0]) + "," + String(g_fTemperatureRanges[1]);
 		strReturn += "," + String(g_fHumidityRanges[0]) + "," + String(g_fHumidityRanges[1]);
@@ -1250,12 +1248,6 @@ void setup() {
 
 			strncpy(g_cCALLMEBOT_PHONE, cBuffer, sizeof(g_cCALLMEBOT_PHONE));
 			g_cCALLMEBOT_PHONE[sizeof(g_cCALLMEBOT_PHONE) - 1] = '\0';
-			///////////////////////////////////////////////////
-			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// MIN GENERAL VPD RANGE
-			g_fVPDMinMaxRanges[0] = atof(cBuffer);
-			///////////////////////////////////////////////////
-			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// MAX GENERAL VPD RANGE
-			g_fVPDMinMaxRanges[1] = atof(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// RECOMMENDATIONS CHECK INTERVAL
 			g_nRecommendationCheckInterval = atoi(cBuffer);
@@ -1563,7 +1555,7 @@ void setup() {
 				// =============== Crop Begin Date =============== //
 				CheckNSetValue(pRequest, "cb", g_nCropBegin, F("la Fecha de inicio de Cultivo"), strReturn);
 				// =============== Irrigation Day Counter =============== //
-				CheckNSetValue(pRequest, "idc", g_nIrrigationDayCounter, F("los Días de Riego transcurridos"), strReturn);	// TODO NOTE: Dejo el endpoint por si necesito rectificar de emergencia. Pero una vez testeado que el sistema es solido, borrar esto.
+				CheckNSetValue(pRequest, "idc", g_nIrrigationDayCounter, F("los Días de Riego transcurridos"), strReturn);
 				// =============== Internal Fan Mode =============== //
 				CheckNSetValue(pRequest, "ifm", g_nInternalFanMode, F("el Modo de Ventilación Interna"), strReturn);
 				// =============== Internal Fan Start =============== //
@@ -1717,9 +1709,6 @@ void setup() {
 						strReturn += "Se actualizó el Intervalo de toma de Muestras.\r\n";
 					}
 				}
-				// =============== Min & Max General VPD Range =============== //
-				CheckNSetValue(pRequest, "vpdmin", g_fVPDMinMaxRanges[0], F("el mínimo del Rango General de DPV"), strReturn);
-				CheckNSetValue(pRequest, "vpdmax", g_fVPDMinMaxRanges[1], F("el máximo del Rango General de DPV"), strReturn);
 				// =============== Recommendations Check Interval =============== //
 				if (pRequest->hasArg("rci")) {
 					nNewValue = MinutesToTicks(pRequest->arg("rci").toInt());
