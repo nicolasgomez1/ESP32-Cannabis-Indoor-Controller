@@ -1,5 +1,5 @@
 const JSVersion='V420260329_0447';
-let bFirst=true;
+let bFirst=true,nTentWork=-1;
 
 function GetElement(n){return document.getElementById(n)}
 
@@ -26,6 +26,7 @@ function GetWheelValue(e){e=GetElement(e);return parseFloat(e.children[Math.roun
 let elements=[
 	{e:'lightstart',min:1,max:24,step:1},
 	{e:'lightstop',min:1,max:24,step:1},
+	{e:'idc',min:1,max:365,step:1},
 	{e:'ifts',min:0,max:100,step:1},
 	{e:'rfts',min:0,max:100,step:1},
 	{e:'rfhs',min:0,max:100,step:1},
@@ -56,7 +57,7 @@ let elements=[
 
 elements.forEach(_e=>SetWheelSpinRange(_e.e,_e.min,_e.max,_e.step));
 
-let e_profile=GetElement('profile'),e_fim=GetElement('fim');
+let e_profile=GetElement('profile'),e_fim=GetElement('fim'),e_lb=GetElement('lb');
 
 let rc=['#EC6066','#6699CC','#99C794','#F9AE58'];
 
@@ -92,7 +93,6 @@ let Chart1Labels=[
 
 function Flash(){
 	let e=GetElement('updateflash');
-
 	e.style.visibility='visible';
 
 	setTimeout(()=>{e.style.visibility='hidden'},300);
@@ -100,20 +100,21 @@ function Flash(){
 
 function GetLightStartStop(){return[GetWheelValue(elements[0].e),GetWheelValue(elements[1].e)]}
 
+function CalcIrrigationPulses(r){return Math.floor(((((((r[1]==24)?0:r[1])-GetWheelValue(elements[28].e)+24)%24)-((((r[0]==24)?0:r[0])+GetWheelValue(elements[27].e))%24)+24)%24)/GetWheelValue(elements[26].e))}
+
 function CalcLightDur(){
-	let r=GetLightStartStop(),ch=new Date().getHours();
+	let r=GetLightStartStop(),pulses=CalcIrrigationPulses(r),ch=new Date().getHours();
 
 	GetElement('ind_meri_start').innerText=(r[0]>=12?'PM':'AM');
 	GetElement('ind_meri_stop').innerText=(r[1]>=12?'PM':'AM');
 
-	let e=GetElement('ind_ld'),h=(r[1]-r[0]+24)%24,c='#D8DEE9';
+	let e=GetElement('ind_ld'),c='#D8DEE9';
 
-	if(h<(parseInt(e_profile.value)==1?5:4))	// TODO: Rehacer esto ahora tiene que depender de pid, pias y pibe
+	if(pulses<1)
 		c='#FF1200';
 
 	e.style.color=c;
-	e.innerText='Horas de Luz: '+h;
-
+	e.innerText='Horas de Luz: '+(r[1]-r[0]+24)%24;
 	GetElement('ls').setAttribute('fill',(r[0]<r[1]&&ch>=r[0]&&ch<r[1])||(r[0]>=r[1]&&(ch>=r[0]||ch<r[1]))?'#FFCF47':'#CFCFCF');
 }
 
@@ -130,25 +131,37 @@ function SetPhoto(a,b){
 function CalcBright(v){return`Aprox: ${(Math.round(v/MaxLightBright*100)/100*1008).toFixed(0)}ppfd`}
 
 function SetLightBright(s){
-	let e=GetElement('lb'),v=parseInt(e.value),p=Math.round(v/MaxLightBright*100);
+	let v=parseInt(e_lb.value),p=Math.round(v/MaxLightBright*100);
 
 	GetElement('ind_lp').innerText=p+'%';
 	GetElement('ind_lb').innerText=p>0?CalcBright(v):'Apagado';
 
 	if(s)
-		Send(e,v);
+		Send(e_lb,v);
+}
+
+function TentWork(){
+	if(nTentWork==-1){
+		nTentWork=e_lb.value;
+		e_lb.value=e_lb.step;
+	}else{
+		e_lb.value=nTentWork;
+		nTentWork=-1;
+	}
+
+	SetLightBright(true);
 }
 
 function SendAction(action,...args){
 	let currentUrl=new URL(window.location.href);
 	currentUrl.searchParams.set('action',action);
 
-	if(args.length%2===0){
+	if(args.length%2==0){
 		if(args[0]==elements[0].e||args[0]==elements[1].e){
-			// TODO: Rehacer esto ahora tiene que depender de pid, pias y pibe
-			let r=GetLightStartStop(),min=parseInt(e_profile.value)==1?5:4;
-			if((r[1]-r[0]+24)%24<min){
-				alert(`No se puede definir un Fotoperiodo inferior a ${min} Horas.`);
+			let r=GetLightStartStop(),pulses=CalcIrrigationPulses(r);
+
+			if(pulses<1){
+				alert(`No se puede definir un Fotoperiodo inferior a ${GetWheelValue(elements[27].e)+GetWheelValue(elements[28].e)+GetWheelValue(elements[26].e)} Horas.`);
 				SetPhoto(ElementsValues[0],ElementsValues[1]);
 				return;
 			}else{
@@ -195,13 +208,17 @@ function SendAction(action,...args){
 							SetLightBright();
 						else if(e=='fim')
 							SetFertsIncorporationMode();
-						else if (e=='ifm'||e=='rfm')
+						else if(e=='ifm'||e=='rfm')
 							SetFanMode(e);
-						else if (e=='priority')
+						else if(e=='priority')
 							UpdateVPDCorrectorPriority();
 					}else{
+						if(e=='idc')
+							ElementsValues[2]=parseInt(v);
+
 						SetWheelSpinValue(e,v);
 					}
+
 				}
 			}
 		}else if(r.substring(0,3)=='ERR'){
@@ -242,7 +259,13 @@ function SendAction(action,...args){
 			for(let i=0;i<2;i++)
 				document.querySelector('.f'+i).style.animationPlayState=data[7+i]=='0'?'running':'paused';
 
-			GetElement('idc').innerText=data[9];
+			let idc=parseInt(data[9]);
+
+			if(idc!=ElementsValues[2]){
+				ElementsValues[2]=idc;
+
+				SetWheelSpinValue(elements[2].e,idc);
+			}
 
 			let wattimerem=parseInt(data[10]);
 			result='';
@@ -395,16 +418,20 @@ function CalcTime(s){
 }
 
 function CalcIrrigation(cc){
-	let r=GetLightStartStop(),dpm=GetWheelValue(elements[9].e),effstart=r[0]==24?0:r[0],effstop=r[1]==24?0:r[1];
-	let irrstart=(effstart+GetWheelValue(elements[26].e))%24,div=GetWheelValue(elements[25].e),avai=(((effstop-GetWheelValue(elements[27].e)+24)-irrstart)%24)/div,ccpp=cc/avai,hours=[];
+	let r=GetLightStartStop(),dpm=GetWheelValue(elements[10].e),div=GetWheelValue(elements[26].e),irrstart=((r[0]==24?0:r[0])+GetWheelValue(elements[27].e))%24;
+	let avai=Math.floor((((((r[1]==24?0:r[1])-GetWheelValue(elements[28].e)+24)%24)-irrstart+24)%24)/div);
+	if(avai<=0)
+		return[0,0,0,[]];
+
+	let ccpp=cc/avai,hours=[];
 
 	for(let i=0;i<avai;i++){
 		let h=(irrstart+i*div)%24;
 
-		hours.push(h+(h>=12?'PM':'AM'));
+		hours.push((h%12==0?12:h%12)+(h>=12?'PM':'AM'));
 	}
 
-	return[avai,ccpp,dpm>0?(ccpp/dpm)*parseInt(GetElement('ftd').innerText):0,hours];
+	return[avai,ccpp,dpm>0?(ccpp*parseInt(GetElement('ftd').innerText))/dpm:0,hours];
 }
 
 function SetSelectedProfile(s){
@@ -434,7 +461,7 @@ function SetFertsIncorporationMode(s){
 }
 
 function CalcFertsIncorporation(){
-	let m=parseInt(e_fim.value),idc=parseInt(GetElement('idc').innerText);
+	let m=parseInt(e_fim.value),idc=GetWheelValue(elements[2].e);
 	let ids=ichart.data.datasets[0],fds=ichart.data.datasets.slice(1),hti=false,di=-1;
 
 	if(m==0){
@@ -689,16 +716,22 @@ let hchart=new Chart(GetElement('hchart'),{type:'line',data:{datasets:Chart2Labe
 elements.forEach((_e,i)=>{
 	let e=GetElement(_e.e);
 
+	let Apply=()=>{
+		if(i<3){
+			if(i<2)
+				CalcLightDur();
+			else
+				CalcFertsIncorporation();
+		}
+
+		Send(e,GetWheelValue(_e.e));
+	};
+
 	e.addEventListener('wheel',ev=>{
 		ev.preventDefault();
 		e.scrollBy({top:Math.sign(ev.deltaY)*15});
 
-		let r=GetWheelValue(_e.e);
-
-		if(i<2)
-			CalcLightDur();
-
-		Send(e,r);
+		Apply();
 	});
 
 	let tsY=0;
@@ -720,12 +753,7 @@ elements.forEach((_e,i)=>{
 
 		tsY=ev.touches[0].clientY;
 
-		let r=GetWheelValue(_e.e);
-
-		if(i<2)
-			CalcLightDur();
-
-		Send(e,r);
+		Apply();
 	},{passive:false});
 });
 

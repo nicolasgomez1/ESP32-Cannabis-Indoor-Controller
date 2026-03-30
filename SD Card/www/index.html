@@ -44,7 +44,8 @@
 						<div class=state id=ind_ld></div>
 					</div>
 					<div style=min-width:200>
-						<ct>Intensidad de Luz</ct><br><br>
+						<ct>Intensidad de Luz</ct>
+						<container><button onclick=TentWork()>Trabajo en Carpa</button></container>
 						<container><input type=range class=slider id=lb min=0 max=%MAXBRIGHT% step=409.5 value=%BRIGHTLEVEL% oninput=SetLightBright(true)><div id=ind_lp></div></container>
 						<div class=state id=ind_lb></div>
 					</div>
@@ -77,7 +78,7 @@
 				<ct>Contador de Días</ct>
 				<container>Inicio de inicio Cultivo: <ind id=cb>%CROPBEGIN%</ind><button onclick=SetCropBegin()>Definir</button></container>
 				<container>Días de Cultivo transcurridos: <ind id=cdc></ind></container>
-				<container>Días de Riego transcurridos: <ind id=idc></ind></container>
+				<container>Días de Riego transcurridos: <wheelcontainer><div class=wheel id=idc></div></wheelcontainer></container>
 				<div class=state id=ind_irrstate></div>
 			</card>
 			<card>

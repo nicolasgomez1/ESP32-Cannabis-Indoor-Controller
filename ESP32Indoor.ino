@@ -947,6 +947,9 @@ uint8_t GetSoilHumidity(uint8_t nSensorNumber) {
 void CheckReservoirLevel() {
 	if (g_nIrrigationReservoirLowerLevel > 0) {
 		int16_t nLowerLevel = GetIrrigationReservoirLevel();
+
+		LOGGER(INFO, true, "Reservoir: Raw:%dcm, Lower Level:%dcm, Last Level Check:%d%%", nLowerLevel, g_nIrrigationReservoirLowerLevel, g_nIrrigationSolutionLevel); // TODO: FOR DEBUG, REMOVE IT.
+
 		if (nLowerLevel == -1)
 			return;
 
@@ -1067,6 +1070,7 @@ String HTMLProcessor(const String& var) {
 		return String(S8050_MAX_VALUE);
 	} else if (var == "ELEMENTVALUES") {
 		String strReturn = String(g_nStartLightTime) + "," + String(g_nStopLightTime);
+		strReturn += "," + String(g_nIrrigationDayCounter);
 		strReturn += "," + String(g_nStartInternalFanTemperature) + "," + String(g_nStartVentilationTemperature) + "," + String(g_nStartVentilationHumidity);
 		strReturn += "," + String(g_nTemperatureStopHysteresis) + "," + String(g_nHumidityStopHysteresis);
 		strReturn += "," + String(TicksToMinutes(g_nFansRestInterval)) + "," + String(TicksToMinutes(g_nFansRestDuration));
@@ -1401,7 +1405,7 @@ void setup() {
 				if (nLowerLevel != -1) {
 					g_nIrrigationReservoirLowerLevel = nLowerLevel;
 
-					LOGGER(INFO, true, "Irrigation Reservoir minimum level setted.");
+					LOGGER(INFO, true, "Irrigation Reservoir minimum level setted (%dcm).", g_nIrrigationReservoirLowerLevel);
 
 					strReturn = "Se calibró el nivel Mínimo del Reservorio de Solución de Riego.";
 
