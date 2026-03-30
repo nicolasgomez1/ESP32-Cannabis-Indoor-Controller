@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260328_0711" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260329_1802" // TODO: Update this value before export binary
 
 #include <map>
 #include <Secrets.h>
@@ -20,7 +20,6 @@
 #include <SimpleDHT.h>  // DHT11: 5~95%RH ±5% | -20~60°C ±2°C (ASAIR Sensor) | DHT22: 0~100%RH ±2-5% | -40~80°C ±0.5°C (FMD)
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
-// TODO: A futuro podría reescribir toda la lógica para poder funcionar con días de mas de 24 horas (trabajar con marcas de tiempo transcurrido en lugar de horas y días).
 // TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado. (En caso de hacerlo, poner esto es // NOTES: // After unexpected energy shutdown, the fertilizer incorporation process gonna continue with the remaining CC and/or remaining stages to be incorporated.)
 
 // NOTES:
@@ -523,11 +522,11 @@ void LoadProfile(uint8_t nProfile) {
       ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer)); // FERTILIZERS INCORPORATION MODE
       g_nFertilizerIncorporationMode = atoi(cBuffer);
       ///////////////////////////////////////////////////     READ IRRIGATION SCHEME DATA
-      // TODO: Leer el nuevo renglon. (Aunque como este es el momento de transicion, no va a existir)
+      // TODO: Leer el nuevo renglón. (Aunque como este es el momento de transición, no va a existir)
       ReadFromStream(pProfileFile, cBuffer, sizeof(cBuffer));
 
       g_vecWateringStages.clear();
-      // TODO: Eventualmente cuando haya leido los 3 perfiles; Se van a convertir al nuevo formato y el check y código de lectura del formato viejo ya no va a ser necesario y lo voy a poder borrar
+      // TODO: Eventualmente cuando haya leído los 3 perfiles; Se van a convertir al nuevo formato y el check y código de lectura del formato viejo ya no va a ser necesario y lo voy a poder borrar
       if (strchr(cBuffer, '|') != nullptr) {  // Old File
         do {  //while (pProfileFile.available()) {
           WateringData pData = {};
@@ -816,6 +815,8 @@ void CheckReservoirLevel() {
 	if (g_nIrrigationReservoirLowerLevel > 0) {
 		int16_t nLowerLevel = GetIrrigationReservoirLevel();
 
+    LOGGER(INFO, true, "Reservoir: Raw:%dcm, Lower Level:%dcm, Last Level Check:%d%%", nLowerLevel, g_nIrrigationReservoirLowerLevel, g_nIrrigationSolutionLevel); // TODO: FOR DEBUG, REMOVE IT.
+
     if (nLowerLevel == -1)
 			return;
 
@@ -824,7 +825,7 @@ void CheckReservoirLevel() {
 			return;
 		}
 
-		g_nIrrigationSolutionLevel = std::clamp(static_cast<uint8_t>(100.0f * (g_nIrrigationReservoirLowerLevel - nLowerLevel) / g_nIrrigationReservoirLowerLevel), static_cast<uint8_t>(0), static_cast<uint8_t>(100));
+		g_nIrrigationSolutionLevel = static_cast<uint8_t>(100.0f * (g_nIrrigationReservoirLowerLevel - nLowerLevel) / g_nIrrigationReservoirLowerLevel);
 	}
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1226,7 +1227,7 @@ void setup() {
         if (nLowerLevel != -1) {
           g_nIrrigationReservoirLowerLevel = nLowerLevel;
 
-          LOGGER(INFO, true, "Irrigation Reservoir minimum level setted.");
+          LOGGER(INFO, true, "Irrigation Reservoir minimum level setted (%dcm).", g_nIrrigationReservoirLowerLevel);
 
           strReturn = "Se calibró el nivel Mínimo del Reservorio de Solución de Riego.";
 
@@ -2149,17 +2150,6 @@ void loop() {
     }
     // ================================================== Irrigation Section ================================================== //
     {
-      /*  TESTS: Verificar como se comporta en estos casos posibles.
-
-        1) Que pasa si cambia el perfil (g_nCurrentProfile) ✓
-        2) Que pasa si se reinicia el controlador (g_nLastWateredHour y g_nIrrigationDayCounter son persistentes) ✓
-        3) Que pasa si se ejecutó el último pulso y recién ahí el usuario cambia de perfil (g_nCurrentProfile)  ✓
-        4) Que pasa si if (!bIsTheLastPulse && g_nLastWateredHour == (int8_t)nLastPossibleIrrigationHour) es verdadero y se define bIsTheLastPulse true, se ejecutan el total de pulsos o se omite alguno?  ✓
-
-        Nuevos casos a verificar:
-        1) Que pasa si cambia el fotoperiodo (En cualquier situación, ya sea antes de el último pulso o después)  ✓
-        2) CRITICO: Ver que bajo ningún motivo si se está aplicando un pulso, se dejé de verificar si hay que apagar la bomba. Siempre siempre sin importar nada, tiene que eventualmente apagarse la bomba.  ✓
-      */
       static bool bIsTheLastPulse = false;
       static bool bApplyIrrigation = false;
       static uint8_t nTotalPulses = 0;  // Not need clean
