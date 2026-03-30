@@ -1,4 +1,4 @@
-const JSVersion='V420260329_2300';
+const JSVersion='V420260329_2326';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n)}
