@@ -1,4 +1,4 @@
-const JSVersion='V420260329_2212';
+const JSVersion='V420260329_2300';
 let bFirst=true;
 
 function GetElement(n){return document.getElementById(n)}
@@ -390,22 +390,20 @@ function CalcTime(s){
 }
 
 function CalcIrrigation(cc){
-	let r=GetLightStartStop(),dpm=GetWheelValue(elements[10].e),effstart=(r[0]==24)?0:r[0],effstop=(r[1]==24)?0:r[1];
-	let div=(parseInt(e_profile.value)==1)?2:1,irrstart=(effstart+1)%24;
-
+	let r=GetLightStartStop(),dpm=GetWheelValue(elements[10].e),effstart=(r[0]==24)?0:r[0],effstop=(r[1]==24)?0:r[1],div=(parseInt(e_profile.value)==1)?2:1,irrstart=(effstart+1)%24;
 	let avai=Math.floor(((((effstop-2+24)%24)-irrstart+24)%24)/div);
 	if(avai<=0)
 		return[0,0,0,[]];
 
 	let ccpp=cc/avai,hours=[];
 
-	for (let i=0;i<avai;i++){
+	for(let i=0;i<avai;i++){
 		let h=(irrstart+i*div)%24;
 
 		hours.push(((h%12==0)?12:h%12)+((h>=12)?'PM':'AM'));
 	}
 
-	return [avai,ccpp,dpm>0?(ccpp/dpm)*parseInt(GetElement('ftd').innerText):0,hours];
+	return[avai,ccpp,dpm>0?(ccpp/dpm)*parseInt(GetElement('ftd').innerText):0,hours];
 }
 
 function SetSelectedProfile(s){
