@@ -21,16 +21,6 @@
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
 // TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado. (En caso de hacerlo, poner esto es // NOTES: // After unexpected energy shutdown, the fertilizer incorporation process gonna continue with the remaining CC and/or remaining stages to be incorporated.)
-/* TODO: Capaz me tenga que replantear cómo carajos va a ser tema de los perfiles. por qué el panel web necesita saber los rangos de humedad, temperatura y vpd...
-			-	Capaz cambiar perfiles por etapas de cultivo, pero todo dentro de un solo archivo. cachear todo eso es mas complicado pero mas simple para trabajar luego
-			TODO:
-				1) Crear un Endpoint para crear perfiles en la carpeta profiles. Usar un archivo .dummy cómo base para cada perfil nuevo. (Así evito consumir memoria FLASH con los valores base)
-				2) Crear un Endpoint que componga la lista de perfiles (Esto es medio tricky, porque listar todo el tiempo la SD es una mierda, capaz es mejor obtener esa info y cachearla en el lado del cliente)
-					2.1) En realidad puedo enviar el total de perfiles directo del HTMLProcessor.
-				3) Crear un Endpoint para cargar perfiles.
-*/
-// TODO: Los Circle Gauges se tienen que adaptar los valores de las etapas? va a ser un re quilombo eso... Podria en base a los valores de t0,t1,h0,h1 y vpd0,vpd1 poner unas marcas en los indicadores..
-// TODO: Re escribir todas las descripciones
 
 // NOTES:
 // Default IP for AP mode is: 192.168.4.1
@@ -79,10 +69,6 @@ Notes:
 #define MAX_FERTILIZER_PUMPS 3  // pH Reducer, Vegetative & Flowering Fertilizers
 
 #define USE_DHT22 // OR USE_DHT22
-
-#define MAX_GRAPH_MARKS 48  // How much logs show in Web Panel Graph
-
-#define MAX_GRAPH_MARKS_LENGTH 36 // How long text is (Example: 1749390362|100.0|100.0|100|100|4095)
 
 #define WIFI_RETRY_CONNECT_INTERVAL 60000 // 1 minute
 #define WIFI_MAX_RETRYS 5 // Max Wifi reconnection attempts
@@ -285,7 +271,6 @@ uint8_t g_nTestPumpID = 0;  // 0 Equals to no pump to test
 bool g_bApplyFertilizers = false;
 bool g_bManualMixing = false;
 g_Recommendations g_nLastRecommendation = THIS_COULD_GET_UGLY;	// TODO: Agregar una varible que va a contener la última recomendación hecha. (Esta hay que enviarlda en data[2] del caso refresh)
-char g_strArrayGraphData[MAX_GRAPH_MARKS][MAX_GRAPH_MARKS_LENGTH] = {};
 
 // Global Handles, Interface & Instances
 AsyncWebServer g_pWebServer(WEBSERVER_PORT);	// Asynchronous web server instance listening on WEBSERVER_PORT
@@ -1282,51 +1267,6 @@ void setup() {
 
 			pTimeFile.close();
 		}
-		///////////////////////////////////////////////////
-		char cBufferFilePath[29];
-		snprintf(cBufferFilePath, sizeof(cBufferFilePath), "/metrics/metrics_%02d_%04d.txt", currentTime.tm_mon + 1, currentTime.tm_year + 1900);
-
-		File pMetricsFile = SD.open(cBufferFilePath, FILE_READ);
-		if (pMetricsFile) {
-			size_t nFileSize = pMetricsFile.size();
-			const size_t nBufSize = MAX_GRAPH_MARKS * MAX_GRAPH_MARKS_LENGTH;
-			char cBuf[nBufSize + 1];
-			size_t nReadSize = (nFileSize > nBufSize) ? nBufSize : nFileSize;
-
-			pMetricsFile.seek(nFileSize - nReadSize);
-			pMetricsFile.read((uint8_t*)cBuf, nReadSize);
-
-			cBuf[nReadSize] = '\0';
-
-			pMetricsFile.close();
-
-			uint8_t nLinesRead = 0;
-			char* cEnd = cBuf + nReadSize;
-
-			while (nLinesRead < MAX_GRAPH_MARKS) {
-				char* cNewline = (char*)memrchr(cBuf, '\n', cEnd - cBuf);
-				char* cLineStart = cNewline ? cNewline + 1 : cBuf;
-
-				if (cNewline)
-					*cNewline = '\0';
-
-				char* cCR = cLineStart + strlen(cLineStart) - 1;
-				if (cCR >= cLineStart && *cCR == '\r')
-					*cCR = '\0';
-
-				if (*cLineStart != '\0') {
-					strncpy(g_strArrayGraphData[MAX_GRAPH_MARKS - 1 - nLinesRead], cLineStart, MAX_GRAPH_MARKS_LENGTH - 1);
-					g_strArrayGraphData[MAX_GRAPH_MARKS - 1 - nLinesRead][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
-
-					nLinesRead++;
-				}
-
-				if (!cNewline || cNewline <= cBuf)
-					break;
-
-				cEnd = cNewline;
-			}
-		}
 	})) {
 		LOGGER(ERROR, false, "SD initialization failed. Settings & Time will not be loaded, but the system will not restart to avoid unexpected relay behavior.");
 	}
@@ -1810,24 +1750,6 @@ void setup() {
 				strResponse += ":" + String(TicksToSeconds(g_nIrrigationDuration));
 				// ================================================== Firmware Versioning Section ================================================== //
 				strResponse += ":" + String(FIRMWAREVERSION);
-				// ================================================== Graph Section ================================================== //
-				if (g_strArrayGraphData[0][0] != '\0') {
-					strResponse += ":";
-
-					bool bFirst = true;
-
-					for (int8_t i = MAX_GRAPH_MARKS - 1; i >= 0; i--) {
-						if (g_strArrayGraphData[i][0] != '\0') {
-
-							if (!bFirst)
-								strResponse += ",";
-							else
-								bFirst = false;
-
-							strResponse += g_strArrayGraphData[i];
-						}
-					}
-				}
 				// ========================================================================================================================= //
 				/*
 					Response structure example: each data[X] is divided by ':'
@@ -1841,9 +1763,8 @@ void setup() {
 					data[7] → Internal Fan State
 					data[8] → Ventilation Fan State
 					data[9] → Irrigation Day Counter
-					data[0] → Irrigation Time Remaining
+					data[10] → Irrigation Time Remaining
 					data[11] → Firmware Version
-					data[12] → <History Chart values Array> Example: Unix Timestamp|Environment Temperature|Environment Humidity|VPD|<Soil Moistures values Array>
 				*/
 				pRequest->send(200, F("text/plain"), "REFRESH" + strResponse);
 				return;
@@ -2373,7 +2294,7 @@ void loop() {
 					CheckReservoirLevel();  // Check Reservoir level before try anything (This is not very usefull cuz after this, checks for g_nIrrigationSolutionLevel > 0, but is better than nothing)
 
 					// Permitir regar si: se están incorporando los fertilizantes. Ni si se está haciendo una prueba de flujo de las Bombas. Ni si se está mezclando la solución de Riego. Ó se está ejecutando un riego.
-					// NOTE: Estos checks son livianos así que por esa parte no hay Drama. En cambio, el check para verificar si TargetCC es > 0 es algo más pesado; Así que lo pongo por separado luego de hacer estos checks livianos.
+					// NOTE: Estos checks son livianos así que por esa parte no hay Drama. En cambio, el check para verificar si TargetCC es > 0 es algo más pesado; Así que lo pongo por separado después de hacer estos checks.
 					bApplyIrrigation = nTotalPulses > 0 &&  // Si al menos hay un pulso de Riego posible. (Tiene que haber 5 horas de luz minimo; Porque son 2 horas de encendido previo necesario, 2 al menos 2 horas restantes de luz encendida)
 														!g_bApplyFertilizers && // Si no se están incorporando Fertilizantes.
 														g_nTestPumpID == 0 && // Si no se está probando ninguna Bomba.
@@ -2665,7 +2586,7 @@ void loop() {
 				}
 			}
 		}
-		// ================================================== Store Data for Graph Section ================================================== //
+		// ================================================== History Data Store Section ================================================== //
 		{
 			static uint64_t nLastStoreElapsedTime = 0;
 
@@ -2687,14 +2608,6 @@ void loop() {
 				snprintf(cBuffer, sizeof(cBuffer), "/metrics/metrics_%02d_%04d.txt", currentTime.tm_mon + 1, currentTime.tm_year + 1900);
 
 				WriteToSD(cBuffer, strValues.c_str(), true);
-
-				for (int8_t i = 0; i < (MAX_GRAPH_MARKS - 1); i++) {
-					strncpy(g_strArrayGraphData[i], g_strArrayGraphData[i + 1], MAX_GRAPH_MARKS_LENGTH - 1);
-					g_strArrayGraphData[i][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
-				}
-
-				strncpy(g_strArrayGraphData[MAX_GRAPH_MARKS - 1], strValues.c_str(), MAX_GRAPH_MARKS_LENGTH - 1);
-				g_strArrayGraphData[MAX_GRAPH_MARKS - 1][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
 			}
 		}
 	}

@@ -1,5 +1,5 @@
-const JSVersion='V420260329_0447';
-let bFirst=true,stl=false,nTentWork=-1;
+const JSVersion='V420260331_1014';
+let bFirst=true,stl=false,nTentWork=-1,nT,nH,fVPD;
 
 function GetElement(n){return document.getElementById(n)}
 
@@ -71,7 +71,7 @@ let tempranges=[
 	{min:0,max:18,c:rc[1]},
 	{min:18,max:26,c:rc[2]},
 	{min:26,max:30,c:rc[3]},
-	{min:30,max:60,c:rc[0]}
+	{min:30,max:100,c:rc[0]}
 ];
 
 let humranges=[
@@ -93,7 +93,7 @@ function Flash(){
 	let e=GetElement('updateflash');
 	e.style.visibility='visible';
 
-	setTimeout(()=>{e.style.visibility='hidden'},300);
+	setTimeout(()=>e.style.visibility='hidden',300);
 }
 
 function GetLightStartStop(){return[GetWheelValue(elements[0].e),GetWheelValue(elements[1].e)]}
@@ -211,7 +211,7 @@ function SendAction(action,...args){
 						else if(e=='priority')
 							UpdateVPDCorrectorPriority();
 					}else{
-						if(e=='idc')
+						if(e==elements[2].e)
 							ElementsValues[2]=parseInt(v);
 
 						SetWheelSpinValue(e,v);
@@ -234,9 +234,15 @@ function SendAction(action,...args){
 
 			CalcLightDur();
 
-			SetEnvValues(data[0],data[1],data[2]);
+			nT=parseInt(data[0]);
+			nH=parseInt(data[1]);
+			fVPD=CalcVPD(nT,nH);
 
-			TrapezoidIndicator('reservoirlevel',data[3]);
+			UpdateEnvironmentIndicators();
+
+			GetElement('ind_vpd').innerText=data[2];
+
+			UpdateReservoirIndicator('reservoirlevel',data[3]);
 
 			CalcCDC();
 
@@ -245,7 +251,7 @@ function SendAction(action,...args){
 			for(let i=0;i<soils.length;i++)
 				GetElement('ind_soil'+i).innerText=`Maceta ${i}: ${soils[i]}%`;
 
-			GetElement('currenttime').innerText='Fecha: '+new Date(parseInt(data[5])*1000).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+			GetElement('currenttime').innerText='Fecha: '+new Date(parseInt(data[5])*1000).toLocaleString('es-AR',{hour12:false});
 
 			let result='',resttime=parseInt(data[6]);
 
@@ -273,65 +279,11 @@ function SendAction(action,...args){
 
 			GetElement('ind_irrstate').innerHTML=result;
 
-			let v=data[11],fe=GetElement('firmver');
+			result=data[11],fe=GetElement('firmver');
 
-			if(v!=fe.innerText){
+			if(result!=fe.innerText){
 				GetElement('loaderoverlay').style.display='none';
-				fe.innerText=v;
-			}
-
-			if(data[12]){
-				let cd=data[12].split(',');
-
-				for(let i=0;i<cd.length;i++){
-					let v=cd[i].split('|');
-
-					for(let j=1;j<v.length;j++){
-						hchart.data.datasets[j>2?j:j-1].data[i]={x:v[0],y:parseFloat(v[j]),string:v[j]};
-
-						if(j==2){
-							let r=CalcVPD(v[1],v[2]).toFixed(2);
-
-							hchart.data.datasets[j].data[i]={x:v[0],y:r,string:r};
-						}
-					}
-				}
-
-				hchart.update();
-
-				let tablechild={},table=document.querySelector('#legend tbody');
-
-				table.querySelectorAll('td.sl').forEach(td=>{tablechild[td.getAttribute('ddi')]=td.classList.contains('hl')});
-				table.innerHTML='';
-
-				hchart.data.datasets.forEach((ds,i)=>{
-					if(i==5)
-						return;
-
-					let v=ds.data.map(point=>point.y),r=document.createElement('tr'),s=ds.symbol,min,max,avg;
-
-					if(i==2){
-						let t=hchart.data.datasets[0].data.map(point=>point.y),h=hchart.data.datasets[1].data.map(point=>point.y),vpds=[];
-
-						for(let j=0;j<t.length;j++)
-							vpds.push(CalcVPD(t[j],h[j]));
-
-						min=Math.min(...vpds).toFixed(2);
-						max=Math.max(...vpds).toFixed(2);
-						avg=(vpds.reduce((s,v)=>s+v,0)/vpds.length).toFixed(2);
-						min+=s+` (${GetStateOfVPD(min)})`;
-						max+=s+` (${GetStateOfVPD(max)})`;
-						avg+=s+` (${GetStateOfVPD(avg)})`;
-					}else{
-						min=Math.min(...v)+s;
-						max=Math.max(...v)+s;
-						avg=(v.reduce((s,v)=>s+v,0)/v.length).toFixed()+s;
-					}
-
-					r.innerHTML=`<td style=color:${ds.borderColor} class='sl ${tablechild[i]?'hl':''}'ddi=${i}>${ds.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
-
-					table.appendChild(r);
-				});
+				fe.innerText=result;
 			}
 
 			if(bFirst){
@@ -343,6 +295,66 @@ function SendAction(action,...args){
 			Flash();
 		}
 	});
+}
+
+function RequestHistory(){
+	let d=new Date(),p=n=>n.toString().padStart(2,'0');
+
+	fetch(`/metrics/metrics_${p(d.getMonth()+1)}_${d.getFullYear()}.txt`,{cache:'no-store'}).then(r=>r.text()).then(text=>{
+		let lines=text.trim().split('\n'),w=(parseInt(lines[lines.length-1].split('|')[0])*1000)+GetWheelValue(elements[16].e)*1000*60-Date.now();
+
+		for(let i=0;i<lines.length;i++){
+			let v=lines[i].split('|');
+
+			for(let j=1;j<v.length;j++){
+				hchart.data.datasets[j>2?j:j-1].data[i]={x:v[0],y:parseFloat(v[j]),string:v[j]};
+
+				if(j==2){
+					let r=CalcVPD(v[1],v[2]).toFixed(2);
+
+					hchart.data.datasets[j].data[i]={x:v[0],y:r,string:r};
+				}
+			}
+		}
+
+		hchart.update();
+
+		let tablechild={},table=document.querySelector('#legend tbody');
+
+		table.querySelectorAll('td.sl').forEach(td=>{tablechild[td.getAttribute('ddi')]=td.classList.contains('hl')});
+		table.innerHTML='';
+
+		hchart.data.datasets.forEach((ds,i)=>{
+			if(i==5)
+				return;
+
+			let v=ds.data.map(point=>point.y),r=document.createElement('tr'),s=ds.symbol,min,max,avg;
+
+			if(i==2){
+				let t=hchart.data.datasets[0].data.map(point=>point.y),h=hchart.data.datasets[1].data.map(point=>point.y),vpds=[];
+
+				for(let j=0;j<t.length;j++)
+					vpds.push(CalcVPD(t[j],h[j]));
+
+				min=Math.min(...vpds).toFixed(2);
+				max=Math.max(...vpds).toFixed(2);
+				avg=(vpds.reduce((s,v)=>s+v,0)/vpds.length).toFixed(2);
+				min+=s+` (${GetStateOfVPD(min)})`;
+				max+=s+` (${GetStateOfVPD(max)})`;
+				avg+=s+` (${GetStateOfVPD(avg)})`;
+			}else{
+				min=Math.min(...v)+s;
+				max=Math.max(...v)+s;
+				avg=(v.reduce((s,v)=>s+v,0)/v.length).toFixed()+s;
+			}
+
+			r.innerHTML=`<td style=color:${ds.borderColor} class='sl ${tablechild[i]?'hl':''}'ddi=${i}>${ds.label}</td><td>${min}</td><td>${max}</td><td>${avg}</td>`;
+
+			table.appendChild(r);
+		});
+
+		setTimeout(RequestHistory,Math.max(10000,w+10000));
+	}).catch(()=>setTimeout(RequestHistory,30000));
 }
 
 let sdb;
@@ -500,9 +512,10 @@ function SemiCircleGauge(e,ranges,p,...t){
 	e.height=70;
 	e.width=160;
 
-	p=parseFloat(p);
+	let m=null,h=e.height-4,ctx=e.getContext('2d'),cx=e.width/2,apr=Math.PI/ranges.length,sa=Math.PI,a=Math.PI,pw=.06,ty=h;
 
-	let h=e.height-4,ctx=e.getContext('2d'),cx=e.width/2,apr=Math.PI/ranges.length,sa=Math.PI,a=Math.PI,pw=.06,ty=h;
+	if(Array.isArray(t[t.length-1]))
+		m=t.pop();
 
 	for(let i=0;i<ranges.length;i++){
 		let ea=sa+apr;
@@ -526,6 +539,34 @@ function SemiCircleGauge(e,ranges,p,...t){
 				a+=(i+(p-r.min)/(r.max-r.min))*apr;
 				break;
 			}
+		}
+	}
+
+	if(m){
+		for(let mv of m){
+			sa=Math.PI;
+
+			if(mv>=ranges[ranges.length-1].max){
+				sa=2*Math.PI;
+			}else{
+				for(let i=0;i<ranges.length;i++){
+					let r=ranges[i];
+
+					if(mv>=r.min&&mv<=r.max){
+						sa+=(i+(mv-r.min)/(r.max-r.min))*apr;
+						break;
+					}
+				}
+			}
+
+			let r1=h-16,r2=h-1;
+
+			ctx.beginPath();
+			ctx.moveTo(cx+r1*Math.cos(sa),h+r1*Math.sin(sa));
+			ctx.lineTo(cx+r2*Math.cos(sa),h+r2*Math.sin(sa));
+			ctx.strokeStyle='#FF00FF';
+			ctx.lineWidth=3;
+			ctx.stroke();
 		}
 	}
 
@@ -558,18 +599,13 @@ function SemiCircleGauge(e,ranges,p,...t){
 		ctx.fillText(t[1],cx,ty+10);
 }
 
-function SetEnvValues(t,h,r){
-	let vpd=CalcVPD(t,h);
-
-	// TODO: Acá tengo que obtener los valores deseados y mandarselos a semicirclegauge, y que en dicha función se dibujen 2 liñitas rojas indicando el rango en el que se debería mantener el valor actual
-	SemiCircleGauge('meter_temp',tempranges,t,'°C');
-	SemiCircleGauge('meter_hum',humranges,h,'%');
-	SemiCircleGauge('meter_vpd',vpdranges,vpd,'kPa',GetStateOfVPD(vpd));
-
-	GetElement('ind_vpd').innerText=r;
+function UpdateEnvironmentIndicators(){
+	SemiCircleGauge('meter_temp',tempranges,nT,'°C',[GetWheelValue(elements[18].e),GetWheelValue(elements[19].e)]);
+	SemiCircleGauge('meter_hum',humranges,nH,'%',[GetWheelValue(elements[20].e),GetWheelValue(elements[21].e)]);
+	SemiCircleGauge('meter_vpd',vpdranges,fVPD,'kPa',GetStateOfVPD(fVPD),[GetWheelValue(elements[22].e),GetWheelValue(elements[23].e)]);
 }
 
-function TrapezoidIndicator(e,l){
+function UpdateReservoirIndicator(e,l){
 	e=GetElement(e);
 	e.height=74;
 	e.width=72;
@@ -676,10 +712,7 @@ let hchart=new Chart(GetElement('hchart'),{type:'line',data:{datasets:Chart2Labe
 			legend:{display:false},
 			tooltip:{
 				callbacks:{
-					title:item=>{
-						let date=new Date(item[0].raw.x*1000);
-						return`Fecha: ${date.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})} `+date.toLocaleTimeString('es-AR');
-					},
+					title:item=>`Fecha: ${new Date(item[0].raw.x*1000).toLocaleString('es-AR',{hour12:false})}`,
 					label:item=>item.dataset.label+`: ${item.dataset.symbol?item.raw.string+item.dataset.symbol+(item.dataset.symbol=='kPa'?` (${GetStateOfVPD(item.raw.string)})`:''):item.raw.string=='0'?'Apagada':`Encendida (${CalcBright(item.raw.string)})`}`
 				}
 			}
@@ -713,12 +746,9 @@ elements.forEach((_e,i)=>{
 	let e=GetElement(_e.e);
 
 	let Apply=()=>{
-		if(i<3){
-			if(i<2)
-				CalcLightDur();
-			else
-				CalcFertsIncorporation();
-		}
+		CalcLightDur();
+		CalcFertsIncorporation();
+		UpdateEnvironmentIndicators();
 
 		Send(e,GetWheelValue(_e.e));
 	};
@@ -833,7 +863,7 @@ document.querySelector('#legend').addEventListener('click',e=>{
 
 GetElement('tt').addEventListener('click',e=>{
 	stl=!stl;
-	e.textContent=(stl?'Ocultar':'Mostrar')+' Valores';
+	e.target.textContent=((stl?'Ocultar':'Mostrar')+' Valores');
 	hchart.update();
 });
 
@@ -890,5 +920,6 @@ window.onload=function(){
 	GetElement('cssver').innerText=getComputedStyle(document.documentElement).getPropertyValue('--CSSVersion');
 	GetElement('jsver').innerText=JSVersion;
 	SendAction('refresh');
-	setInterval(()=>{SendAction('refresh')},3000);
+	RequestHistory();
+	setInterval(()=>SendAction('refresh'),3000);
 };

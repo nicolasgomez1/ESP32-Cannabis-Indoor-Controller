@@ -8,7 +8,7 @@
 		<link rel=stylesheet type=text/css href=www/style.css>
 		<script src=www/chart.js></script>
 		<script>
-			let HTMLVersion='V420260328_0446',MaxLightBright=%MAXBRIGHT%,ElementsValues=[%ELEMENTVALUES%];
+			let HTMLVersion='V420260331_1014',MaxLightBright=%MAXBRIGHT%,ElementsValues=[%ELEMENTVALUES%];
 			let Chart2Labels=[
 				{label:'Temperatura Ambiente',borderColor:'#E3792B',symbol:'°C'},
 				{label:'Humedad Ambiente',borderColor:'#87B4BC',symbol:'%%'},
@@ -43,7 +43,7 @@
 						<container>Apagado:<wheelcontainer><div class=wheel id=lightstop></div></wheelcontainer><div id=ind_meri_stop></div></container>
 						<div class=state id=ind_ld></div>
 					</div>
-					<div style=min-width:200>
+					<div style=min-width:150>
 						<ct>Intensidad de Luz</ct>
 						<container><button onclick=TentWork()>Trabajo en Carpa</button></container>
 						<container><input type=range class=slider id=lb min=0 max=%MAXBRIGHT% step=409.5 value=%BRIGHTLEVEL% oninput=SetLightBright(true)><div id=ind_lp></div></container>
@@ -78,13 +78,12 @@
 				<ct>Contador de Días</ct>
 				<container>Inicio de inicio Cultivo: <ind id=cb>%CROPBEGIN%</ind><button onclick=SetCropBegin()>Definir</button></container>
 				<container>Días de Cultivo transcurridos: <ind id=cdc></ind></container>
-				<container>Días de Riego transcurridos: <wheelcontainer><div class=wheel id=idc></div></wheelcontainer></container>
-				<div class=state id=ind_irrstate></div>
+				<container>Días de Riego/Fertilización transcurridos: <wheelcontainer><div class=wheel id=idc></div></wheelcontainer></container>
 			</card>
 			<card>
 				<div><ct>Ventilación Interna</ct> <img class='fan f0'src=www/fan.webp></div>
 				<container>Modo:<input type=range class=slider id=ifm min=0 max=2 step=1 value=%INTERNALFANMODE% oninput=SetFanMode('ifm',true)><ind id=ind_ifm></ind></container>
-				<container>Temperatura de Encendido:<wheelcontainer><div class=wheel id=ifts></div></wheelcontainer>°C</container>
+				<container>Temperatura de Encendido:<wheelcontainer><div class=wheel id=ifts></div></wheelcontainer>°C</container><br>
 				<div><ct>Recirculación de Aire</ct> <img class='fan f1'src=www/fan.webp></div>
 				<container>Modo:<input type=range class=slider id=rfm min=0 max=2 step=1 value=%RECIRCULATIONFANSMODE% oninput=SetFanMode('rfm',true)><ind id=ind_rfm></ind></container>
 				<container>Temperatura de Encendido:<wheelcontainer><div class=wheel id=rfts></div></wheelcontainer>°C</container>
@@ -104,6 +103,7 @@
 				<container>Intervalo entre Pulsos de Riego:<wheelcontainer><div class=wheel id=pid></div></wheelcontainer>Horas</container>
 				<container>Intervalo entre Hora de Encendido de Luz y el primer Pulso de Riego:<wheelcontainer><div class=wheel id=pias></div></wheelcontainer>Horas</container>
 				<container>Intervalo entre Hora de Apagado de Luz y el último Pulso de Riego:<wheelcontainer><div class=wheel id=pibe></div></wheelcontainer>Horas</container>
+				<div class=state id=ind_irrstate></div><br>
 				<ct>Fertilización</ct>
 				<container>Modo de Incorporación: <input type=range class=slider id=fim min=0 max=1 step=1 value=%FERTILIZERSINCORPORATIONMODE% oninput=SetFertsIncorporationMode(true)> <ind id=ind_fim></ind></container>
 				<ind id=fti></ind>
@@ -114,7 +114,7 @@
 				<canvas id=ichart></canvas>
 			</card_header>
 			<card_header>
-				<ct>Historial de las últimas 48 muestras</ct>
+				<ct>Historial de Métricas</ct>
 				<table id=legend>
 					<thead><tr><th>Indicadores<div style=float:right><button id=tt>Mostrar Valores</button></div></th><th>Mínimo</th><th>Máximo</th><th>Promedio</th></tr></thead>
 					<tbody></tbody>
