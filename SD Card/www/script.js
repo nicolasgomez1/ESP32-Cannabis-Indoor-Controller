@@ -1,4 +1,4 @@
-const JSVersion='V420260330_0749';
+const JSVersion='V420260331_1004';
 let bFirst=true,nTentWork=-1;
 
 function GetElement(n){return document.getElementById(n)}
@@ -61,7 +61,7 @@ let tempranges=[
 	{min:0,max:18,c:rc[1]},
 	{min:18,max:26,c:rc[2]},
 	{min:26,max:30,c:rc[3]},
-	{min:30,max:60,c:rc[0]}
+	{min:30,max:100,c:rc[0]}
 ];
 
 let humranges=[
@@ -231,7 +231,7 @@ function SendAction(action,...args){
 			for(let i=0;i<soils.length;i++)
 				GetElement('ind_soil'+i).innerText=`Maceta ${i}: ${soils[i]}%`;
 
-			GetElement('currenttime').innerText='Fecha: '+new Date(parseInt(data[4])*1000).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+			GetElement('currenttime').innerText='Fecha: '+new Date(parseInt(data[5])*1000).toLocaleString('es-AR',{hour12:false});
 
 			let result='',resttime=parseInt(data[5]);
 
@@ -659,10 +659,7 @@ let hchart=new Chart(GetElement('hchart'),{type:'line',data:{datasets:Chart2Labe
 			legend:{display:false},
 			tooltip:{
 				callbacks:{
-					title:item=>{
-						let date=new Date(item[0].raw.x*1000);
-						return`Fecha: ${date.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})} `+date.toLocaleTimeString('es-AR');
-					},
+					title:item=>`Fecha: ${new Date(item[0].raw.x*1000).toLocaleString('es-AR',{hour12:false})}`,
 					label:item=>item.dataset.label+`: ${item.dataset.symbol?item.raw.string+item.dataset.symbol+(item.dataset.symbol=='kPa'?` (${GetStateOfVPD(item.raw.string)})`:''):item.raw.string=='0'?'Apagada':`Encendida (${CalcBright(item.raw.string)})`}`
 				}
 			}
@@ -812,7 +809,7 @@ document.querySelector('#legend').addEventListener('click',e=>{
 
 GetElement('tt').addEventListener('click',e=>{
 	stl=!stl;
-	e.textContent=stl?'Ocultar Valores':'Mostrar Valores';
+	e.textContent=(stl?'Ocultar':'Mostrar')+' Valores';
 	hchart.update();
 });
 
