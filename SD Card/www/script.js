@@ -1,4 +1,4 @@
-const JSVersion='V420260331_1004';
+const JSVersion='V420260331_1010';
 let bFirst=true,nTentWork=-1;
 
 function GetElement(n){return document.getElementById(n)}
@@ -809,7 +809,7 @@ document.querySelector('#legend').addEventListener('click',e=>{
 
 GetElement('tt').addEventListener('click',e=>{
 	stl=!stl;
-	e.textContent=(stl?'Ocultar':'Mostrar')+' Valores';
+	e.target.textContent=((stl?'Ocultar':'Mostrar')+' Valores');
 	hchart.update();
 });
 
