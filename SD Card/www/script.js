@@ -1,4 +1,4 @@
-const JSVersion='V420260331_1010';
+const JSVersion='V420260331_1018';
 let bFirst=true,nTentWork=-1;
 
 function GetElement(n){return document.getElementById(n)}
@@ -231,7 +231,7 @@ function SendAction(action,...args){
 			for(let i=0;i<soils.length;i++)
 				GetElement('ind_soil'+i).innerText=`Maceta ${i}: ${soils[i]}%`;
 
-			GetElement('currenttime').innerText='Fecha: '+new Date(parseInt(data[5])*1000).toLocaleString('es-AR',{hour12:false});
+			GetElement('currenttime').innerText='Fecha: '+new Date(parseInt(data[4])*1000).toLocaleString('es-AR',{hour12:false});
 
 			let result='',resttime=parseInt(data[5]);
 

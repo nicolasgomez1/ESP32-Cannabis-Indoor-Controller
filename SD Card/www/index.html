@@ -8,7 +8,7 @@
 		<link rel=stylesheet type=text/css href=www/style.css>
 		<script src=www/chart.js></script>
 		<script>
-			let HTMLVersion='V420260330_0634',MaxLightBright=%MAXBRIGHT%,ElementsValues=[%ELEMENTVALUES%];
+			let HTMLVersion='V420260331_1014',MaxLightBright=%MAXBRIGHT%,ElementsValues=[%ELEMENTVALUES%];
 			let Chart2Labels=[
 				{label:'Temperatura Ambiente',borderColor:'#E3792B',symbol:'°C'},
 				{label:'Humedad Ambiente',borderColor:'#87B4BC',symbol:'%%'},
@@ -26,7 +26,7 @@
 				<div style=display:flex>
 					<div><div style=font-size:19 id=currenttime></div></div>
 					<div style=margin-left:auto>
-						<a href=www/logs.html target=_blank><button>Ver Logs/Metrics</button></a> <button onclick=SendAction('update','time',Math.floor(Date.now()/1000))>Sincronizar Fecha</button> <button onclick=SendAction('restart')>Reiniciar</button>
+						<a href=www/logs.html target=_blank><button>Registros/Metricas</button></a> <button onclick=SendAction('update','time',Math.floor(Date.now()/1000))>Sincronizar Fecha</button> <button onclick=SendAction('restart')>Reiniciar</button>
 					</div>
 				</div>
 			</card_header>
@@ -43,7 +43,7 @@
 						<container>Apagado:<wheelcontainer><div class=wheel id=lightstop></div></wheelcontainer><div id=ind_meri_stop></div></container>
 						<div class=state id=ind_ld></div>
 					</div>
-					<div style=min-width:200>
+					<div style=min-width:150>
 						<ct>Intensidad de Luz</ct>
 						<container><button onclick=TentWork()>Trabajo en Carpa</button></container>
 						<container><input type=range class=slider id=lb min=0 max=%MAXBRIGHT% step=409.5 value=%BRIGHTLEVEL% oninput=SetLightBright(true)><div id=ind_lp></div></container>
