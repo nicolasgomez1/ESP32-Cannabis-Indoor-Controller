@@ -609,7 +609,7 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 						return[
 							'Total de Pulsos: '+d[0],
 							`Cantidad de Riego por Pulso: ${d[1].toFixed(1)}cc (${(d[1]/items[0].raw.y*100).toFixed(1)}% de ${items[0].raw.y}cc)`,
-							`Duración de cada Pulso: ${d[2].toFixed(2))} segundos`,
+							`Duración de cada Pulso: ${d[2].toFixed(2)} segundos`,
 							'Horas de Riego: '+d[3].join(' '),
 						];
 					}
