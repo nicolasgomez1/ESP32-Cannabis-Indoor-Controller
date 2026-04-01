@@ -1,4 +1,4 @@
-const JSVersion='V420260331_1018';
+const JSVersion='V420260401_1953';
 let bFirst=true,nTentWork=-1;
 
 function GetElement(n){return document.getElementById(n)}
@@ -251,7 +251,7 @@ function SendAction(action,...args){
 				SetWheelSpinValue(elements[2].e,idc);
 			}
 
-			let wattimerem=parseInt(data[9]);
+			let wattimerem=parseFloat(data[9]);
 			result='';
 
 			if(wattimerem>0)
@@ -609,7 +609,7 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 						return[
 							'Total de Pulsos: '+d[0],
 							`Cantidad de Riego por Pulso: ${d[1].toFixed(1)}cc (${(d[1]/items[0].raw.y*100).toFixed(1)}% de ${items[0].raw.y}cc)`,
-							`Duración de cada Pulso: ${d[2].toFixed(2)} segundos`,
+							`Duración de cada Pulso: ${d[2])} segundos`,
 							'Horas de Riego: '+d[3].join(' '),
 						];
 					}

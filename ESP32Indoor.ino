@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260329_1802" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260401_1953" // TODO: Update this value before export binary
 
 #include <map>
 #include <Secrets.h>
@@ -91,7 +91,7 @@ Notes:
 
 #define CHECK_RESERVOIR_LEVEL_INTERVAL 3600000  // 1 Hour
 
-#define SECONDS_WAIT_AFTER_TURN_ON_POWER_SUPPLY 1500  // Wait 1.5 seconds to stabilize the
+#define WAIT_AFTER_TURN_ON_POWER_SUPPLY_INTERVAL 1500  // Wait 1.5 seconds to stabilize the voltage
 
 #define S8050_FREQUENCY 300   // https://www.mouser.com/datasheet/2/149/SS8050-117753.pdf
 #define S8050_RESOLUTION 12
@@ -202,7 +202,7 @@ struct WateringData {
 
 struct FertilizerIncorporationStage {
   uint8_t Pin;        // Pin Number
-  uint64_t Duration;  // Turn ON Time
+  float Duration;  // Turn ON Time
 };
 
 const char* g_cProfiles[] = {
@@ -243,7 +243,7 @@ bool g_bIsSDInit = false;
 uint8_t g_nCurrentProfile = 0;
 uint8_t g_nEffectiveStartLights = 0;
 uint8_t g_nEffectiveStopLights = 0;
-uint64_t g_nIrrigationDuration = 0;
+float g_fIrrigationDuration = 0;
 
 #ifdef USE_DHT11
 uint8_t g_nEnvironmentTemperature = 0;
@@ -310,8 +310,10 @@ void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Provides utility functions to convert between ticks (milliseconds) and human-readable time units.
 // Ticks are assumed to be in milliseconds, as returned by the millis() function.
-inline uint32_t TicksToSeconds(uint32_t nTicks) { return nTicks / 1000; }
-inline uint32_t TicksToMinutes(uint32_t nTicks) { return nTicks / (1000 * 60); }
+inline uint64_t TicksToSeconds(uint64_t nTicks) { return nTicks / 1000; }
+inline float TicksToSeconds(float fMs) { return fMs / 1000.0f; }
+
+inline uint64_t TicksToMinutes(uint64_t nTicks) { return nTicks / (1000 * 60); }
 //inline uint32_t TicksToHours(uint32_t nTicks) { return nTicks / (1000 * 60 * 60); }
 
 inline uint32_t SecondsToTicks(uint32_t nSeconds) { return nSeconds * 1000; }
@@ -966,7 +968,7 @@ String HTMLProcessor(const String& var) {
   } else if (var == "FERTILIZERSINCORPORATIONMODE") {
     return String(g_nFertilizerIncorporationMode);
   } else if (var == "FLOWTESTDURATION") {
-    return String (TicksToSeconds(FLOW_TEST_DURATION));
+    return String (TicksToSeconds((uint64_t)FLOW_TEST_DURATION));
   } else if (var == "SSID") {
     return String(g_cSSID);
   } else if (var == "SSIDPWD") {
@@ -1246,10 +1248,10 @@ void setup() {
           uint8_t nSelectedProfile = pRequest->arg("profile").toInt();
           // If asked profile doesn't match with current profile, change to asked one.
           if (nSelectedProfile != g_nCurrentProfile) {
-            if (g_nIrrigationDuration != 0 || g_bApplyFertilizers) {
+            if (g_fIrrigationDuration > 0.0f || g_bApplyFertilizers) {
               strReturn = "No es posible cambiar de Perfil en este momento ";
 
-              if (g_nIrrigationDuration != 0)
+              if (g_fIrrigationDuration > 0.0f)
                 strReturn += "porque se está ejecutando un Riego.";
               else if (g_bApplyFertilizers)
                 strReturn += "porque se están aplicando Fertilizantes.";
@@ -1307,12 +1309,12 @@ void setup() {
       } else if (pRequest->arg("action") == "applyferts") {
         String strReturn = "No se pueden incorporar los Fertilizantes en este momento ";
 
-        if (g_nIrrigationDuration == 0 && g_nTestPumpID == 0 && !g_bApplyFertilizers && !g_bManualMixing) {
+        if (g_fIrrigationDuration <= 0.0f && g_nTestPumpID == 0 && !g_bApplyFertilizers && !g_bManualMixing) {
           strReturn = "Se comenzará a incorporar los Fertilizantes.";
 
           g_bApplyFertilizers = true;
         } else {
-          if (g_nIrrigationDuration != 0)
+          if (g_fIrrigationDuration > 0.0f)
             strReturn += "porque se está ejecutando un Riego.";
           else if (g_nTestPumpID != 0)
             strReturn += "porque se está ejecutando una prueba de Caudal.";
@@ -1327,7 +1329,7 @@ void setup() {
       } else if (pRequest->arg("action").startsWith("testpump")) {
         String strReturn = "La bomba no se puede probar en este momento.";
 
-        if (g_nIrrigationDuration == 0 && g_nTestPumpID == 0 && !g_bApplyFertilizers && !g_bManualMixing) {
+        if (g_fIrrigationDuration <= 0.0f && g_nTestPumpID == 0 && !g_bApplyFertilizers && !g_bManualMixing) {
           uint8_t nPumpID = pRequest->arg("action").substring(8).toInt();
 
           if (nPumpID > 0) {
@@ -1341,7 +1343,7 @@ void setup() {
       } else if (pRequest->arg("action") == "mixis") {
         String strReturn = "No es posible Mezclar en este momento.";
 
-        if (g_nIrrigationDuration == 0 && g_nTestPumpID == 0 && !g_bApplyFertilizers && g_nIrrigationSolutionLevel > 0 && !g_bManualMixing) {
+        if (g_fIrrigationDuration <= 0.0f && g_nTestPumpID == 0 && !g_bApplyFertilizers && g_nIrrigationSolutionLevel > 0 && !g_bManualMixing) {
           g_bManualMixing = true;
           strReturn = "La bomba de Mezcla estará encendida durante los próximos " + String(TicksToSeconds(g_nMixingPumpDuration)) + " segundos.";
         }
@@ -1603,7 +1605,7 @@ void setup() {
         strResponse += ":" + String(digitalRead(RELAYS_MAP[VENTILATION_FANS].Pin));  // 1 = stopped, 0 turn on
         // ================================================== Irrigation Section ================================================== //
         strResponse += ":" + String(g_nIrrigationDayCounter);
-        strResponse += ":" + String(TicksToSeconds(g_nIrrigationDuration));
+        strResponse += ":" + String(TicksToSeconds(g_fIrrigationDuration)); // TODO: Esto retorna float, lo tengo que convertir?
         // ================================================== Firmware Versioning Section ================================================== //
         strResponse += ":" + String(FIRMWAREVERSION);
         // ================================================== Graph Section ================================================== //
@@ -1919,6 +1921,14 @@ void setup() {
 void loop() {
   static uint64_t nLastSecondTick = 0;
   uint64_t nCurrentMillis = millis64();
+  // ================================================== Fertilizers Incorporation Section ================================================== //
+  static FertilizerIncorporationStage Stages[MAX_FERTILIZER_PUMPS] = {};
+  static uint8_t nMaxStages = 0;
+  // ================================================== Irrigation Section ================================================== //
+  static bool bApplyIrrigation = false;
+  static uint8_t nTotalPulses = 0;  // Not need clean
+  static uint8_t nCurrentPulse = 0; // It is over write in for loop call; Not need clean.
+  static uint8_t nCurrentPulseHour = 0;
 
   if ((nCurrentMillis - nLastSecondTick) >= 1000) { // Check if 1 second has passed since the last tick to perform once-per-second tasks
     nLastSecondTick = nCurrentMillis;
@@ -2034,9 +2044,6 @@ void loop() {
     // ================================================== Fertilizers Incorporation Section ================================================== //
     {
       if (g_bApplyFertilizers) {
-        static FertilizerIncorporationStage Stages[MAX_FERTILIZER_PUMPS] = {};
-        static uint8_t nMaxStages = 0;
-
         if (nMaxStages == 0) {
           for (int8_t i = g_vecWateringStages.size() - 1; i >= 0; --i) {
             const auto& Watering = g_vecWateringStages[i];
@@ -2059,11 +2066,9 @@ void loop() {
                   float fCCToApply = Watering.FertilizerToApply[j];
 
                   if (fCCToApply > 0.001f) {
-                    uint64_t nDuration = static_cast<uint64_t>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j] + 0.5f);
-                    if (nDuration == 0)
-                      nDuration = 1;
+                    float fDuration = static_cast<float>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;  // Cambiado a float
 
-                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), nDuration };
+                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), fDuration };
 
                     LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
                   }
@@ -2080,11 +2085,9 @@ void loop() {
                   float fCCToApply = Watering.FertilizerToApply[j];
 
                   if (fCCToApply > 0.001f) {
-                    uint64_t nDuration = static_cast<uint64_t>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j] + 0.5f);
-                    if (nDuration == 0)
-                      nDuration = 1;
+                    float fDuration = static_cast<float>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;  // Cambiado a float
 
-                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), nDuration };
+                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), fDuration };
 
                     LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
                   }
@@ -2100,61 +2103,12 @@ void loop() {
 
             LOGGER(WARN, true, "An attempt was made to incorporate Fertilizers, but the conditions were not met.");
           }
-        } else {
-          if (PowerSupplyControl(true)) {
-            static uint64_t nFertilizersTimer = 0;
-
-            if (nFertilizersTimer == 0) {
-              nFertilizersTimer = nCurrentMillis;
-            } else {
-              static bool bPowerStabilized = false;
-
-              if (!bPowerStabilized && (nCurrentMillis - nFertilizersTimer) >= SECONDS_WAIT_AFTER_TURN_ON_POWER_SUPPLY) {
-                bPowerStabilized = true;
-              } else if (bPowerStabilized) {
-                static uint8_t nStage = 0;
-
-                if (digitalRead(Stages[nStage].Pin)) {
-                  digitalWrite(Stages[nStage].Pin, RELAY_PIN_ON);
-
-                  nFertilizersTimer = nCurrentMillis;
-
-                  LOGGER(INFO, true, "%s Started.", RELAYS_MAP[Stages[nStage].Pin].Name);
-                } else {
-                  if ((nCurrentMillis - nFertilizersTimer) >= Stages[nStage].Duration) {
-                    digitalWrite(Stages[nStage].Pin, RELAY_PIN_OFF);
-
-                    LOGGER(INFO, true, "%s Stopped.", RELAYS_MAP[Stages[nStage].Pin].Name);
-
-                    nStage++;
-
-                    if (nStage == nMaxStages) {
-                      LOGGER(INFO, true, "Fertilizers Incorporation completed.");
-
-                      PowerSupplyControl(false);
-
-                      bPowerStabilized = false;
-                      nStage = 0;
-                      memset(Stages, 0, sizeof(Stages));
-                      nMaxStages = 0;
-                      nFertilizersTimer = 0;
-                      g_bApplyFertilizers = false;
-                    }
-                  }
-                }
-              }
-            }
-          }
         }
       }
     }
     // ================================================== Irrigation Section ================================================== //
     {
       static bool bIsTheLastPulse = false;
-      static bool bApplyIrrigation = false;
-      static uint8_t nTotalPulses = 0;  // Not need clean
-      static uint8_t nCurrentPulse = 0; // It is over write in for loop call; Not need clean.
-      static uint8_t nCurrentPulseHour = 0;
 
       if (!bApplyIrrigation) { // Si no se está aplicando un Riego; Verificar si se puede aplicar un Riego
         static int8_t nLastKnownCurrentProfile = -1;
@@ -2205,7 +2159,7 @@ void loop() {
                 nCurrentPulseHour = (nStartIrrigationHour + nCurrentPulse * nPulseInterval) % 24; // Calcular la hora exacta de cada Pulso de Riego (Los Pulsos de Riego se hacen a la Hora en punto)
 
                 if (nCurrentPulseHour == currentTime.tm_hour) {  // En la Hora actual, es posible hacer un Pulso de Riego.
-                  g_nIrrigationDuration = ((static_cast<float>(nLastKnownCC) / nTotalPulses) * FLOW_TEST_DURATION) / g_nIrrigationFlowPerMinute; // Definir el tiempo que la Bomba de Riego tiene que estar encendida
+                  g_fIrrigationDuration = (((static_cast<float>(nLastKnownCC) / nTotalPulses) * FLOW_TEST_DURATION) / g_nIrrigationFlowPerMinute) * 1000.0f;
 
                   if (nCurrentPulse == (nTotalPulses - 1))  // Verifica si es el último Pulso de Riego del Día
                     bIsTheLastPulse = true;
@@ -2239,77 +2193,7 @@ void loop() {
             bApplyIrrigation = false;
           }
 
-          bApplyIrrigation = bApplyIrrigation && g_nIrrigationDuration > 0; // Finalmente si hasta ahora los checks fueron pasados exitosamente, verificar si g_nIrrigationDuration es > 0 quiere decir que ya pasó por for (uint8_t nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) y se asignó la duración del Pulso de Riego a hacer a continuación.
-        }
-      } else if (bApplyIrrigation) {  // Si se está aplicando un Riego; Verificar si ya se puede dejar de regar.
-        if (PowerSupplyControl(true)) {
-          static uint64_t nIrrigationTimer = 0;
-
-          if (nIrrigationTimer == 0) {
-            nIrrigationTimer = nCurrentMillis;
-          } else {
-            static bool bPowerStabilized = false;
-
-            if (!bPowerStabilized && (nCurrentMillis - nIrrigationTimer) >= SECONDS_WAIT_AFTER_TURN_ON_POWER_SUPPLY) {
-              bPowerStabilized = true;
-            } else if (bPowerStabilized) {
-              static uint8_t nStage = 0;
-
-              switch (nStage) {
-                case 0: // Mix Irrigation Solution
-                  {
-                    if (digitalRead(RELAYS_MAP[MIXING_PUMP].Pin)) {
-                      digitalWrite(RELAYS_MAP[MIXING_PUMP].Pin, RELAY_PIN_ON);
-
-                      nIrrigationTimer = nCurrentMillis;
-
-                      LOGGER(INFO, true, "Mixing Pump Started.");
-                    } else {
-                      if ((nCurrentMillis - nIrrigationTimer) >= g_nMixingPumpDuration /*Ticks*/) {
-                        digitalWrite(RELAYS_MAP[MIXING_PUMP].Pin, RELAY_PIN_OFF);
-
-                        LOGGER(INFO, true, "Mixing Pump Stopped.");
-
-                        nStage++;
-                      }
-                    }
-                  }
-                  break;
-                case 1: // Apply Irrigation Solution
-                  {
-                    if (digitalRead(RELAYS_MAP[IRRIGATION_PUMP].Pin)) {
-                      digitalWrite(RELAYS_MAP[IRRIGATION_PUMP].Pin, RELAY_PIN_ON);
-
-                      nIrrigationTimer = nCurrentMillis;
-
-                      LOGGER(INFO, true, "Irrigation Pump Started. Irrigation Info: Pulse Number: %d/%d Current Hour: %d Pulse Duration: %d seconds.", (nCurrentPulse + 1), nTotalPulses, nCurrentPulseHour, TicksToSeconds(g_nIrrigationDuration));
-                    } else {
-                      if ((nCurrentMillis - nIrrigationTimer) >= g_nIrrigationDuration /*Ticks*/) {
-                        digitalWrite(RELAYS_MAP[IRRIGATION_PUMP].Pin, RELAY_PIN_OFF);
-
-                        LOGGER(INFO, true, "Irrigation Pump Stopped. Irrigation Finished.");
-
-                        PowerSupplyControl(false);
-
-                        CheckReservoirLevel();
-
-                        CheckSoilHumidity();
-
-                        bPowerStabilized = false;
-                        nStage = 0;
-                        nIrrigationTimer = 0;
-                        g_nIrrigationDuration = 0;
-                        bApplyIrrigation = false;
-                        g_nLastWateredHour = nCurrentPulseHour;
-
-                        SaveProfile(g_nCurrentProfile);
-                      }
-                    }
-                  }
-                  break;
-              }
-            }
-          }
+          bApplyIrrigation = bApplyIrrigation && g_fIrrigationDuration > 0.0f; // Finalmente si hasta ahora los checks fueron pasados exitosamente, verificar si g_fIrrigationDuration es > 0 quiere decir que ya pasó por for (uint8_t nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) y se asignó la duración del Pulso de Riego a hacer a continuación.
         }
       }
 
@@ -2435,7 +2319,7 @@ void loop() {
         } else {
           static bool bPowerStabilized = false;
 
-          if (!bPowerStabilized && (nCurrentMillis - nTestPumpTimer) >= SECONDS_WAIT_AFTER_TURN_ON_POWER_SUPPLY) {
+          if (!bPowerStabilized && (nCurrentMillis - nTestPumpTimer) >= WAIT_AFTER_TURN_ON_POWER_SUPPLY_INTERVAL) {
             bPowerStabilized = true;
           } else if (bPowerStabilized) {
             if (digitalRead(RELAYS_MAP[g_nTestPumpID].Pin)) {
@@ -2471,7 +2355,7 @@ void loop() {
         } else {
           static bool bPowerStabilized = false;
 
-          if (!bPowerStabilized && (nCurrentMillis - nMixingTimer) >= SECONDS_WAIT_AFTER_TURN_ON_POWER_SUPPLY) {
+          if (!bPowerStabilized && (nCurrentMillis - nMixingTimer) >= WAIT_AFTER_TURN_ON_POWER_SUPPLY_INTERVAL) {
             bPowerStabilized = true;
           } else if (bPowerStabilized) {
             if (digitalRead(RELAYS_MAP[MIXING_PUMP].Pin)) {
@@ -2481,7 +2365,7 @@ void loop() {
 
               LOGGER(INFO, true, "Manual Mixing Started.");
             } else {
-              if ((nCurrentMillis - nMixingTimer) >= g_nMixingPumpDuration /*Ticks*/) {
+              if ((nCurrentMillis - nMixingTimer) >= g_nMixingPumpDuration) {
                 digitalWrite(RELAYS_MAP[MIXING_PUMP].Pin, RELAY_PIN_OFF);
 
                 LOGGER(INFO, true, "Manual Mixing Stopped.");
@@ -2531,6 +2415,130 @@ void loop() {
 
         strncpy(g_strArrayGraphData[MAX_GRAPH_MARKS - 1], strValues.c_str(), MAX_GRAPH_MARKS_LENGTH - 1);
         g_strArrayGraphData[MAX_GRAPH_MARKS - 1][MAX_GRAPH_MARKS_LENGTH - 1] = '\0';
+      }
+    }
+  }
+  // ================================================== OUT OF 1 SECOND CHECK INTERVAL ================================================== //
+  // ================================================== Fertilizers Incorporation Section ================================================== //
+  {
+    if (nMaxStages > 0) {
+      if (PowerSupplyControl(true)) {
+        static uint64_t nFertilizersTimer = 0;
+
+        if (nFertilizersTimer == 0) {
+          nFertilizersTimer = nCurrentMillis;
+        } else {
+          static bool bPowerStabilized = false;
+
+          if (!bPowerStabilized && (nCurrentMillis - nFertilizersTimer) >= WAIT_AFTER_TURN_ON_POWER_SUPPLY_INTERVAL) {
+            bPowerStabilized = true;
+          } else if (bPowerStabilized) {
+            static uint8_t nStage = 0;
+
+            if (digitalRead(Stages[nStage].Pin)) {
+              digitalWrite(Stages[nStage].Pin, RELAY_PIN_ON);
+
+              nFertilizersTimer = nCurrentMillis;
+
+              LOGGER(INFO, true, "%s Started.", RELAYS_MAP[Stages[nStage].Pin].Name);
+            } else {
+              if ((nCurrentMillis - nFertilizersTimer) >= Stages[nStage].Duration) {
+                digitalWrite(Stages[nStage].Pin, RELAY_PIN_OFF);
+
+                LOGGER(INFO, true, "%s Stopped.", RELAYS_MAP[Stages[nStage].Pin].Name);
+
+                nStage++;
+
+                if (nStage == nMaxStages) {
+                  LOGGER(INFO, true, "Fertilizers Incorporation completed.");
+
+                  PowerSupplyControl(false);
+
+                  bPowerStabilized = false;
+                  nStage = 0;
+                  memset(Stages, 0, sizeof(Stages));
+                  nMaxStages = 0;
+                  nFertilizersTimer = 0;
+                  g_bApplyFertilizers = false;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  // ================================================== Irrigation Section ================================================== //
+  {
+    if (bApplyIrrigation) {  // Si se está aplicando un Riego; Verificar si ya se puede dejar de regar.
+      if (PowerSupplyControl(true)) {
+        static uint64_t nIrrigationTimer = 0;
+
+        if (nIrrigationTimer == 0) {
+          nIrrigationTimer = nCurrentMillis;
+        } else {
+          static bool bPowerStabilized = false;
+
+          if (!bPowerStabilized && (nCurrentMillis - nIrrigationTimer) >= WAIT_AFTER_TURN_ON_POWER_SUPPLY_INTERVAL) {
+            bPowerStabilized = true;
+          } else if (bPowerStabilized) {
+            static uint8_t nStage = 0;
+
+            switch (nStage) {
+              case 0: // Mix Irrigation Solution
+                {
+                  if (digitalRead(RELAYS_MAP[MIXING_PUMP].Pin)) {
+                    digitalWrite(RELAYS_MAP[MIXING_PUMP].Pin, RELAY_PIN_ON);
+
+                    nIrrigationTimer = nCurrentMillis;
+
+                    LOGGER(INFO, true, "Mixing Pump Started.");
+                  } else {
+                    if ((nCurrentMillis - nIrrigationTimer) >= g_nMixingPumpDuration) {
+                      digitalWrite(RELAYS_MAP[MIXING_PUMP].Pin, RELAY_PIN_OFF);
+
+                      LOGGER(INFO, true, "Mixing Pump Stopped.");
+
+                      nStage++;
+                    }
+                  }
+                }
+                break;
+              case 1: // Apply Irrigation Solution
+                {
+                  if (digitalRead(RELAYS_MAP[IRRIGATION_PUMP].Pin)) {
+                    digitalWrite(RELAYS_MAP[IRRIGATION_PUMP].Pin, RELAY_PIN_ON);
+
+                    nIrrigationTimer = nCurrentMillis;
+
+                    LOGGER(INFO, true, "Irrigation Pump Started. Irrigation Info: Pulse Number: %d/%d Current Hour: %d Pulse Duration: %.2f seconds.", (nCurrentPulse + 1), nTotalPulses, nCurrentPulseHour, TicksToSeconds(g_fIrrigationDuration));
+                  } else {
+                    if ((nCurrentMillis - nIrrigationTimer) >= g_fIrrigationDuration) {
+                      digitalWrite(RELAYS_MAP[IRRIGATION_PUMP].Pin, RELAY_PIN_OFF);
+
+                      LOGGER(INFO, true, "Irrigation Pump Stopped. Irrigation Finished.");
+
+                      PowerSupplyControl(false);
+
+                      CheckReservoirLevel();
+
+                      CheckSoilHumidity();
+
+                      bPowerStabilized = false;
+                      nStage = 0;
+                      nIrrigationTimer = 0;
+                      g_fIrrigationDuration = 0;
+                      bApplyIrrigation = false;
+                      g_nLastWateredHour = nCurrentPulseHour;
+
+                      SaveProfile(g_nCurrentProfile);
+                    }
+                  }
+                }
+                break;
+            }
+          }
+        }
       }
     }
   }
