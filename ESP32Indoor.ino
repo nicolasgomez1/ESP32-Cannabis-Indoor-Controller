@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260328_" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260301_0208" // TODO: Update this value before export binary
 
 #include <map>
 #include <Secrets.h>
@@ -932,8 +932,6 @@ void CheckReservoirLevel() {
 	if (g_nIrrigationReservoirLowerLevel > 0) {
 		int16_t nLowerLevel = GetIrrigationReservoirLevel();
 
-		LOGGER(INFO, true, "Reservoir: Raw:%dcm, Lower Level:%dcm, Last Level Check:%d%%", nLowerLevel, g_nIrrigationReservoirLowerLevel, g_nIrrigationSolutionLevel); // TODO: FOR DEBUG, REMOVE IT.
-
 		if (nLowerLevel == -1)
 			return;
 
@@ -1098,7 +1096,7 @@ String HTMLProcessor(const String& var) {
 		localtime_r(&t, &currentTime);
 
 		char cBuffer[11];
-		snprintf(cBuffer, sizeof(cBuffer), "%02d/%02d/%04d", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900);
+		snprintf(cBuffer, sizeof(cBuffer), "%d/%d/%04d", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900);
 		return String(cBuffer);
 	} else if (var == "INTERNALFANMODE") {
 		return String(g_nInternalFanMode);
@@ -1470,7 +1468,7 @@ void setup() {
 
 					struct tm currentTime;
 					GetLocalTimeNow(&currentTime);
-					LOGGER(INFO, true, "New Datetime: %02d/%02d/%04d %02d:%02d:%02d.", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
+					LOGGER(INFO, true, "New Datetime: %d/%d/%04d %02d:%02d:%02d.", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
 
 					strReturn += "Se sincronizó la Fecha actual.\r\n";
 				}

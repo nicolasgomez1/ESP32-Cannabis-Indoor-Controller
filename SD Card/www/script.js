@@ -1,4 +1,4 @@
-const JSVersion='V420260331_1014';
+const JSVersion='V420260301_0205';
 let bFirst=true,stl=false,nTentWork=-1,nT,nH,fVPD;
 
 function GetElement(n){return document.getElementById(n)}
@@ -300,7 +300,22 @@ function SendAction(action,...args){
 function RequestHistory(){
 	let d=new Date(),p=n=>n.toString().padStart(2,'0');
 
-	fetch(`/metrics/metrics_${p(d.getMonth()+1)}_${d.getFullYear()}.txt`,{cache:'no-store'}).then(r=>r.text()).then(text=>{
+	fetch(`/metrics/metrics_${p(d.getMonth()+1)}_${d.getFullYear()}.txt`,{cache:'no-store'}).then(r=>{
+			if(!r.ok){
+				let e=document.getElementById('hchart'),ctx=e.getContext('2d');
+
+				ctx.font='30px Arial';
+				ctx.fillStyle='#FF0000';
+				ctx.textAlign='center';
+				ctx.fillText(Error(r.status),e.width/2,e.height/2);
+
+				setTimeout(RequestHistory,30000);
+
+				return;
+			}
+
+			return r.text();
+		}).then(text=>{
 		let lines=text.trim().split('\n'),w=(parseInt(lines[lines.length-1].split('|')[0])*1000)+GetWheelValue(elements[16].e)*1000*60-Date.now();
 
 		for(let i=0;i<lines.length;i++){
@@ -371,7 +386,7 @@ function CalcCDC(){
 function SetCropBegin(){
 	let e=GetElement('cb'),utc=Math.floor(Date.now()/1000);
 
-	e.innerText=new Date(utc*1000).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+	e.innerText=new Date(utc*1000).toLocaleDateString('es-AR');
 
 	CalcCDC();
 
