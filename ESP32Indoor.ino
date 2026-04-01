@@ -817,8 +817,6 @@ void CheckReservoirLevel() {
 	if (g_nIrrigationReservoirLowerLevel > 0) {
 		int16_t nLowerLevel = GetIrrigationReservoirLevel();
 
-    LOGGER(INFO, true, "Reservoir: Raw:%dcm, Lower Level:%dcm, Last Level Check:%d%%", nLowerLevel, g_nIrrigationReservoirLowerLevel, g_nIrrigationSolutionLevel); // TODO: FOR DEBUG, REMOVE IT.
-
     if (nLowerLevel == -1)
 			return;
 
@@ -1605,7 +1603,7 @@ void setup() {
         strResponse += ":" + String(digitalRead(RELAYS_MAP[VENTILATION_FANS].Pin));  // 1 = stopped, 0 turn on
         // ================================================== Irrigation Section ================================================== //
         strResponse += ":" + String(g_nIrrigationDayCounter);
-        strResponse += ":" + String(TicksToSeconds(g_fIrrigationDuration)); // TODO: Esto retorna float, lo tengo que convertir?
+        strResponse += ":" + String(TicksToSeconds(g_fIrrigationDuration));
         // ================================================== Firmware Versioning Section ================================================== //
         strResponse += ":" + String(FIRMWAREVERSION);
         // ================================================== Graph Section ================================================== //
