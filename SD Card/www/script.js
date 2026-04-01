@@ -1,4 +1,4 @@
-const JSVersion='V420260301_0205';
+const JSVersion='V420260401_1953';
 let bFirst=true,stl=false,nTentWork=-1,nT,nH,fVPD;
 
 function GetElement(n){return document.getElementById(n)}
@@ -271,7 +271,7 @@ function SendAction(action,...args){
 				SetWheelSpinValue(elements[2].e,idc);
 			}
 
-			let wattimerem=parseInt(data[10]);
+			let wattimerem=parseFloat(data[10]);
 			result='';
 
 			if(wattimerem>0)
