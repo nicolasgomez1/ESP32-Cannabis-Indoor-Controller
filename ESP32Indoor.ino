@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260401_0049" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260402_0137" // TODO: Update this value before export binary
 
 #include <map>
 #include <Secrets.h>
@@ -1607,7 +1607,7 @@ void setup() {
         // ================================================== Firmware Versioning Section ================================================== //
         strResponse += ":" + String(FIRMWAREVERSION);
         // ================================================== Graph Section ================================================== //
-        if (g_strArrayGraphData[0][0] != '\0') {
+        if (g_strArrayGraphData[MAX_GRAPH_MARKS - 1][0] != '\0') {
           strResponse += ":";
 
           bool bFirst = true;
