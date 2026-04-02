@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260401_1953" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260401_2155" // TODO: Update this value before export binary
 
 #include <map>
 #include <Secrets.h>
@@ -2064,7 +2064,7 @@ void loop() {
                   float fCCToApply = Watering.FertilizerToApply[j];
 
                   if (fCCToApply > 0.001f) {
-                    float fDuration = static_cast<float>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;
+                    float fDuration = ((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;
 
                     Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), fDuration };
 
@@ -2083,7 +2083,7 @@ void loop() {
                   float fCCToApply = Watering.FertilizerToApply[j];
 
                   if (fCCToApply > 0.001f) {
-                    float fDuration = static_cast<float>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;
+                    float fDuration = ((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;
 
                     Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), fDuration };
 
