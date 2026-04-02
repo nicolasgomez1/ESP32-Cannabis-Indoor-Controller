@@ -314,7 +314,7 @@ void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Provides utility functions to convert between ticks (milliseconds) and human-readable time units.
-// Ticks are assumed to be in milliseconds, as returned by the millis() function.
+// Ticks are assumed to be in milliseconds, as returned by the millis64() function.
 inline uint64_t TicksToSeconds(uint64_t nTicks) { return nTicks / 1000; }
 inline float TicksToSeconds(float fMs) { return fMs / 1000.0f; }
 
@@ -326,14 +326,14 @@ inline uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60;
 //inline uint32_t HoursToTicks(uint32_t nHours) { return nHours * 1000 * 60 * 60; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Executes the provided function (`fn`) with safe, exclusive access to the SD card.
-// - Tries to acquire the SD card mutex within 200 ms to ensure thread-safe access. If the mutex cannot be acquired, exits immediately and returns false.
+// - Tries to acquire the SD card mutex within 150 ms to ensure thread-safe access. If the mutex cannot be acquired, exits immediately and returns false.
 // - Once the mutex is acquired, it is automatically released when the function scope ends, using RAII via the ScopedMutexUnlock helper.
 // - If the SD card is not yet initialized (`g_bIsSDInit` is false), attempts initialization via SD.begin(). If initialization fails, returns false without executing `fn`.
 // - After initialization, checks whether a valid SD card is inserted (cardType != CARD_NONE). If not present, resets internal SD state, calls SD.end(), and returns false.
 // - Verifies filesystem access by attempting to open the root directory. If the directory is invalid or inaccessible, resets internal SD state, calls SD.end(), and returns false.
 // - If all checks pass, executes `fn()` while the mutex is held and returns true.
 bool SafeSDAccess(std::function<void()> fn) {
-	if (!xSemaphoreTake(g_pSDMutex, pdMS_TO_TICKS(200 /*ms*/)))	// NOTE: while more shitty is the SD card, more higher this value should be
+	if (!xSemaphoreTake(g_pSDMutex, pdMS_TO_TICKS(150 /*ms*/)))	// NOTE: while more shitty is the SD card, more higher this value should be
 		return false;
 
 	struct ScopedMutexUnlock {
@@ -2497,45 +2497,48 @@ void loop() {
 		}
 	}
 	// ================================================== OUT OF 1 SECOND CHECK INTERVAL ================================================== //
+	// ================================================== Fertilizers Incorporation Section ================================================== //
 	{
-		if (PowerSupplyControl(true)) {
-			static uint64_t nFertilizersTimer = 0;
+		if (nMaxStages > 0) {
+			if (PowerSupplyControl(true)) {
+				static uint64_t nFertilizersTimer = 0;
 
-			if (nFertilizersTimer == 0) {
-				nFertilizersTimer = nCurrentMillis;
-			} else {
-				static bool bPowerStabilized = false;
+				if (nFertilizersTimer == 0) {
+					nFertilizersTimer = nCurrentMillis;
+				} else {
+					static bool bPowerStabilized = false;
 
-				if (!bPowerStabilized && (nCurrentMillis - nFertilizersTimer) >= WAIT_AFTER_TURN_ON_POWER_SUPPLY_INTERVAL) {
-					bPowerStabilized = true;
-				} else if (bPowerStabilized) {
-					static uint8_t nStage = 0;
+					if (!bPowerStabilized && (nCurrentMillis - nFertilizersTimer) >= WAIT_AFTER_TURN_ON_POWER_SUPPLY_INTERVAL) {
+						bPowerStabilized = true;
+					} else if (bPowerStabilized) {
+						static uint8_t nStage = 0;
 
-					if (digitalRead(Stages[nStage].Pin)) {
-						digitalWrite(Stages[nStage].Pin, RELAY_PIN_ON);
+						if (digitalRead(Stages[nStage].Pin)) {
+							digitalWrite(Stages[nStage].Pin, RELAY_PIN_ON);
 
-						nFertilizersTimer = nCurrentMillis;
+							nFertilizersTimer = nCurrentMillis;
 
-						LOGGER(INFO, true, "%s Started.", RELAYS_MAP[Stages[nStage].Pin].Name);
-					} else {
-						if ((nCurrentMillis - nFertilizersTimer) >= Stages[nStage].Duration) {
-							digitalWrite(Stages[nStage].Pin, RELAY_PIN_OFF);
+							LOGGER(INFO, true, "%s Started.", RELAYS_MAP[Stages[nStage].Pin].Name);
+						} else {
+							if ((nCurrentMillis - nFertilizersTimer) >= Stages[nStage].Duration) {
+								digitalWrite(Stages[nStage].Pin, RELAY_PIN_OFF);
 
-							LOGGER(INFO, true, "%s Stopped.", RELAYS_MAP[Stages[nStage].Pin].Name);
+								LOGGER(INFO, true, "%s Stopped.", RELAYS_MAP[Stages[nStage].Pin].Name);
 
-							nStage++;
+								nStage++;
 
-							if (nStage == nMaxStages) {
-								LOGGER(INFO, true, "Fertilizers Incorporation completed.");
+								if (nStage == nMaxStages) {
+									LOGGER(INFO, true, "Fertilizers Incorporation completed.");
 
-								PowerSupplyControl(false);
+									PowerSupplyControl(false);
 
-								bPowerStabilized = false;
-								nStage = 0;
-								memset(Stages, 0, sizeof(Stages));
-								nMaxStages = 0;
-								nFertilizersTimer = 0;
-								g_bApplyFertilizers = false;
+									bPowerStabilized = false;
+									nStage = 0;
+									memset(Stages, 0, sizeof(Stages));
+									nMaxStages = 0;
+									nFertilizersTimer = 0;
+									g_bApplyFertilizers = false;
+								}
 							}
 						}
 					}
@@ -2543,7 +2546,7 @@ void loop() {
 			}
 		}
 	}
-  // ================================================== Fertilizers Incorporation Section ================================================== //
+  // ================================================== Irrigation Section ================================================== //
 	{
 		if (bApplyIrrigation) {  // Si se está aplicando un Riego; Verificar si ya se puede dejar de regar.
 			if (PowerSupplyControl(true)) {
