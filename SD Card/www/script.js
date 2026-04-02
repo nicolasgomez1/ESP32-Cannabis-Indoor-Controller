@@ -1,4 +1,4 @@
-const JSVersion='V420260401_1953';
+const JSVersion='V420260402_0115';
 let bFirst=true,nTentWork=-1;
 
 function GetElement(n){return document.getElementById(n)}
@@ -843,7 +843,6 @@ GetElement('softwareform').addEventListener('submit',async ev=>{
 		let r=await fetch('/upload',{method:'POST',body:fd,headers:{'File-Size':file.size}});
 		if(!r.ok){
 			alert('Error al subir: '+file.name);
-			await fetch('/upload-clean',{method:'POST'});
 			return;
 		}
 	}
