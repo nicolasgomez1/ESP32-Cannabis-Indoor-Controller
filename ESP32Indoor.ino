@@ -309,7 +309,7 @@ void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Provides utility functions to convert between ticks (milliseconds) and human-readable time units.
-// Ticks are assumed to be in milliseconds, as returned by the millis() function.
+// Ticks are assumed to be in milliseconds, as returned by the millis64() function.
 inline uint64_t TicksToSeconds(uint64_t nTicks) { return nTicks / 1000; }
 inline float TicksToSeconds(float fMs) { return fMs / 1000.0f; }
 
@@ -2064,7 +2064,7 @@ void loop() {
                   float fCCToApply = Watering.FertilizerToApply[j];
 
                   if (fCCToApply > 0.001f) {
-                    float fDuration = static_cast<float>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;  // Cambiado a float
+                    float fDuration = static_cast<float>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;
 
                     Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), fDuration };
 
@@ -2083,7 +2083,7 @@ void loop() {
                   float fCCToApply = Watering.FertilizerToApply[j];
 
                   if (fCCToApply > 0.001f) {
-                    float fDuration = static_cast<float>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;  // Cambiado a float
+                    float fDuration = static_cast<float>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;
 
                     Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), fDuration };
 
