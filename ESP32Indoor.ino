@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260401_0049" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260402_0606"
 
 #include <map>
 #include <Secrets.h>
@@ -20,7 +20,6 @@
 #include <SimpleDHT.h>  // DHT22: 0~100%RH ±2-5% | -40~80°C ±0.5°C (FMD)
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
-// TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado. (En caso de hacerlo, poner esto es // NOTES: // After unexpected energy shutdown, the fertilizer incorporation process gonna continue with the remaining CC and/or remaining stages to be incorporated.)
 
 // NOTES:
 // Default IP for AP mode is: 192.168.4.1
@@ -231,7 +230,7 @@ uint16_t g_nIrrigationReservoirLowerLevel = 0;
 uint8_t g_nLowReservoirLevelWarning = 0;
 char g_cCALLMEBOT_API_KEY[8];
 char g_cCALLMEBOT_PHONE[15];
-uint64_t g_nRecommendationCheckInterval = 0;	// TODO: Poner un check en la función loop, para llamar a GetVPDRecommendation (y ejecutar dicha recomendación???)
+uint64_t g_nEnvironmentCorrectionInterval = 0;
 
 // Profiles Variables
 uint8_t g_nStartLightTime = 0;
@@ -270,7 +269,7 @@ uint64_t g_nFansRestTimeStartedAt = 0;
 uint8_t g_nTestPumpID = 0;  // 0 Equals to no pump to test
 bool g_bApplyFertilizers = false;
 bool g_bManualMixing = false;
-g_Recommendations g_nLastRecommendation = THIS_COULD_GET_UGLY;	// TODO: Agregar una varible que va a contener la última recomendación hecha. (Esta hay que enviarlda en data[2] del caso refresh)
+g_Recommendations g_LastRecommendation = THIS_COULD_GET_UGLY;
 
 // Global Handles, Interface & Instances
 AsyncWebServer g_pWebServer(WEBSERVER_PORT);	// Asynchronous web server instance listening on WEBSERVER_PORT
@@ -474,7 +473,7 @@ void SaveSettings() {
 			pSettingsFile.println(g_cCALLMEBOT_API_KEY);
 			pSettingsFile.println(g_cCALLMEBOT_PHONE);
 
-			pSettingsFile.println(g_nRecommendationCheckInterval);
+			pSettingsFile.println(g_nEnvironmentCorrectionInterval);
 
 			pSettingsFile.close();
 
@@ -741,15 +740,13 @@ void SendNotification(const char* cMessage) {
 // Returns the result as a float.
 float CalculateVPD(float fTemperature, float fHumidity) { return ((6.112f * expf((17.67f * fTemperature) / (243.5f + fTemperature))) * (1.0f - fHumidity / 100.0f)) / 10.0f; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Evaluates environmental conditions to provide an actionable climate recommendation based on VPD.
-// The function first checks if temperature or humidity are outside their absolute safe ranges,
-// prioritizing corrections based on the 'g_nVPDCorrectionPriority' setting.
-// If the current VPD is not optimal, it simulates potential adjustments (Temp +/- or Hum +/-)
-// and scores them by calculating how close they would bring the VPD to the ideal target,
-// while ensuring the simulated values stay within safe operating ranges.
-// Returns a 'Recommendations' enum (e.g., TEMP_UP, HUM_DOWN, OPTIMAL) to guide climate control systems.
-// If no safe adjustment can bring the VPD into range, it returns 'THIS_COULD_GET_UGLY' as a fail-safe.
-g_Recommendations GetVPDRecommendation() {
+// Evaluates current environmental conditions and determines the optimal climate adjustment.
+// Checks if temperature or humidity are outside their safe ranges first, prioritizing corrections
+// based on g_nVPDCorrectionPriority. If within safe ranges but VPD is suboptimal, simulates
+// temperature and humidity adjustments scored by proximity to the ideal VPD target.
+// Result is stored directly in g_LastRecommendation (TEMP_UP, TEMP_DOWN, HUM_UP, HUM_DOWN, OPTIMAL,
+// or THIS_COULD_GET_UGLY if no safe adjustment can bring VPD into range).
+void GetVPDRecommendation() {
 	struct Recommendation {
 		g_Recommendations Recommendation;
 		float Score;
@@ -772,8 +769,10 @@ g_Recommendations GetVPDRecommendation() {
 	float fCurrentVPD = CalculateVPD(g_fEnvironmentTemperature, g_fEnvironmentHumidity);
 
 	if (nCount == 0) {
-		if (fCurrentVPD >= g_fVPDRanges[0] && fCurrentVPD <= g_fVPDRanges[1])
-			return OPTIMAL;
+		if (fCurrentVPD >= g_fVPDRanges[0] && fCurrentVPD <= g_fVPDRanges[1]) {
+			g_LastRecommendation = OPTIMAL;
+			return;
+		}
 	} else {
 		for (uint8_t i = 0; i < nCount - 1; i++) {
 			for (uint8_t j = i + 1; j < nCount; j++) {
@@ -782,7 +781,8 @@ g_Recommendations GetVPDRecommendation() {
 			}
 		}
 
-		return pRecommendations[0].Recommendation;
+		g_LastRecommendation = pRecommendations[0].Recommendation;
+		return;
 	}
 
 	float fIdealVPD = (g_fVPDRanges[0] + g_fVPDRanges[1]) / 2.0f;
@@ -824,10 +824,12 @@ g_Recommendations GetVPDRecommendation() {
 		}
 	}
 
-	if (nCount > 0)
-		return pRecommendations[0].Recommendation;
+	if (nCount > 0) {
+		g_LastRecommendation = pRecommendations[0].Recommendation;
+		return;
+	}
 
-	return THIS_COULD_GET_UGLY;
+	g_LastRecommendation = THIS_COULD_GET_UGLY;
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Measures the irrigation reservoir level using an HC-SR04 ultrasonic sensor.
@@ -1066,7 +1068,7 @@ String HTMLProcessor(const String& var) {
 		strReturn += "," + String(TicksToSeconds(g_nMixingPumpDuration));
 		strReturn += "," + String(g_nLowReservoirLevelWarning);
 		strReturn += "," + String(TicksToMinutes(g_nSamplingInterval));
-		strReturn += "," + String(TicksToMinutes(g_nRecommendationCheckInterval));
+		strReturn += "," + String(TicksToMinutes(g_nEnvironmentCorrectionInterval));
 		strReturn += "," + String(g_fTemperatureRanges[0]) + "," + String(g_fTemperatureRanges[1]);
 		strReturn += "," + String(g_fHumidityRanges[0]) + "," + String(g_fHumidityRanges[1]);
 		strReturn += "," + String(g_fVPDRanges[0]) + "," + String(g_fVPDRanges[1]);
@@ -1234,8 +1236,8 @@ void setup() {
 			strncpy(g_cCALLMEBOT_PHONE, cBuffer, sizeof(g_cCALLMEBOT_PHONE));
 			g_cCALLMEBOT_PHONE[sizeof(g_cCALLMEBOT_PHONE) - 1] = '\0';
 			///////////////////////////////////////////////////
-			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// RECOMMENDATIONS CHECK INTERVAL
-			g_nRecommendationCheckInterval = atoi(cBuffer);
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTONOMOUS ENVIRONMENT REGULATION CHECK INTERVAL
+			g_nEnvironmentCorrectionInterval = atoi(cBuffer);
 			///////////////////////////////////////////////////
 			pSettingsFile.close();
 		} else {
@@ -1649,12 +1651,12 @@ void setup() {
 						strReturn += "Se actualizó el Intervalo de toma de Muestras.\r\n";
 					}
 				}
-				// =============== Recommendations Check Interval =============== //
+				// =============== Autonomous Environment regulation Interval =============== //
 				if (pRequest->hasArg("rci")) {
 					nNewValue = MinutesToTicks(pRequest->arg("rci").toInt());
 
-					if (nNewValue != g_nRecommendationCheckInterval) {
-						g_nRecommendationCheckInterval = nNewValue;
+					if (nNewValue != g_nEnvironmentCorrectionInterval) {
+						g_nEnvironmentCorrectionInterval = nNewValue;
 
 						strReturn += "Se actualizó el Intervalo de verificación de recomendaciones.\r\n";
 					}
@@ -1711,8 +1713,8 @@ void setup() {
 			} else if (pRequest->arg("action") == "refresh") { // This is for refresh Panel values constantly
 				// ================================================== Environment Section ================================================== //
 				String strResponse = String(g_fEnvironmentTemperature, 1) + ":" + String(g_fEnvironmentHumidity, 1);
-				// ================================================== VPD Correction Recommendation Section ================================================== //
-				strResponse += ":" + String(g_cRecommends[g_nLastRecommendation]);
+				// ================================================== Autonomous environmental regulation Section ================================================== //
+				strResponse += ":" + String(g_cRecommends[g_LastRecommendation]);
 				// ================================================== Irrigation Solution Level Section ================================================== //
 				strResponse += ":" + String(g_nIrrigationSolutionLevel);
 				// ================================================== Soil Section ================================================== //
@@ -2056,20 +2058,20 @@ void loop() {
 		localtime_r(&pTimeNow, &currentTime);
 		// ================================================== Wifi Section ================================================== //
 		{
-			static uint64_t nLastReconnectAttempt = 0;
+			static uint64_t nLastReconnectAttemptInterval = 0;
 
-			if (eTaskGetState(g_pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED && (nCurrentMillis - nLastReconnectAttempt) >= WIFI_RETRY_CONNECT_INTERVAL) { // If is not connected to Wifi and is not currently running a reconnect trask, start it
-				nLastReconnectAttempt = nCurrentMillis;
+			if (eTaskGetState(g_pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED && (nCurrentMillis - nLastReconnectAttemptInterval) >= WIFI_RETRY_CONNECT_INTERVAL) { // If is not connected to Wifi and is not currently running a reconnect trask, start it
+				nLastReconnectAttemptInterval = nCurrentMillis;
 
 				vTaskResume(g_pWiFiReconnect);
 			}
 		}
 		// ================================================== Time Section ================================================== //
 		{
-			static uint64_t nLastWriteTick = 0;
+			static uint64_t nTimestampSaveInterval = 0;
 
-			if ((nCurrentMillis - nLastWriteTick) >= TIME_SAVE_INTERVAL) {
-				nLastWriteTick = nCurrentMillis;
+			if ((nCurrentMillis - nTimestampSaveInterval) >= TIME_SAVE_INTERVAL) {
+				nTimestampSaveInterval = nCurrentMillis;
 
 				char cBuffer[12];
 				snprintf(cBuffer, sizeof(cBuffer), "%lu", (long)pTimeNow);
@@ -2112,10 +2114,10 @@ void loop() {
 		}
 		// ================================================== Soil Section ================================================== //
 		{
-			static bool bFirstCheck = false;
+			static bool bFirstSoilCheck = true;
 
-			if (!bFirstCheck) {
-				bFirstCheck = true;
+			if (bFirstSoilCheck) {
+				bFirstSoilCheck = false;
 
 				CheckSoilHumidity();
 			}
@@ -2151,9 +2153,6 @@ void loop() {
 		// ================================================== Fertilizers Incorporation Section ================================================== //
 		{
 			if (g_bApplyFertilizers) {
-				static FertilizerIncorporationStage Stages[MAX_FERTILIZER_PUMPS] = {};
-				static uint8_t nMaxStages = 0;
-
 				if (nMaxStages == 0) {
 					for (int8_t i = g_vecWateringStages.size() - 1; i >= 0; --i) {
 						const auto& Watering = g_vecWateringStages[i];
@@ -2486,8 +2485,21 @@ void loop() {
 				WriteToSD(cBuffer, strValues.c_str(), true);
 			}
 		}
+		// ================================================== Autonomous environmental regulation Section ================================================== //
+		{
+			static uint64_t nLastEnvironmentCorrectionElapsedTime = 0;
+			static bool bFirstCorrection = true;
+
+			if (bFirstCorrection || (nCurrentMillis - nLastEnvironmentCorrectionElapsedTime) >= g_nEnvironmentCorrectionInterval) {
+				bFirstCorrection = false;
+				nLastEnvironmentCorrectionElapsedTime = nCurrentMillis;
+
+				GetVPDRecommendation();
+				// TODO: El día de mañana acá habría que en base al valor de g_LastRecommendation, ejecutar una acción para corregir los parámetros ambientales
+			}
+		}
 	}
-	// ================================================== OUT OF 1 SECOND CHECK INTERVAL ================================================== //
+	// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> OUT OF 1 SECOND CHECK INTERVAL <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< //
 	// ================================================== Fertilizers Incorporation Section ================================================== //
 	{
 		if (nMaxStages > 0) {
