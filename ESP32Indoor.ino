@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260401_2155" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260401_0049" // TODO: Update this value before export binary
 
 #include <map>
 #include <Secrets.h>
@@ -1798,7 +1798,7 @@ void setup() {
       LOGGER(INFO, false, "Software Upload > Cleaned: %d temporary files removed.", vecTmpFiles.size());
     });
 
-    pRequest->send(200, F("text/plain"), "OK.");
+    pRequest->send(200, F("text/plain"), F("OK"));
   });
 
   g_pWebServer.on("/upload", HTTP_POST, [](AsyncWebServerRequest* pRequest) {
@@ -1908,7 +1908,7 @@ void setup() {
       }
     });
 
-    pRequest->send(200, F("text/plain"), bAllOk ? "Actualización completa." : "Error en el reemplazo.");
+    pRequest->send(200, F("text/plain"), bAllOk ? F("Actualización completa.") : F("Error en el reemplazo."));
   });
 
   g_pWebServer.begin();
@@ -2064,9 +2064,7 @@ void loop() {
                   float fCCToApply = Watering.FertilizerToApply[j];
 
                   if (fCCToApply > 0.001f) {
-                    float fDuration = ((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;
-
-                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), fDuration };
+                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), ((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f };
 
                     LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
                   }
@@ -2083,9 +2081,7 @@ void loop() {
                   float fCCToApply = Watering.FertilizerToApply[j];
 
                   if (fCCToApply > 0.001f) {
-                    float fDuration = ((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;
-
-                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), fDuration };
+                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), ((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f };
 
                     LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
                   }
