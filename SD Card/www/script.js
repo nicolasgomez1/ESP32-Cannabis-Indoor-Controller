@@ -662,7 +662,7 @@ function UpdateReservoirIndicator(e,l){
 }
 
 Object.assign(Chart.defaults.datasets.line,{borderWidth:1.5,tension:.3});
-Chart.defaults.layout.padding={left:20,right:20};
+Chart.defaults.layout.padding={top:20,left:20,right:20};
 Chart.defaults.scales.linear={offset:false,display:false};
 Chart.defaults.interaction={mode:'index',intersect:false};
 
@@ -720,6 +720,8 @@ Chart2Labels.forEach((ds,i)=>{
 	ds.yAxisID=i==2?'1':i==5?'2':'0';
 });
 
+Chart.register(ChartZoom);
+
 let hchart=new Chart(GetElement('hchart'),{type:'line',data:{datasets:Chart2Labels},
 	options:{
 		maintainAspectRatio:false,
@@ -730,7 +732,8 @@ let hchart=new Chart(GetElement('hchart'),{type:'line',data:{datasets:Chart2Labe
 					title:item=>`Fecha: ${new Date(item[0].raw.x*1000).toLocaleString('es-AR',{hour12:false})}`,
 					label:item=>item.dataset.label+`: ${item.dataset.symbol?item.raw.string+item.dataset.symbol+(item.dataset.symbol=='kPa'?` (${GetStateOfVPD(item.raw.string)})`:''):item.raw.string=='0'?'Apagada':`Encendida (${CalcBright(item.raw.string)})`}`
 				}
-			}
+			},
+			zoom:{pan:{enabled:true,mode:'x'},zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x'}}
 		},animation:{duration:0},scales:{x:{type:'linear',ticks:{stepSize:1}}}
 	},plugins:[{
 		afterDatasetsDraw(chart){
@@ -749,6 +752,7 @@ let hchart=new Chart(GetElement('hchart'),{type:'line',data:{datasets:Chart2Labe
 					ctx.shadowColor='black';
 					ctx.shadowOffsetX=1;
 					ctx.shadowOffsetY=1;
+
 					ctx.fillText(ds.data[index].y+ds.symbol,p.x-10,p.y-3);
 					ctx.restore();
 				});
@@ -912,7 +916,6 @@ GetElement('softwareform').addEventListener('submit',async ev=>{
 		let r=await fetch('/upload',{method:'POST',body:fd,headers:{...ch,'File-Size':file.size}});
 		if(!r.ok){
 			alert('Error al subir: '+file.name);
-			await fetch('/upload-clean',{method:'POST',headers:ch});
 			return;
 		}
 	}
