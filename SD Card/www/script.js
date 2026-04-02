@@ -899,25 +899,25 @@ GetElement('otaform').addEventListener('submit',ev=>{
 
 GetElement('softwareform').addEventListener('submit',async ev=>{
 	ev.preventDefault();
-	let f=Array.from(GetElement('softwarefile').files);
+	let f=Array.from(GetElement('softwarefile').files),ch={'Working-Directory':'/www'};
 	if(!f.length)
 		return;
 
-	await fetch('/upload-clean',{method:'POST'});
+	await fetch('/upload-clean',{method:'POST',headers:ch});
 
 	for(let file of f){
 		let fd=new FormData();
 		fd.append('file',file);
 
-		let r=await fetch('/upload',{method:'POST',body:fd,headers:{'File-Size':file.size}});
+		let r=await fetch('/upload',{method:'POST',body:fd,headers:{...ch,'File-Size':file.size}});
 		if(!r.ok){
 			alert('Error al subir: '+file.name);
-			await fetch('/upload-clean',{method:'POST'});
+			await fetch('/upload-clean',{method:'POST',headers:ch});
 			return;
 		}
 	}
 
-	let r=await fetch('/upload-commit',{method:'POST'});
+	let r=await fetch('/upload-commit',{method:'POST',headers:ch});
 	alert(await r.text());
 
 	location.reload();

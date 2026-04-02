@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260401_1953" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260401_0049" // TODO: Update this value before export binary
 
 #include <map>
 #include <Secrets.h>
@@ -1903,10 +1903,10 @@ void setup() {
 
 	g_pWebServer.on("/upload-clean", HTTP_POST, [](AsyncWebServerRequest* pRequest) {
 		SafeSDAccess([&]() {
-			File pWWW = SD.open("/www");
+			File pWorkingDirectory = SD.open(pRequest->getHeader("Working-Directory")->value().c_str());
 			std::vector<String> vecTmpFiles;
 
-			while (File pFile = pWWW.openNextFile()) {
+			while (File pFile = pWorkingDirectory.openNextFile()) {
 				const char* cFileName = pFile.name();
 				size_t nLen = strlen(cFileName);
 
@@ -1916,7 +1916,7 @@ void setup() {
 				pFile.close();
 			}
 
-			pWWW.close();
+			pWorkingDirectory.close();
 
 			for (auto& strTmpFull : vecTmpFiles)
 				SD.remove(strTmpFull.c_str());
@@ -1924,7 +1924,7 @@ void setup() {
 			LOGGER(INFO, false, "Software Upload > Cleaned: %d temporary files removed.", vecTmpFiles.size());
 		});
 
-		pRequest->send(200, F("text/plain"), "OK.");
+		pRequest->send(200, F("text/plain"), F("OK"));
 	});
 
 	g_pWebServer.on("/upload", HTTP_POST, [](AsyncWebServerRequest* pRequest) {
@@ -1937,7 +1937,7 @@ void setup() {
 			return;
 
 		SafeSDAccess([&]() {
-			String strTmpPath = "/www/" + strFileName + ".tmp";
+			String strTmpPath = pRequest->getHeader("Working-Directory")->value() + "/" + strFileName + ".tmp";
 
 			if (!nIndex) {
 				SD.remove(strTmpPath);
@@ -1974,26 +1974,21 @@ void setup() {
 
 					g_mapUploadFiles.erase(it);
 
-					const char* cExpectedSize = pRequest->getHeader(F("File-Size")) ? pRequest->getHeader(F("File-Size"))->value().c_str() : nullptr;
-					if (cExpectedSize) {
-						File pFile = SD.open(strTmpPath, FILE_READ);
-						if (pFile) {
-							bool bSizeMismatch = pFile.size() != (size_t)atoi(cExpectedSize);
+					File pFile = SD.open(strTmpPath, FILE_READ);
+					if (pFile) {
+						bool bSizeMismatch = pFile.size() != (size_t)atoi(pRequest->getHeader(F("File-Size"))->value().c_str());
 
-							pFile.close();
+						pFile.close();
 
-							if (bSizeMismatch) {
-								SD.remove(strTmpPath);
+						if (bSizeMismatch) {
+							SD.remove(strTmpPath);
 
-								LOGGER(ERROR, false, "Software Upload > File size mismatch: %s", strFileName.c_str());
+							LOGGER(ERROR, false, "Software Upload > File size mismatch: %s", strFileName.c_str());
 
-								pRequest->_tempObject = malloc(1);
-							} else {
-								LOGGER(INFO, false, "Software Upload > Temporary file saved: %s", strTmpPath.c_str());
-							}
+							pRequest->_tempObject = malloc(1);
+						} else {
+							LOGGER(INFO, false, "Software Upload > Temporary file saved: %s", strTmpPath.c_str());
 						}
-					} else {
-						LOGGER(WARN, false, "Software Upload > Temporary file: %s saved, but missing File-Size Header.", strFileName.c_str());
 					}
 				}
 			}
@@ -2004,10 +1999,10 @@ void setup() {
 		bool bAllOk = false;
 
 		SafeSDAccess([&]() {
-			File pWWW = SD.open("/www");
+			File pWorkingDirectory = SD.open(pRequest->getHeader("Working-Directory")->value().c_str());
 			std::vector<String> vecTmpFiles;
 
-			while (File pFile = pWWW.openNextFile()) {
+			while (File pFile = pWorkingDirectory.openNextFile()) {
 				const char* cFileName = pFile.name();
 				size_t nLen = strlen(cFileName);
 
@@ -2017,7 +2012,7 @@ void setup() {
 				pFile.close();
 			}
 
-			pWWW.close();
+			pWorkingDirectory.close();
 
 			bAllOk = true;
 
@@ -2034,7 +2029,7 @@ void setup() {
 			}
 		});
 
-		pRequest->send(200, F("text/plain"), bAllOk ? "Actualización completa." : "Error en el reemplazo.");
+		pRequest->send(200, F("text/plain"), bAllOk ? F("Actualización completa.") : F("Error en el reemplazo."));
 	});
 
 	g_pWebServer.begin();
@@ -2180,9 +2175,7 @@ void loop() {
 									float fCCToApply = Watering.FertilizerToApply[j];
 
 									if (fCCToApply > 0.001f) {
-										float fDuration = static_cast<float>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;
-
-										Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), fDuration };
+										Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), ((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f };
 
 										LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
 									}
@@ -2199,9 +2192,7 @@ void loop() {
 									float fCCToApply = Watering.FertilizerToApply[j];
 
 									if (fCCToApply > 0.001f) {
-										float fDuration = static_cast<float>((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f;
-
-										Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), fDuration };
+										Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), ((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f };
 
 										LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
 									}
