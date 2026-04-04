@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260402_0606"
+#define FIRMWAREVERSION "V420260402_0621"
 
 #include <map>
 #include <Secrets.h>
@@ -746,7 +746,7 @@ float CalculateVPD(float fTemperature, float fHumidity) { return ((6.112f * expf
 // temperature and humidity adjustments scored by proximity to the ideal VPD target.
 // Result is stored directly in g_LastRecommendation (TEMP_UP, TEMP_DOWN, HUM_UP, HUM_DOWN, OPTIMAL,
 // or THIS_COULD_GET_UGLY if no safe adjustment can bring VPD into range).
-void GetVPDRecommendation() {
+void GetVPDCorrectionRecommendation() {
 	struct Recommendation {
 		g_Recommendations Recommendation;
 		float Score;
@@ -2494,8 +2494,12 @@ void loop() {
 				bFirstCorrection = false;
 				nLastEnvironmentCorrectionElapsedTime = nCurrentMillis;
 
-				GetVPDRecommendation();
-				// TODO: El día de mañana acá habría que en base al valor de g_LastRecommendation, ejecutar una acción para corregir los parámetros ambientales
+				GetVPDCorrectionRecommendation();
+				/* TODO: El día de mañana acá habría que en base al valor de g_LastRecommendation, ejecutar una acción para corregir los parámetros ambientales.
+
+					- Talvéz antes de llamar a GetVPDCorrectionRecommendation y sobreescribir la última recomendación, es mejor almacenar ese valor en otra variable, Después llamar y comparar la nueva recomendación contra la vieja.
+						Si la recomendación sigue siendo la misma, quiere decir que la última acción ejecutada para corregir el parametro de VPD no fue suficiente. Y haya que ejecutar otra acción (Sumada a la última)...
+				*/
 			}
 		}
 	}

@@ -1,0 +1,389 @@
+<html>
+	<head>
+		<!-- Version V420260404_1057 -->
+		<meta name=viewport content=width=device-width,initial-scale=1.0>
+		<meta charset=utf-8>
+		<link rel=icon href=data:,>
+		<link rel='shortcut icon'href=data:,>
+		<title>ESP32 Indoor Bitácora</title>
+		<link rel=stylesheet type=text/css href=style.css>
+		<style>
+			.dcr{background:transparent;border:none;outline:none;color:#D8DEE9;text-align:center;align-content:center;resize:none;overflow:hidden;width:100%}
+
+			/*TODO: Esto tiene un bug, se sale del contenedor card*/
+			#binnacle{border-collapse:collapse;width:100%}
+			#binnacle thead{background-color:#2A2F34;width-min:1000px}
+			#binnacle td{border:1px solid#2A2F34}
+			#binnacle tbody tr:hover{background-color:rgba(26,29,33,.4)}
+
+			.md{width:1%}
+		
+			.date{width:100%;background:transparent;border:none;text-align:center;outline:none}
+
+			.btn{all:unset;cursor:pointer;font-size:12}
+
+			.menu{padding:5 10;cursor:pointer;color:#D8DEE9;font-size:13}
+			.menu:hover{background:rgba(255,255,255,.1)}
+
+			.selected-merge{outline:1px solid#2A8387}
+		</style>
+		<script>
+			let OldDate='',SendTimeOut=null,ContextMenuTarget=null,SelectedCells=[];
+
+			function GetElement(n){return document.getElementById(n)}
+
+			function Send(e,v){
+				clearTimeout(SendTimeOut);
+				SendTimeOut=setTimeout(()=>console.log('enviar'),1000);
+			}
+
+			function SetupLongPress(textarea){
+				let t;
+
+				textarea.addEventListener('touchstart',e=>{t=setTimeout(()=>ShowContextMenu(e.touches[0],textarea),600)});
+				textarea.addEventListener('touchend',()=>clearTimeout(t));
+				textarea.addEventListener('touchmove',()=>clearTimeout(t));
+			}
+
+			function MenuColorPicker(){GetElement('bgColorPicker').click()}
+
+			function AddNewStrain(){
+				let ns=prompt('Nombre de la Genética','');
+				if(ns!=null&&ns.trim()!=''){
+					let thead=document.querySelector('#binnacle thead tr'),th=document.createElement('th');
+					
+					th.innerHTML=`<n onclick=EditStrainName(this)>${ns.trim()}</n><div style=float:right><button class=btn title='Borrar Genética' onclick=DeleteStrain(this)>❌</button></div>`;
+					thead.appendChild(th);
+
+					document.querySelectorAll('#binnacle tbody tr').forEach(r=>{
+						let td=document.createElement('td'),ta=document.createElement('textarea');
+						ta.className='dcr';
+						ta.setAttribute('oninput','EditColumn(this,true)');
+						ta.setAttribute('oncontextmenu','ShowContextMenu(event,this)');
+
+						SetupLongPress(ta);
+
+						td.appendChild(ta);
+						r.appendChild(td);
+					});
+
+					// TODO: llamar a Send
+				}
+			}
+
+			function AddNewRow(){
+				let tbody=document.querySelector('#binnacle tbody'),StrainCount=document.querySelectorAll('#binnacle thead tr th').length-2,tr=document.createElement('tr');
+
+				let tdActions=document.createElement('td');
+				tdActions.innerHTML=`
+					<button class=btn title='Borrar Fila' onclick=DeleteRow(this)>❌</button>
+					<button class=btn title='Copiar Fila' onclick=CopyRow(this)>📑</button>
+				`;
+				tr.appendChild(tdActions);
+
+				let tdDate=document.createElement('td'),input=document.createElement('input');
+				input.className='date';
+				input.type='date';
+				input.value=new Date().toISOString().split('T')[0];
+				input.setAttribute('onclick','SetOldDate(this)');
+				input.setAttribute('onchange','SetNewDate(this)');
+				tdDate.appendChild(input);
+				tr.appendChild(tdDate);
+
+				for(let i=0;i<StrainCount;i++){
+					let td=document.createElement('td'),ta=document.createElement('textarea');
+					ta.className='dcr';
+					ta.setAttribute('oninput','EditColumn(this,true)');
+					ta.setAttribute('oncontextmenu','ShowContextMenu(event,this)');
+					SetupLongPress(ta);
+					td.appendChild(ta);
+					tr.appendChild(td);
+				}
+
+				tbody.appendChild(tr);
+
+				// TODO: llamar a Send
+			}
+
+			/////////////////////////////////////////////////////////////////////
+			// TODO: Hay que hace que mergee las columnas necesarias
+			let BinnacleArrayDummy = `
+				OG Kush|1773508726|riego 10cc
+				Sour Diesel|1773508726|poda apical
+				Haze|1773508726|defoliación
+				Skunk|1773508726|poda fim
+				OG Kush|1773865929|fertilización con fishmix
+				Sour Diesel|1773865929|ph-
+				Haze|1773865929|pase a floración
+				Skunk|1773865929|scrog
+				OG Kush|1773869530|riego 210cc
+				Sour Diesel|1773869530|psdassd
+				Haze|1773869530|riego 1110cc|2
+				Skunk|1773869530|scrog 2.0
+			`;
+
+			function ComposeBinnacle(data){
+				data=data.trim().split('\n').map(l=>l.trim().split('|')),strains=[...new Set(data.map(([s])=>s))],timestamps=[...new Set(data.map(([,ts])=>ts))].sort((a,b)=>a-b);
+
+				document.querySelector('#binnacle thead tr').querySelectorAll('th:not(.md)').forEach(th=>th.remove());
+				document.querySelector('#binnacle tbody').innerHTML='';
+
+				strains.forEach(s=>{
+					let th=document.createElement('th');
+					th.innerHTML=`<n onclick=EditStrainName(this)>${s}</n><div style=float:right><button class=btn title='Borrar Genética' onclick=DeleteStrain(this)>❌</button></div>`;
+					document.querySelector('#binnacle thead tr').appendChild(th);
+				});
+
+				timestamps.forEach(ts=>{
+					let tr=document.createElement('tr'),tdA=document.createElement('td');
+					tdA.innerHTML=`<button class=btn title='Borrar Fila' onclick=DeleteRow(this)>❌</button> <button class=btn title='Copiar Fila' onclick=CopyRow(this)>📑</button>`;
+					tr.appendChild(tdA);
+
+					let tdF=document.createElement('td'),input=document.createElement('input');
+					input.className='date';
+					input.type='date';
+
+					let d=new Date(ts*1000),skip=0;
+					input.value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+					input.setAttribute('onclick','SetOldDate(this)');
+					input.setAttribute('onchange','SetNewDate(this)');
+					tdF.appendChild(input);
+					tr.appendChild(tdF);
+
+					strains.forEach((s,i)=>{
+    if(skip>0){skip--;return;}
+    let match=data.find(([ds,dts])=>ds==s&&dts==ts);
+    let td=document.createElement('td'),ta=document.createElement('textarea');
+    let span=parseInt(match?.[3])||1;
+    if(span>1){td.setAttribute('colspan',span);skip=span-1;}
+    ta.className='dcr';
+    ta.setAttribute('oninput','EditColumn(this,true)');
+    ta.setAttribute('oncontextmenu','ShowContextMenu(event,this)');
+    ta.value=data.filter(([ds,dts])=>ds==s&&dts==ts).map(([,,note])=>note).join(' / ')||'';
+    SetupLongPress(ta);
+    td.appendChild(ta);
+    tr.appendChild(td);
+});
+
+					document.querySelector('#binnacle tbody').appendChild(tr);
+				});
+
+				document.querySelectorAll('#binnacle tbody tr').forEach(r=>{
+					let f=r.querySelector('textarea');
+					if(f)
+						EditColumn(f);
+				});
+			}
+			/////////////////////////////////////////////////////////////////////
+
+			function EditStrainName(e){
+				let nsn=prompt('Nuevo Nombre',e.innerText);
+				if(nsn!=null&&nsn.trim()!=''){
+					e.innerText=nsn;
+
+					// TODO: llamar a Send
+				}
+			}
+
+			function DeleteStrain(e){
+				if(confirm('¿Seguro que queres eliminar esta Columna?')){
+					let idx=e.closest('th').cellIndex,d=false;
+
+					document.querySelectorAll('#binnacle tr').forEach(r=>{
+						if(r.cells[idx]){
+							r.cells[idx].remove();
+							d=true;
+						}
+					});
+
+					if(d){
+						// TODO: llamar a Send
+					}
+				}
+			}
+
+			function DeleteRow(e){
+				if(confirm('¿Seguro que queres eliminar esta Fila?')){
+					e.closest('tr').remove();
+
+					// TODO: llamar a Send
+				}
+			}
+
+			function CopyRow(e){
+				let tr=e.closest('tr'),clone=tr.cloneNode(true);
+
+				let dateInput=clone.value;
+				if(dateInput)
+					dateInput.value=new Date().toISOString().split('T')[0];
+
+				tr.insertAdjacentElement('afterend',clone);
+				EditColumn(clone.querySelector('textarea'));
+
+				// TODO: llamar a Send
+			}
+
+			function SetOldDate(e){OldDate=e.value}
+
+			function SetNewDate(e){
+				console.log('Old Date: ' + OldDate + ' Current Date: ' + e.value);
+
+				// TODO: Tener en consideración que si OldDate no cuadra con el nuevo, quiere decir que es una modificación y no una nueva fila
+			}
+
+			function EditColumn(e,s){
+				let tas=e.closest('tr').querySelectorAll('textarea'),mh=0;
+				tas.forEach(e=>e.style.height='auto');
+				tas.forEach(e=>{mh=Math.max(mh,e.scrollHeight)});
+				tas.forEach(e=>e.style.height=mh);
+
+				if(s)
+					Send();
+			}
+
+			function ShowContextMenu(e,textarea){
+				e.preventDefault();
+				ContextMenuTarget=textarea;
+
+				GetElement('menuMerge').style.display=SelectedCells.length>=2?'block':'none';
+				GetElement('menuSplit').style.display=textarea.closest('td')?.colSpan>1?'block':'none';
+
+				let m=GetElement('contextMenu');
+				m.style.display='block';
+				m.style.left=e.pageX;
+				m.style.top=e.pageY;
+			}
+
+			document.addEventListener('click',()=>{GetElement('contextMenu').style.display='none'});
+
+			function ClearSelection(){
+				SelectedCells.forEach(td=>td.classList.remove('selected-merge'));
+				SelectedCells=[];
+			}
+
+			function TryMerge(){
+				let rows=new Set(SelectedCells.map(td=>td.closest('tr')));
+				if(rows.size>1){
+					alert('Solo se pueden unir celdas de la misma fila.');
+					ClearSelection();
+					return;
+				}
+
+				SelectedCells.sort((a,b)=>a.cellIndex-b.cellIndex);
+
+				for (let i=1;i<SelectedCells.length;i++){
+					if(SelectedCells[i].cellIndex!=SelectedCells[i-1].cellIndex+1){
+						alert('Las celdas deben ser contiguas.');
+						ClearSelection();
+						return;
+					}
+				}
+
+				let leftText=SelectedCells[0].querySelector('textarea')?.value||'(vacía)';
+				if(!confirm(`Se va a unir ${SelectedCells.length} celdas.\nSe va a mantener solo: '${leftText}'\n¿Continuar?`)){
+					ClearSelection();
+					return;
+				}
+
+				SelectedCells[0].setAttribute('colspan',SelectedCells.length);
+				for(let i=1;i<SelectedCells.length;i++)
+					SelectedCells[i].remove();
+
+				ClearSelection();
+
+				// TODO: llamar a Send
+			}
+
+			function TrySplit(){
+				let td=ContextMenuTarget.closest('td');
+				if(!td||td.colSpan<2)
+					return;
+
+				let span=td.colSpan,tr=td.closest('tr');
+				td.removeAttribute('colspan');
+
+				for (let i=1;i<span;i++){
+					let newTD=document.createElement('td'),ta=document.createElement('textarea');
+					ta.className='dcr';
+					ta.setAttribute('oninput','EditColumn(this,true)');
+					ta.setAttribute('oncontextmenu','ShowContextMenu(event,this)');
+					SetupLongPress(ta);
+					newTD.appendChild(ta);
+					td.insertAdjacentElement('afterend',newTD);
+				}
+
+				// TODO: llamar a Send
+			}
+		</script>
+	</head>
+	<body>
+		<div id=contextMenu style='display:none;position:absolute;background:#2A2F34;border:1px solid#444;z-index:999;padding:4 0'>
+			 <div class=menu id=menuMerge style=display:none onclick=TryMerge()>⬌ Unir celdas seleccionadas</div>
+			 <div class=menu id=menuSplit style=display:none onclick=TrySplit()>⬌ Separar celdas</div>
+			<div class=menu onclick=MenuColorPicker()>🎨 Color de Fondo</div>
+		</div>
+		<input type=color id=bgColorPicker style=display:none>
+		<div id=wrapper>
+			<card_header>
+				<ct>Bitácora de Cultivo</ct><br>
+				<button onclick=AddNewStrain()>Agregar nueva Genética</button> <button onclick=AddNewRow()>Agregar nueva Fila</button>
+				<container>
+					<table id=binnacle>
+						<thead>
+							<tr>
+								<th class=md>Acciones</th>
+								<th class=md>Fecha</th>
+							</tr>
+						</thead>
+						<tbody>
+						</tbody>
+					</table>
+				</container>
+			</card_header>
+		</div>
+	</body>
+	<script>
+		window.addEventListener('load',()=>{
+			document.querySelectorAll('tbody tr').forEach(r=>{
+				let f=r.querySelector('textarea');
+				if(f)
+					EditColumn(f);
+			});
+		});
+
+		ComposeBinnacle(BinnacleArrayDummy);
+
+		GetElement('bgColorPicker').addEventListener('input',e=>{
+			if(ContextMenuTarget){
+				console.log('new color setted');
+				ContextMenuTarget.style.backgroundColor=e.target.value;
+
+				// TODO: llamar a Send
+			}
+		});
+
+		document.querySelector('#binnacle').addEventListener('pointerdown',e=>{
+			if(e.button==2)
+				return;
+
+			if(!e.ctrlKey){
+				ClearSelection();
+				return;
+			}
+
+			let td=e.target.closest('td');
+			if(!td||td.cellIndex<2||!td.closest('tbody'))
+				return;
+
+			e.preventDefault();
+
+			if(SelectedCells.includes(td)){
+				td.classList.remove('selected-merge');
+				SelectedCells=SelectedCells.filter(c=>c!=td);
+			}else{
+				td.classList.add('selected-merge');
+				SelectedCells.push(td);
+			}
+		});
+	</script>
+</html>

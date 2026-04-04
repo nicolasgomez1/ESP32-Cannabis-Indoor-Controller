@@ -1,5 +1,5 @@
-const JSVersion='V420260401_1953';
-let bFirst=true,stl=false,nTentWork=-1,nT,nH,fVPD;
+const JSVersion='V420260402_0218';
+let bFirst=true,nSendTimeOut=null,stl=false,nTentWork=-1,nT,nH,fVPD;
 
 function GetElement(n){return document.getElementById(n)}
 
@@ -372,10 +372,9 @@ function RequestHistory(){
 	}).catch(()=>setTimeout(RequestHistory,30000));
 }
 
-let sdb;
 function Send(e,v){
-	clearTimeout(sdb);
-	sdb=setTimeout(()=>SendAction('update',e.id,v),1000);
+	clearTimeout(nSendTimeOut);
+	nSendTimeOut=setTimeout(()=>SendAction('update',e.id,v),1000);
 }
 
 function CalcCDC(){
@@ -717,7 +716,7 @@ Chart2Labels.forEach((ds,i)=>{
 	ds.pointRadius=0;
 	ds.tension=0;
 	ds.backgroundColor=ds.borderColor;
-	ds.yAxisID=i==2?'1':i==5?'2':'0';
+	ds.yAxisID=i==0?'1':i==2?'2':i==5?'3':'0';
 });
 
 Chart.register(ChartZoom);
