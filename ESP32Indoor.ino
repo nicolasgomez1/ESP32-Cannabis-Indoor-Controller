@@ -20,6 +20,7 @@
 #include <SimpleDHT.h>  // DHT22: 0~100%RH ±2-5% | -40~80°C ±0.5°C (FMD)
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
+// TODO: Agregar los endpoints para binnacle (read / write)
 
 // NOTES:
 // Default IP for AP mode is: 192.168.4.1
@@ -164,7 +165,8 @@ const char* g_cWebServerFiles[] = { // Add here files to be server by the webser
 	"/www/fan.webp",
 	"/www/style.css",
 	"/www/script.js",
-	"/www/logs.html"
+	"/www/logs.html",
+	"/www/.binnacle.html"
 };
 
 // DO NOT TOUCH IT!
