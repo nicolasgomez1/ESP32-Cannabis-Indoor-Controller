@@ -22,7 +22,7 @@
 		<script>
 			let p=n=>n.toString().padStart(2,'0');
 
-			fetch('/?action=list&logs').then(r=>r.text()).then(t=>{
+			fetch('/?action=list&d=logs').then(r=>r.text()).then(t=>{
 				let e=document.getElementById('logslist'),f=t.split(':'),d=new Date(),today=`logging_${p(d.getDate())}_${p(d.getMonth()+1)}_${d.getFullYear()}.txt`;
 
 				const parseDate=n=>{let m=n.match(/(\d+)_(\d+)_(\d+)/);return m?new Date(parseInt(m[3]),parseInt(m[2])-1,parseInt(m[1])):new Date(0);};
@@ -55,7 +55,7 @@
 				});
 			});
 
-			fetch('/?action=list&metrics').then(r=>r.text()).then(t=>{
+			fetch('/?action=list&d=metrics').then(r=>r.text()).then(t=>{
 				let e=document.getElementById('metricslist'),f=t.split(':'),d=new Date(),today=`metrics_${p(d.getMonth()+1)}_${d.getFullYear()}.txt`;
 
 				const parseDate=n=>{let m=n.match(/(\d+)_(\d+)/);return m?new Date(parseInt(m[2]),parseInt(m[1])-1):new Date(0);};

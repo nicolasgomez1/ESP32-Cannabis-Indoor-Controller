@@ -1772,14 +1772,13 @@ void setup() {
 				*/
 				pRequest->send(200, F("text/plain"), "REFRESH" + strResponse);
 				return;
-			} else if (pRequest->arg("action") == "list") {  // This returns the file list in logs folder
-				if (pRequest->hasArg("logs") || pRequest->hasArg("metrics")) {
+			} else if (pRequest->arg("action") == "list") {  // This returns file list from any directory in the SD
+				if (pRequest->hasArg("d")) {
 					if (!SafeSDAccess([&]() {
 						bool bFirst = true;
 						String strFileName, strResponse;
-						String strFolder = pRequest->hasArg("logs") ? "logs" : "metrics";
-						File pLogsDir = SD.open("/" + strFolder);
-						File pFile = pLogsDir.openNextFile();
+						File pWorkingDirectory = SD.open("/" + pRequest->arg("d"));
+						File pFile = pWorkingDirectory.openNextFile();
 
 						while (pFile) {
 							strFileName = String(pFile.name());
@@ -1799,10 +1798,10 @@ void setup() {
 
 							pFile.close();
 
-							pFile = pLogsDir.openNextFile();
+							pFile = pWorkingDirectory.openNextFile();
 						}
 
-						pLogsDir.close();
+						pWorkingDirectory.close();
 
 						pRequest->send(200, F("text/plain"), strResponse);
 					})) {

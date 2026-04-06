@@ -66,7 +66,7 @@
 		</div>
 	</body>
 	<script>
-		let OldDate='',SendTimeOut=null,ContextMenuTarget=null,SelectedCells=[];
+		let CurrentDataSet=null,OldDate='',SendTimeOut=null,ContextMenuTarget=null,SelectedCells=[];
 
 		function GetElement(n){return document.getElementById(n)}
 
@@ -84,15 +84,19 @@
 					si+=span;
 				});
 			});
-			//return lines.join('\n');
-			console.log(lines.join('\n'));
+
+			return lines.join('\n');
 		}
 
-		function Send(){
+		function TrySend(){
 			clearTimeout(SendTimeOut);
 			SendTimeOut=setTimeout(()=>{
-				SerializeBinnacle();
-				// TODO: ...
+				let ds=SerializeBinnacle();
+
+				if(CurrentDataSet.trim()!=ds.trim()){
+					// TODO: Acá enviar los datos al endpoint, una vez confirmado que se recibieron, sobreescribir CurrentDataSet con el contenido de ds
+					console.log('Hay cambios\nOLD:\n'+CurrentDataSet+'\nNEW:\n'+ds);
+				}
 			},1000);
 		}
 
@@ -143,7 +147,7 @@
 					r.appendChild(td);
 				});
 
-				Send();
+				TrySend();
 			}
 		}
 
@@ -176,7 +180,7 @@
 
 			tbody.appendChild(tr);
 
-			Send();
+			TrySend();
 		}
 
 		function ComposeBinnacle(data){
@@ -250,7 +254,7 @@
 			let nsn=prompt('Nuevo Nombre',e.innerText);
 			if(nsn!=null&&nsn.trim()!=''){
 				e.innerText=nsn;
-				Send();
+				TrySend();
 			}
 		}
 
@@ -278,21 +282,25 @@
 					});
 				});
 
-				Send();
+				TrySend();
 			}
 		}
 
 		function DeleteRow(e){
 			if(confirm('¿Seguro que queres eliminar esta Fila?')){
 				e.closest('tr').remove();
-				Send();
+				TrySend();
 			}
 		}
 
 		function CopyRow(e){
 			let tr=e.closest('tr'),clone=tr.cloneNode(true);
 
-			tr.insertAdjacentElement('afterend',clone);
+			let d=clone.querySelector('input[type=date]');
+			if(d)
+				d.value=new Date().toISOString().split('T')[0];
+
+			document.querySelector('#binnacle tbody').appendChild(clone);
 
 			EditColumn(clone.querySelector('textarea'),true);
 		}
@@ -305,7 +313,7 @@
 				return;
 			}
 
-			Send();
+			TrySend();
 		}
 
 		function EditColumn(e,s){
@@ -316,7 +324,7 @@
 			tas.forEach(e=>e.style.height=mh);
 
 			if(s)
-				Send();
+				TrySend();
 		}
 
 		document.addEventListener('click',()=>{GetElement('cm').style.display='none'});
@@ -356,7 +364,7 @@
 
 			ClearSelection();
 
-			Send();
+			TrySend();
 		}
 
 		function TrySplit(){
@@ -378,7 +386,7 @@
 				td.insertAdjacentElement('afterend',newTD);
 			}
 
-			Send();
+			TrySend();
 		}
 
 		GetElement('cp').addEventListener('input',e=>{
@@ -387,7 +395,7 @@
 				td.style.backgroundColor=e.target.value;
 				td.color=e.target.value;
 
-				Send();
+				TrySend();
 			}
 		});
 
@@ -437,30 +445,28 @@
 					EditColumn(f);
 			});
 
-let BinnacleArrayDummy = `
-OG Kush|1772766000|riego 10cc
+CurrentDataSet = `OG Kush|1772766000|riego 10cc
 Sour Diesel|1772766000|poda apical
 Haze|1772766000|defoliación
 Skunk|1772766000|poda fim
-test|1772766000|
+test|1772766000|7
 555|1772766000|1
 OG Kush|1773111600|fertilización con fishmix
 Sour Diesel|1773111600|ph-
 Haze|1773111600|pase a floración
 Skunk|1773111600|scrog
-test|1773111600|
+test|1773111600|6
 555|1773111600|2
 OG Kush|1773198000|riego 210cc
 Sour Diesel|1773198000|psdassd
 Haze|1773198000|riego 1110cc|2|#F9AE58
-test|1773198000|
+test|1773198000|5
 555|1773198000|3
 OG Kush|1774839600|test↵t123↵3443243↵↵↵gggg
-Sour Diesel|1774839600|test test|4|#c40808
-555|1774839600|4
-		`;
+Sour Diesel|1774839600|test 4 combinadas|4|#844848
+555|1774839600|4`;
 
-			ComposeBinnacle(BinnacleArrayDummy);
+			ComposeBinnacle(CurrentDataSet);
 		});
 	</script>
 </html>
