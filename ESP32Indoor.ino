@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260402_0621"
+#define FIRMWAREVERSION "V420260406_1354"
 
 #include <map>
 #include <Secrets.h>
@@ -20,7 +20,6 @@
 #include <SimpleDHT.h>  // DHT22: 0~100%RH ±2-5% | -40~80°C ±0.5°C (FMD)
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
-// TODO: Agregar los endpoints para binnacle (read / write)
 
 // NOTES:
 // Default IP for AP mode is: 192.168.4.1
@@ -233,6 +232,7 @@ uint8_t g_nLowReservoirLevelWarning = 0;
 char g_cCALLMEBOT_API_KEY[8];
 char g_cCALLMEBOT_PHONE[15];
 uint64_t g_nEnvironmentCorrectionInterval = 0;
+char g_cBinnacleName[48];
 
 // Profiles Variables
 uint8_t g_nStartLightTime = 0;
@@ -476,6 +476,8 @@ void SaveSettings() {
 			pSettingsFile.println(g_cCALLMEBOT_PHONE);
 
 			pSettingsFile.println(g_nEnvironmentCorrectionInterval);
+
+			pSettingsFile.println(g_cBinnacleName);
 
 			pSettingsFile.close();
 
@@ -1241,6 +1243,11 @@ void setup() {
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTONOMOUS ENVIRONMENT REGULATION CHECK INTERVAL
 			g_nEnvironmentCorrectionInterval = atoi(cBuffer);
 			///////////////////////////////////////////////////
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // CURRENT BINNACLE NAME
+
+			strncpy(g_cBinnacleName, cBuffer, sizeof(g_cBinnacleName));
+			g_cBinnacleName[sizeof(g_cBinnacleName) - 1] = '\0';
+			///////////////////////////////////////////////////
 			pSettingsFile.close();
 		} else {
 			LOGGER(ERROR, false, "Failed to open Settings file.");
@@ -1321,9 +1328,10 @@ void setup() {
 	for (uint8_t i = 0; i < (sizeof(g_cWebServerFiles) / sizeof(g_cWebServerFiles[0])); i++)
 		g_pWebServer.serveStatic(g_cWebServerFiles[i], SD, g_cWebServerFiles[i]).setCacheControl("max-age=2592000");  // Cache it by 1 month
 
-	// Static serving of the logs & metrics folder and all the files inside it
+	// Static serving of the logs, metrics & binnacles folders and all the files inside of them
 	g_pWebServer.serveStatic("/logs", SD, "/logs").setCacheControl("max-age=2592000, immutable"); // Cache it by 1 month
 	g_pWebServer.serveStatic("/metrics", SD, "/metrics").setCacheControl("max-age=2592000, immutable"); // Cache it by 1 month
+	g_pWebServer.serveStatic("/binnacles", SD, "/binnacles").setCacheControl("max-age=2592000, immutable"); // Cache it by 1 month
 
 	// index.html server & Request handler
 	g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* pRequest) {
@@ -1496,8 +1504,29 @@ void setup() {
 						strReturn += "Se actualizó la Intensidad de Luz.\r\n";
 					}
 				}
-				// =============== Crop Begin Date =============== //
-				CheckNSetValue(pRequest, "cb", g_nCropBegin, F("la Fecha de inicio de Cultivo"), strReturn);
+				// =============== Crop Begin date & Current Binnacle name =============== //
+				if (pRequest->hasArg("cb")) {
+					String strArgument = pRequest->arg("cb");
+					int nDivider = strArgument.indexOf('|');
+
+					// Crop Begin date
+					nNewValue = strArgument.substring(0, nDivider).toInt();
+					if (nNewValue != g_nCropBegin) {
+						g_nCropBegin = nNewValue;
+
+						strReturn += "la Fecha de inicio de Cultivo.\r\n";
+					}
+
+					// Current Binnacle name
+					time_t pTimeNow = time(nullptr);
+					String strNewBinnacleName = strArgument.substring(nDivider + 1) + "_" + String(pTimeNow);
+
+					if (strcmp(g_cBinnacleName, strNewBinnacleName.c_str()) != 0) {
+						strNewBinnacleName.toCharArray(g_cBinnacleName, sizeof(g_cBinnacleName));
+
+						strReturn += "el nombre de la Bitácora actual.\r\n";
+					}
+				}
 				// =============== Irrigation Day Counter =============== //
 				CheckNSetValue(pRequest, "idc", g_nIrrigationDayCounter, F("los Días de Riego transcurridos"), strReturn);
 				// =============== Internal Fan Mode =============== //
@@ -1772,12 +1801,12 @@ void setup() {
 				*/
 				pRequest->send(200, F("text/plain"), "REFRESH" + strResponse);
 				return;
-			} else if (pRequest->arg("action") == "list") {  // This returns file list from any directory in the SD
-				if (pRequest->hasArg("d")) {
+			} else if (pRequest->arg("action") == "list") {  // This returns file list from any directory in the SD Card
+				if (pRequest->hasArg("folder")) {
 					if (!SafeSDAccess([&]() {
 						bool bFirst = true;
 						String strFileName, strResponse;
-						File pWorkingDirectory = SD.open("/" + pRequest->arg("d"));
+						File pWorkingDirectory = SD.open("/" + pRequest->arg("folder"));
 						File pFile = pWorkingDirectory.openNextFile();
 
 						while (pFile) {
@@ -1810,7 +1839,25 @@ void setup() {
 				}
 
 				return;
-			} else if (pRequest->arg("action") == "delete") { // Delete files from SD folders
+			/*} else if (pRequest->arg("action") == "create") {	// Create files in any SD folder
+				if (pRequest->hasArg("folder") && pRequest->hasArg("file")) {
+					if (!SafeSDAccess([&]() {
+						String strPath = "/" + pRequest->arg("folder") + "/" + pRequest->arg("file");
+
+						File pFile = SD.open(strPath, FILE_WRITE);
+						if (pFile) {
+							pFile.close();
+							pRequest->send(200, F("text/plain"), F("OK"));
+						} else {
+							pRequest->send(500, F("text/plain"), F("FAIL"));
+						}
+					})) {
+						pRequest->send(500, F("text/plain"), F("No hay una Tarjeta SD conectada."));
+					}
+				}
+
+				return;*/
+			} else if (pRequest->arg("action") == "delete") {	// Delete files from any SD folder
 				if (pRequest->hasArg("folder") && pRequest->hasArg("file")) {
 					if (!SafeSDAccess([&]() {
 						String strPath = "/" + pRequest->arg("folder") + "/" + pRequest->arg("file");
@@ -1830,6 +1877,23 @@ void setup() {
 
 				return;
 			}
+		} else if (pRequest->arg("action") == "savebinnacle") {
+			if (pRequest->hasArg("content")) {
+				if (!SafeSDAccess([&]() {
+					String strPath = "/binnacles/" + String(g_cBinnacleName) + ".txt";
+
+					if (!SD.exists(strPath))
+						strPath = "/binnacles/default.txt";
+
+					WriteToSD(strPath.c_str(), pRequest->arg("content").c_str(), true, false);
+
+					pRequest->send(200, F("text/plain"), F("OK"));
+				})) {
+					pRequest->send(500, F("text/plain"), F("No hay una Tarjeta SD conectada."));
+				}
+			}
+
+			return;
 		} else {  // Return Panel content
 			if (!SafeSDAccess([&]() {
 				pRequest->send(SD, "/www/index.html", "text/html", false, HTMLProcessor);
@@ -1850,7 +1914,7 @@ void setup() {
 
 		if (bUpdate) {
 			time_t pTimeNow = time(nullptr);
-			char cBuffer[12];
+			char cBuffer[11];
 			snprintf(cBuffer, sizeof(cBuffer), "%lu", (long)pTimeNow);
 
 			WriteToSD("/time", cBuffer, false); // Write current time to SD Card
@@ -2074,7 +2138,7 @@ void loop() {
 			if ((nCurrentMillis - nTimestampSaveInterval) >= TIME_SAVE_INTERVAL) {
 				nTimestampSaveInterval = nCurrentMillis;
 
-				char cBuffer[12];
+				char cBuffer[11];
 				snprintf(cBuffer, sizeof(cBuffer), "%lu", (long)pTimeNow);
 				WriteToSD("/time", cBuffer, false); // Write current time to SD Card
 			}

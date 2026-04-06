@@ -1,4 +1,4 @@
-const JSVersion='V420260402_0218';
+const JSVersion='V420260406_1329';
 let bFirst=true,nSendTimeOut=null,stl=false,nTentWork=-1,nT,nH,fVPD;
 
 function GetElement(n){return document.getElementById(n)}
@@ -383,13 +383,23 @@ function CalcCDC(){
 }
 
 function SetCropBegin(){
-	let e=GetElement('cb'),utc=Math.floor(Date.now()/1000);
+	let ml=36,nb=prompt(`Nombre de la nueva Bitácora\n(El nombre debe tener máximo ${ml} caracteres)`,'');
 
-	e.innerText=new Date(utc*1000).toLocaleDateString('es-AR');
+	if(nb!=null&&nb.trim()!=''){
+		if(nb.length>ml){
+			alert(`El nombre debe tener máximo ${ml} caracteres.`);
+			SetCropBegin();
+			return;
+		}
 
-	CalcCDC();
+		let e=GetElement('cb'),utc=Math.floor(Date.now()/1000);
 
-	SendAction('update',e.id,utc);
+		e.innerText=new Date(utc*1000).toLocaleDateString('es-AR');
+
+		CalcCDC();
+
+		SendAction('update',e.id,utc+'|'+nb);
+	}
 }
 
 function SetFanMode(n,s){

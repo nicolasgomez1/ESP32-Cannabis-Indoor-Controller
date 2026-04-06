@@ -42,13 +42,12 @@
 			<card_header>
 				<ct>Bitácora de Cultivo</ct><br>
 				<container>
-					<select id=binnacles>
-						<option>Runtz 2025</option>
-						<option>Afghan 2024</option>
-						<option>Afghan 2023</option>
-						<option>Dry</option>
+					Bitácoras<select id=binnacleslist>
+						<option fullname=runtz_2025.txt>Runtz 2025</option>
+						<option fullname=Afghan_2024.txt>Afghan 2024</option>
+						<option fullname=Afghan_2023.txt>Afghan 2023</option>
 					</select>
-					<button onlclick=CreateNewBinnacle()>Crear nueva Bitácora</button> <button onlclick=DeleteBinnacle()>Borrar Bitácora</button>
+					<button onclick=DeleteBinnacle()>Borrar Bitácora</button>
 				</container>
 				<container>
 					<table id=binnacle>
@@ -120,12 +119,19 @@
 			ta.addEventListener('touchmove',()=>clearTimeout(t));
 		}
 
-		function CreateNewBinnacle(){
-			// TODO: ...
-		}
-
 		function DeleteBinnacle(){
-			// TODO: ...
+			let b=document.querySelector('#binnacleslist option:checked'),fn=b.getAttribute('fullname');
+
+			if(confirm(`¿Seguro que queres eliminar la Bitácora:\n${b.text}?`)){
+				fetch('/?action=delete&folder=binnacles&file='+encodeURIComponent(fn)).then(r=>{
+					if(!r.ok)
+						throw new Error();
+				}).then(()=>{
+					b.remove();
+
+					GetElement('binnacleslist').dispatchEvent(new Event('change'));
+				}).catch(()=>alert('Error al eliminar'));
+			}
 		}
 
 		function AddNewStrain(){
@@ -327,8 +333,6 @@
 				TrySend();
 		}
 
-		document.addEventListener('click',()=>{GetElement('cm').style.display='none'});
-
 		function ClearSelection(){
 			SelectedCells.forEach(td=>td.classList.remove('sm'));
 			SelectedCells=[];
@@ -388,6 +392,23 @@
 
 			TrySend();
 		}
+
+		GetElement('binnacleslist').addEventListener('change',e=>{
+		    const option=e.target.selectedOptions[0];
+
+		    if (!option) return;
+
+		    const fullname = option.getAttribute('fullname');
+		    const label = option.textContent;
+
+		    console.log(fullname);
+		    alert('on change');
+		    // TODO: ...
+		    // Acá podrías cargar la bitácora desde el ESP32
+		    // fetch(`/api?action=load&file=${fullname}`)
+		});
+
+		document.addEventListener('click',()=>{GetElement('cm').style.display='none'});
 
 		GetElement('cp').addEventListener('input',e=>{
 			if(ContextMenuTarget){
@@ -467,6 +488,8 @@ Sour Diesel|1774839600|test 4 combinadas|4|#844848
 555|1774839600|4`;
 
 			ComposeBinnacle(CurrentDataSet);
+
+			// TODO: Crear una función y llamarla, ésta debe ser la encargada de solicitar la lista de bitácoras. una vez obtenida, popular el select, en el nombre de los archivos está la fecha de creación, en base a ese parametro, es que hay que ordenar la lista. Seleccionar el más reciente y al seleccionar, hay que solicitar los datos de dicho archivo para poder llamar a ComposeBinnacle con esa data
 		});
 	</script>
 </html>
