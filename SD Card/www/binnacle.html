@@ -74,11 +74,13 @@
 			let strainHeaders=[...document.querySelectorAll('#binnacle thead th')].slice(2).map(th=>th.querySelector('n').innerText),lines=[];
 
 			document.querySelectorAll('#binnacle tbody tr').forEach(tr=>{
-				let si=0;
+				let[y,m,d]=tr.querySelector('input[type=date]').value.split('-'),ts=new Date(y,m-1,d).getTime()/1000,si=0,skip=0;
 
 				[...tr.querySelectorAll('td')].slice(2).forEach(td=>{
-					let note=td.querySelector('textarea')?.value.replaceAll('\n','↵')||'',span=parseInt(td.getAttribute('colspan'))||1,color=td.color;
-					lines.push(`${strainHeaders[si]}|${new Date(tr.querySelector('input[type=date]').value).getTime()/1000}|${note}${span>1||color?'|'+span:''}${color?'|'+color:''}`);
+					let span=parseInt(td.getAttribute('colspan'))||1,color=td.color||'';
+
+					lines.push(`${strainHeaders[si]}|${ts}|${td.querySelector('textarea')?.value.replaceAll('\n','↵')||''}${span>1||color?'|'+span:''}${color?'|'+color:''}`);
+
 					si+=span;
 				});
 			});
@@ -254,17 +256,29 @@
 
 		function DeleteStrain(e){
 			if(confirm('¿Seguro que queres eliminar esta Columna?')){
-				let idx=e.closest('th').cellIndex,d=false;
+				let thIdx=e.closest('th').cellIndex;
 
-				document.querySelectorAll('#binnacle tr').forEach(r=>{
-					if(r.cells[idx]){
-						r.cells[idx].remove();
-						d=true;
-					}
+				e.closest('th').remove();
+
+				document.querySelectorAll('#binnacle tbody tr').forEach(r=>{
+					let logical=0;
+
+					[...r.cells].forEach(td=>{
+						let span=td.colSpan||1;
+						if(logical===thIdx){
+							if(span>1)
+								td.colSpan=span-1;
+							else
+								td.remove();
+						} else if(thIdx>logical&&thIdx<logical+span){
+							td.colSpan=span-1;
+						}
+
+						logical+=span;
+					});
 				});
 
-				if(d)
-					Send();
+				Send();
 			}
 		}
 
@@ -369,7 +383,10 @@
 
 		GetElement('cp').addEventListener('input',e=>{
 			if(ContextMenuTarget){
-				ContextMenuTarget.style.backgroundColor=e.target.value;
+				let td=ContextMenuTarget.closest('td');
+				td.style.backgroundColor=e.target.value;
+				td.color=e.target.value;
+
 				Send();
 			}
 		});
@@ -421,29 +438,26 @@
 			});
 
 let BinnacleArrayDummy = `
-OG Kush|1773100800|riego 10cc
-Sour Diesel|1773100800|poda apical
-Haze|1773100800|defoliación
-Skunk|1773100800|poda fim
-test|1773100800|
-555|1773100800|1
-OG Kush|1773446400|fertilización con fishmix
-Sour Diesel|1773446400|ph-
-Haze|1773446400|pase a floración
-Skunk|1773446400|scrog
-test|1773446400|
-555|1773446400|2
-OG Kush|1773532800|riego 210cc
-Sour Diesel|1773532800|psdassd
-Haze|1773532800|riego 1110cc|2|#F9AE58
-test|1773532800|
-555|1773532800|3
-OG Kush|1775174400|test↵t123↵3443243↵↵↵gggg
-Sour Diesel|1775174400|
-Haze|1775174400|
-Skunk|1775174400|
-test|1775174400|
-555|1775174400|4
+OG Kush|1772766000|riego 10cc
+Sour Diesel|1772766000|poda apical
+Haze|1772766000|defoliación
+Skunk|1772766000|poda fim
+test|1772766000|
+555|1772766000|1
+OG Kush|1773111600|fertilización con fishmix
+Sour Diesel|1773111600|ph-
+Haze|1773111600|pase a floración
+Skunk|1773111600|scrog
+test|1773111600|
+555|1773111600|2
+OG Kush|1773198000|riego 210cc
+Sour Diesel|1773198000|psdassd
+Haze|1773198000|riego 1110cc|2|#F9AE58
+test|1773198000|
+555|1773198000|3
+OG Kush|1774839600|test↵t123↵3443243↵↵↵gggg
+Sour Diesel|1774839600|test test|4|#c40808
+555|1774839600|4
 		`;
 
 			ComposeBinnacle(BinnacleArrayDummy);
