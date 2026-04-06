@@ -1,6 +1,6 @@
 <html>
 	<head>
-		<!-- Version V420260405_1057 -->
+		<!-- Version V420260406_1620 -->
 		<meta name=viewport content=width=device-width,initial-scale=1.0>
 		<meta charset=utf-8>
 		<link rel=icon href=data:,>
@@ -42,11 +42,7 @@
 			<card_header>
 				<ct>Bitácora de Cultivo</ct><br>
 				<container>
-					Bitácoras<select id=binnacleslist>
-						<option fullname=runtz_2025.txt>Runtz 2025</option>
-						<option fullname=Afghan_2024.txt>Afghan 2024</option>
-						<option fullname=Afghan_2023.txt>Afghan 2023</option>
-					</select>
+					Bitácoras<select id=binnacleslist></select>
 					<button onclick=DeleteBinnacle()>Borrar Bitácora</button>
 				</container>
 				<container>
@@ -89,12 +85,18 @@
 
 		function TrySend(){
 			clearTimeout(SendTimeOut);
-			SendTimeOut=setTimeout(()=>{
-				let ds=SerializeBinnacle();
 
-				if(CurrentDataSet.trim()!=ds.trim()){
-					// TODO: Acá enviar los datos al endpoint, una vez confirmado que se recibieron, sobreescribir CurrentDataSet con el contenido de ds
-					console.log('Hay cambios\nOLD:\n'+CurrentDataSet+'\nNEW:\n'+ds);
+			SendTimeOut=setTimeout(()=>{
+				let ds=SerializeBinnacle().trim();
+
+				if(CurrentDataSet.trim()!=ds){
+					fetch(`/?action=savebinnacle&file=${encodeURIComponent(document.querySelector('#binnacleslist option:checked').getAttribute('fullname'))}=&content=`+encodeURIComponent(ds)).then(r=>{
+						if(!r.ok)
+							throw new Error();
+					}).then(()=>{
+						CurrentDataSet=ds;
+						alert('Cambios aplicados.');
+					}).catch(()=>alert('Error al intentar guardar.'));
 				}
 			},1000);
 		}
@@ -120,17 +122,16 @@
 		}
 
 		function DeleteBinnacle(){
-			let b=document.querySelector('#binnacleslist option:checked'),fn=b.getAttribute('fullname');
+			let b=document.querySelector('#binnacleslist option:checked');
 
 			if(confirm(`¿Seguro que queres eliminar la Bitácora:\n${b.text}?`)){
-				fetch('/?action=delete&folder=binnacles&file='+encodeURIComponent(fn)).then(r=>{
+				fetch('/?action=delete&folder=binnacles&file='+encodeURIComponent(b.getAttribute('fullname'))).then(r=>{
 					if(!r.ok)
 						throw new Error();
 				}).then(()=>{
 					b.remove();
-
 					GetElement('binnacleslist').dispatchEvent(new Event('change'));
-				}).catch(()=>alert('Error al eliminar'));
+				}).catch(()=>alert('Error al eliminar.'));
 			}
 		}
 
@@ -189,8 +190,8 @@
 			TrySend();
 		}
 
-		function ComposeBinnacle(data){
-			data=data.trim().split('\n').map(l=>l.trim().split('|')),strains=[...new Set(data.map(([s])=>s))],timestamps=[...new Set(data.map(([,ts])=>ts))].sort((a,b)=>a-b);
+		function ComposeBinnacle(){
+			let data=CurrentDataSet.trim().split('\n').map(l=>l.trim().split('|')),strains=[...new Set(data.map(([s])=>s))],timestamps=[...new Set(data.map(([,ts])=>ts))].sort((a,b)=>a-b);
 
 			document.querySelector('#binnacle thead tr').querySelectorAll('th:not(.md)').forEach(th=>th.remove());
 			document.querySelector('#binnacle tbody').innerHTML='';
@@ -348,7 +349,7 @@
 
 			SelectedCells.sort((a,b)=>a.cellIndex-b.cellIndex);
 
-			for (let i=1;i<SelectedCells.length;i++){
+			for(let i=1;i<SelectedCells.length;i++){
 				if(SelectedCells[i].cellIndex!=SelectedCells[i-1].cellIndex+1){
 					alert('Las celdas tienen que ser contiguas.');
 					ClearSelection();
@@ -379,7 +380,7 @@
 			let span=td.colSpan,tr=td.closest('tr');
 			td.removeAttribute('colspan');
 
-			for (let i=1;i<span;i++){
+			for(let i=1;i<span;i++){
 				let newTD=document.createElement('td'),ta=document.createElement('textarea');
 				ta.className='dcr';
 				ta.setAttribute('oninput','EditColumn(this,true)');
@@ -394,18 +395,23 @@
 		}
 
 		GetElement('binnacleslist').addEventListener('change',e=>{
-		    const option=e.target.selectedOptions[0];
+			let o=e.target.selectedOptions[0];
 
-		    if (!option) return;
+			if(!o)
+				return;
 
-		    const fullname = option.getAttribute('fullname');
-		    const label = option.textContent;
+			fetch('/binnacles/'+encodeURIComponent(o.getAttribute('fullname')),{cache:'no-store'}).then(r=>{
+				if(!r.ok){
+					alert(Error(r.status));
+					return;
+				}
 
-		    console.log(fullname);
-		    alert('on change');
-		    // TODO: ...
-		    // Acá podrías cargar la bitácora desde el ESP32
-		    // fetch(`/api?action=load&file=${fullname}`)
+				return r.text();
+			}).then(text=>{
+				CurrentDataSet=text;
+
+				ComposeBinnacle();
+			}).catch(()=>alert('Error al intentar obtener el contenido de la Bitácora.'));
 		});
 
 		document.addEventListener('click',()=>{GetElement('cm').style.display='none'});
@@ -459,37 +465,22 @@
 			m.style.top=e.pageY;
 		});
 
-		window.addEventListener('load',()=>{
-			document.querySelectorAll('tbody tr').forEach(r=>{
-				let f=r.querySelector('textarea');
-				if(f)
-					EditColumn(f);
+		window.onload=function(){
+			fetch('/?action=list&folder=binnacles').then(r=>r.text()).then(t=>{
+				let bl=GetElement('binnacleslist');
+				bl.innerHTML='';
+
+				t.split(':').filter(n=>n.trim()!='').sort((a,b)=>{
+					return parseInt(b.match(/_(\d+)\.txt$/)?.[1])||0-parseInt(a.match(/_(\d+)\.txt$/)?.[1])||0;
+				}).forEach(n=>{
+					let o=document.createElement('option');
+					o.setAttribute('fullname',n);
+					o.textContent=n.replace(/_\d+\.txt$/,'').replace(/_/g,' ');
+					bl.appendChild(o);
+				});
+
+				bl.dispatchEvent(new Event('change'));
 			});
-
-CurrentDataSet = `OG Kush|1772766000|riego 10cc
-Sour Diesel|1772766000|poda apical
-Haze|1772766000|defoliación
-Skunk|1772766000|poda fim
-test|1772766000|7
-555|1772766000|1
-OG Kush|1773111600|fertilización con fishmix
-Sour Diesel|1773111600|ph-
-Haze|1773111600|pase a floración
-Skunk|1773111600|scrog
-test|1773111600|6
-555|1773111600|2
-OG Kush|1773198000|riego 210cc
-Sour Diesel|1773198000|psdassd
-Haze|1773198000|riego 1110cc|2|#F9AE58
-test|1773198000|5
-555|1773198000|3
-OG Kush|1774839600|test↵t123↵3443243↵↵↵gggg
-Sour Diesel|1774839600|test 4 combinadas|4|#844848
-555|1774839600|4`;
-
-			ComposeBinnacle(CurrentDataSet);
-
-			// TODO: Crear una función y llamarla, ésta debe ser la encargada de solicitar la lista de bitácoras. una vez obtenida, popular el select, en el nombre de los archivos está la fecha de creación, en base a ese parametro, es que hay que ordenar la lista. Seleccionar el más reciente y al seleccionar, hay que solicitar los datos de dicho archivo para poder llamar a ComposeBinnacle con esa data
-		});
+		};
 	</script>
 </html>

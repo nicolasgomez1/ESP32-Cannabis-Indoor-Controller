@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260406_1354"
+#define FIRMWAREVERSION "V420260406_1523"
 
 #include <map>
 #include <Secrets.h>
@@ -1878,9 +1878,9 @@ void setup() {
 				return;
 			}
 		} else if (pRequest->arg("action") == "savebinnacle") {
-			if (pRequest->hasArg("content")) {
+			if (pRequest->hasArg("file") && pRequest->hasArg("content")) {
 				if (!SafeSDAccess([&]() {
-					String strPath = "/binnacles/" + String(g_cBinnacleName) + ".txt";
+					String strPath = "/binnacles/" + pRequest->arg("file");
 
 					if (!SD.exists(strPath))
 						strPath = "/binnacles/default.txt";

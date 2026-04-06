@@ -1,4 +1,4 @@
-const JSVersion='V420260406_1329';
+const JSVersion='V420260406_1552';
 let bFirst=true,nSendTimeOut=null,stl=false,nTentWork=-1,nT,nH,fVPD;
 
 function GetElement(n){return document.getElementById(n)}
@@ -301,21 +301,21 @@ function RequestHistory(){
 	let d=new Date(),p=n=>n.toString().padStart(2,'0');
 
 	fetch(`/metrics/metrics_${p(d.getMonth()+1)}_${d.getFullYear()}.txt`,{cache:'no-store'}).then(r=>{
-			if(!r.ok){
-				let e=document.getElementById('hchart'),ctx=e.getContext('2d');
+		if(!r.ok){
+			let e=document.getElementById('hchart'),ctx=e.getContext('2d');
 
-				ctx.font='30px Arial';
-				ctx.fillStyle='#FF0000';
-				ctx.textAlign='center';
-				ctx.fillText(Error(r.status),e.width/2,e.height/2);
+			ctx.font='30px Arial';
+			ctx.fillStyle='#FF0000';
+			ctx.textAlign='center';
+			ctx.fillText(Error(r.status),e.width/2,e.height/2);
 
-				setTimeout(RequestHistory,30000);
+			setTimeout(RequestHistory,30000);
 
-				return;
-			}
+			return;
+		}
 
-			return r.text();
-		}).then(text=>{
+		return r.text();
+	}).then(text=>{
 		let lines=text.trim().split('\n'),w=(parseInt(lines[lines.length-1].split('|')[0])*1000)+GetWheelValue(elements[16].e)*1000*60-Date.now();
 
 		for(let i=0;i<lines.length;i++){
@@ -398,7 +398,7 @@ function SetCropBegin(){
 
 		CalcCDC();
 
-		SendAction('update',e.id,utc+'|'+nb);
+		SendAction('update',e.id,utc+'|'+encodeURIComponent(nb));
 	}
 }
 
