@@ -1,6 +1,6 @@
 <html>
 	<head>
-		<!-- Version V420260406_1620 -->
+		<!-- Version V420260407_0940 -->
 		<meta name=viewport content=width=device-width,initial-scale=1.0>
 		<meta charset=utf-8>
 		<link rel=icon href=data:,>
@@ -61,7 +61,7 @@
 		</div>
 	</body>
 	<script>
-		let CurrentDataSet=null,OldDate='',SendTimeOut=null,ContextMenuTarget=null,SelectedCells=[];
+		let CurrentDataSet=null,OldDate='',SendTimeOut=null,cmt=null,SelectedCells=[];
 
 		function GetElement(n){return document.getElementById(n)}
 
@@ -101,26 +101,6 @@
 			},1000);
 		}
 
-		function SetupLongPress(ta){
-			let t;
-
-			ta.addEventListener('touchstart',e=>{t=setTimeout(()=>{
-				let touch=e.touches[0];
-				ContextMenuTarget=ta;
-
-				GetElement('menuMerge').style.display=SelectedCells.length>=2?'block':'none';
-				GetElement('menuSplit').style.display=ta.closest('td')?.colSpan>1?'block':'none';
-				GetElement('menuColor').style.display=ta.closest('th')?'none':'block';
-
-				let m=GetElement('cm');
-				m.style.display='block';
-				m.style.left=touch.pageX;
-				m.style.top=touch.pageY;
-			},600)});
-			ta.addEventListener('touchend',()=>clearTimeout(t));
-			ta.addEventListener('touchmove',()=>clearTimeout(t));
-		}
-
 		function DeleteBinnacle(){
 			let b=document.querySelector('#binnacleslist option:checked');
 
@@ -147,9 +127,6 @@
 					let td=document.createElement('td'),ta=document.createElement('textarea');
 					ta.className='dcr';
 					ta.setAttribute('oninput','EditColumn(this,true)');
-
-					SetupLongPress(ta);
-
 					td.appendChild(ta);
 					r.appendChild(td);
 				});
@@ -178,9 +155,6 @@
 				let td=document.createElement('td'),ta=document.createElement('textarea');
 				ta.className='dcr';
 				ta.setAttribute('oninput','EditColumn(this,true)');
-
-				SetupLongPress(ta);
-
 				td.appendChild(ta);
 				tr.appendChild(td);
 			}
@@ -240,9 +214,6 @@
 					ta.className='dcr';
 					ta.setAttribute('oninput','EditColumn(this,true)');
 					ta.value=data.filter(([ds,dts])=>ds==s&&dts==ts).map(([,,note])=>note).join(' / ').replaceAll('↵','\n')||'';
-
-					SetupLongPress(ta);
-
 					td.appendChild(ta);
 					tr.appendChild(td);
 				});
@@ -373,7 +344,7 @@
 		}
 
 		function TrySplit(){
-			let td=ContextMenuTarget.closest('td');
+			let td=cmt.closest('td');
 			if(!td||td.colSpan<2)
 				return;
 
@@ -384,9 +355,6 @@
 				let newTD=document.createElement('td'),ta=document.createElement('textarea');
 				ta.className='dcr';
 				ta.setAttribute('oninput','EditColumn(this,true)');
-
-				SetupLongPress(ta);
-
 				newTD.appendChild(ta);
 				td.insertAdjacentElement('afterend',newTD);
 			}
@@ -417,8 +385,8 @@
 		document.addEventListener('click',()=>{GetElement('cm').style.display='none'});
 
 		GetElement('cp').addEventListener('input',e=>{
-			if(ContextMenuTarget){
-				let td=ContextMenuTarget.closest('td');
+			if(cmt){
+				let td=cmt.closest('td');
 				td.style.backgroundColor=e.target.value;
 				td.color=e.target.value;
 
@@ -453,7 +421,7 @@
 		document.querySelector('#binnacle').addEventListener('contextmenu',e=>{
 			e.preventDefault();
 
-			ContextMenuTarget=e.target.closest('textarea');
+			cmt=e.target.closest('textarea');
 
 			GetElement('menuMerge').style.display=SelectedCells.length>=2?'block':'none';
 			GetElement('menuSplit').style.display=e.target.closest('td')?.colSpan>1?'block':'none';

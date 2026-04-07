@@ -1,0 +1,20 @@
+OG Kush|1772766000|riego 10cc
+Sour Diesel|1772766000|poda apical
+Haze|1772766000|defoliación
+Skunk|1772766000|poda fim
+test|1772766000|7
+555|1772766000|1
+OG Kush|1773111600|fertilización con fishmix
+Sour Diesel|1773111600|ph-
+Haze|1773111600|pase a floración
+Skunk|1773111600|scrog
+test|1773111600|6
+555|1773111600|2
+OG Kush|1773198000|riego 210cc
+Sour Diesel|1773198000|psdassd
+Haze|1773198000|riego 1110cc|2|#F9AE58
+test|1773198000|5
+555|1773198000|3
+OG Kush|1774839600|test↵t123↵3443243↵↵↵gggg
+Sour Diesel|1774839600|test 4 combinadas|4|#844848
+555|1774839600|4
