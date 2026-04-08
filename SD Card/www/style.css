@@ -1,11 +1,11 @@
-:root{--CSSVersion:V420260407_1000}
+:root{--CSSVersion:V420260408_1011}
 
-body{background-color:#1A1D21;font-family:Arial;color:#D8DEE9}
+body{background-color:#1A1D21;font-family:Arial;color:#CCCCCC}
 
 #wrapper{display:flex;flex-wrap:wrap;text-align:center;gap:3px}
 
-card_header{min-width:325;flex:1 1 100%;background-color:#212529;border-radius:7px}
-card{min-width:325;flex:1 1;background-color:#212529;border-radius:7px;display:flex;flex-direction:column;align-items:center}
+card_header{min-width:325;flex:1 1 100%;background-color:#212529;border-radius:4px}
+card{min-width:325;flex:1 1;background-color:#212529;border-radius:4px;display:flex;flex-direction:column;align-items:center}
 ct{font-weight:bold}
 
 container{gap:4px;align-items:center;display:flex;justify-content:center;margin-top:3}
@@ -13,7 +13,7 @@ container{gap:4px;align-items:center;display:flex;justify-content:center;margin-
 button{cursor:pointer;max-width:fit-content;align-self:center;background-color:#2A8387;border:1px solid#2A8387;border-radius:3px;color:#FFF;font-size:16;padding:2}
 button:active{position:relative;top:1}
 
-input{width:150;background-color:#181818;border:1px solid#2A8387;border-radius:3px;outline:none;color:#D8DEE9}
+input{width:150;background-color:#181818;border:1px solid#2A8387;border-radius:3px;outline:none;color:#CCCCCC}
 
 .slider{appearance:none;width:100;height:12}
 .slider::-webkit-slider-thumb{cursor:pointer;appearance:none;width:40;height:18;border-radius:3px;background-color:#2A8387}
@@ -38,10 +38,7 @@ hr{border:1px dashed#1A1D21;width:20%}
 .hl{text-decoration:line-through}
 .sl{cursor:pointer}
 
-#updateflash{position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;
-  background:linear-gradient(to right,rgba(255,207,71,.3),transparent 5%),linear-gradient(to left,rgba(255,207,71,.3),transparent 5%);
-  animation:flash.3s ease-out;
-}
+#updateflash{position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;background:linear-gradient(to right,rgba(255,207,71,.3),transparent 5%),linear-gradient(to left,rgba(255,207,71,.3),transparent 5%);animation:flash.3s ease-out;}
 @keyframes flash{from{opacity:1}to{opacity:0}}
 
 #loaderoverlay{display:flex;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:999;align-items:center;justify-content:center}

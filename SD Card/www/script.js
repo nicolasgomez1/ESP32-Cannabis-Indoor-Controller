@@ -1,4 +1,4 @@
-const JSVersion='V420260406_1552';
+const JSVersion='V420260408_1011';
 let bFirst=true,nSendTimeOut=null,stl=false,nTentWork=-1,nT,nH,fVPD;
 
 function GetElement(n){return document.getElementById(n)}
@@ -106,7 +106,7 @@ function CalcLightDur(){
 	GetElement('ind_meri_start').innerText=(r[0]>=12?'PM':'AM');
 	GetElement('ind_meri_stop').innerText=(r[1]>=12?'PM':'AM');
 
-	let e=GetElement('ind_ld'),c='#D8DEE9';
+	let e=GetElement('ind_ld'),c='#CCCCCC';
 
 	if(pulses<1)
 		c='#FF1200';
@@ -429,7 +429,7 @@ function CalcVPD(t,h){
 
 	let e=6.112*Math.exp((17.67*t)/(243.5+t));
 
-	return (e-(h/100)*e)/10;
+	return(e-(h/100)*e)/10;
 }
 
 function CalcTime(s){
@@ -601,7 +601,7 @@ function SemiCircleGauge(e,ranges,p,...t){
 	ctx.fillStyle='#2A8387';
 	ctx.fill();
 
-	ctx.fillStyle='#D8DEE9';
+	ctx.fillStyle='#CCCCCC';
 	ctx.textAlign='center';
 	ctx.textBaseline='middle';
 
@@ -663,7 +663,7 @@ function UpdateReservoirIndicator(e,l){
 	ctx.fill();
 
 	ctx.font='16px Arial';
-	ctx.fillStyle='#D8DEE9';
+	ctx.fillStyle='#CCCCCC';
 	ctx.textAlign='center';
 	ctx.shadowColor='#000';
 	ctx.shadowBlur=4;
@@ -681,7 +681,7 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 	options:{
 		maintainAspectRatio:false,
 		plugins:{
-			legend:{display:true,labels:{color:'#D8DEE9'}},
+			legend:{display:true,labels:{color:'#CCCCCC'}},
 			tooltip:{
 				callbacks:{
 					title:item=>'Día: '+item[0].raw.x,
@@ -698,7 +698,7 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 					}
 				}
 			}
-		},animation:{duration:0},scales:{y:{display:false},x:{display:true,type:'linear',ticks:{stepSize:1,color:'#D8DEE9'},title:{color:'#D8DEE9',display:true,text:'Día'}}}
+		},animation:{duration:0},scales:{y:{display:false},x:{display:true,type:'linear',ticks:{stepSize:1,color:'#CCCCCC'},title:{color:'#CCCCCC',display:true,text:'Día'}}}
 	},plugins:[{
 		afterDatasetsDraw(chart){
 			let{ctx,data}=chart;
@@ -713,7 +713,7 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 					ctx.shadowColor='black';
 					ctx.shadowOffsetX=1;
 					ctx.shadowOffsetY=1;
-					ctx.fillStyle='#D8DEE9';
+					ctx.fillStyle='#CCCCCC';
 					ctx.fillText(ds.data[index].y+'cc',p.x-10,p.y);
 					ctx.restore();
 				});
