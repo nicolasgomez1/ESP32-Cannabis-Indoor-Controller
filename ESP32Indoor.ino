@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260409_1208"
+#define FIRMWAREVERSION "V420260409_1216"
 
 #include <map>
 #include <Secrets.h>
@@ -1589,10 +1589,8 @@ void setup() {
 
         strResponse += ":" + String(pTimeNow);
         // ================================================== Fans Rest State Section ================================================== //
-        strResponse += ":";
-
         if (g_nFansRestTimeStartedAt != 0)
-          strResponse += String(TicksToSeconds(g_nFansRestDuration - (millis64() - g_nFansRestTimeStartedAt)));
+          strResponse += ":" + String(TicksToSeconds(g_nFansRestDuration - (millis64() - g_nFansRestTimeStartedAt)));
         else
           strResponse += "0";
 
@@ -1607,7 +1605,7 @@ void setup() {
         if (g_nIrrigationStartedAt != 0)
           strResponse += ":" + String(TicksToSeconds(g_fIrrigationDuration - (millis64() - g_nIrrigationStartedAt)));
         else
-          strResponse += "0";
+          strResponse += ":0";
         // ================================================== Firmware Versioning Section ================================================== //
         strResponse += ":" + String(FIRMWAREVERSION);
         // ================================================== Graph Section ================================================== //
