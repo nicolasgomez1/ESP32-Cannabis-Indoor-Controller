@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260409_1216"
+#define FIRMWAREVERSION "V420260409_1230"
 
 #include <map>
 #include <Secrets.h>
@@ -1592,7 +1592,7 @@ void setup() {
         if (g_nFansRestTimeStartedAt != 0)
           strResponse += ":" + String(TicksToSeconds(g_nFansRestDuration - (millis64() - g_nFansRestTimeStartedAt)));
         else
-          strResponse += "0";
+          strResponse += ":0";
 
         // Internal Fan
         strResponse += ":" + String(digitalRead(RELAYS_MAP[INTERNAL_FAN].Pin)); // 1 = stopped, 0 turn on
