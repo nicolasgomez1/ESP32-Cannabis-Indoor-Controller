@@ -1,6 +1,6 @@
 <html>
 	<head>
-		<!-- Version V420260408_1011 -->
+		<!-- Version V420260408_1025 -->
 		<meta name=viewport content=width=device-width,initial-scale=1.0>
 		<meta charset=utf-8>
 		<link rel=icon href=data:,>
@@ -9,6 +9,8 @@
 		<link rel=stylesheet type=text/css href=style.css>
 		<style>
 			select{background-color:#181818;border:1px solid#2A8387;border-radius:3px;color:#CCCCCC;padding:2;outline:none;cursor:pointer}
+
+			#cm{display:none;position:absolute;background:#2A2F34;border:1px solid#444;z-index:999;padding:4 0}
 
 			#binnacle{border-collapse:collapse;width:100%}
 			#binnacle thead{background-color:#2A2F34;width-min:1000px}
@@ -30,7 +32,7 @@
 		</style>
 	</head>
 	<body>
-		<div id=cm style='display:none;position:absolute;background:#2A2F34;border:1px solid#444;z-index:999;padding:4 0'>
+		<div id=cm>
 			<div class=menu id=menuMerge style=display:none onclick=TryMerge()>⬌ Combinar Celdas</div>
 			<div class=menu id=menuSplit style=display:none onclick=TrySplit()>⬌ Separar Celdas</div>
 			<div class=menu onclick=AddNewStrain()>➕ Añadir Genética</div>
@@ -252,7 +254,7 @@
 								td.colSpan=span-1;
 							else
 								td.remove();
-						} else if(thIdx>logical&&thIdx<logical+span){
+						}else if(thIdx>logical&&thIdx<logical+span){
 							td.colSpan=span-1;
 						}
 
@@ -296,7 +298,6 @@
 
 		function EditColumn(e,s){
 			let tas=e.closest('tr').querySelectorAll('textarea'),mh=0;
-
 			tas.forEach(e=>e.style.height='auto');
 			tas.forEach(e=>{mh=Math.max(mh,e.scrollHeight)});
 			tas.forEach(e=>e.style.height=mh);
@@ -377,7 +378,6 @@
 				return r.text();
 			}).then(text=>{
 				CurrentDataSet=text;
-
 				ComposeBinnacle();
 			}).catch(()=>alert('Error al intentar obtener el contenido de la Bitácora.'));
 		});

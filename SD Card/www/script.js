@@ -1,4 +1,4 @@
-const JSVersion='V420260408_1011';
+const JSVersion='V420260408_1027';
 let bFirst=true,nSendTimeOut=null,stl=false,nTentWork=-1,nT,nH,fVPD;
 
 function GetElement(n){return document.getElementById(n)}
@@ -179,7 +179,7 @@ function SendAction(action,...args){
 			for(let i=0;i<d.length;i+=2){
 				let e=d[i],v=d[i+1];
 
-				if(e!==undefined&&v!==undefined){
+				if(e!=undefined&&v!=undefined){
 					if(e=='profilechanged'){
 						let cp=parseInt(e_profile.value);
 						alert('Se cambió al Perfil: '+(cp==0?'Vegetativo':cp==1?'Floración':'Secado')+'.\r\nAdemás se reinició el Contador de Días de Riegos transcurridos.\r\nSe iniciará a Regar a partir de la siguiente hora.');
@@ -506,7 +506,7 @@ function CalcFertsIncorporation(){
 				break;
 			}
 		}
-	} else if(m==1){
+	}else if(m==1){
 		for(let i=0;i<ids.data.length;i++){
 			if(parseInt(ids.data[i].x)==idc&&fds.some(ds=>parseFloat(ds.data[i].y)>.001)){
 				di=i;
@@ -670,7 +670,7 @@ function UpdateReservoirIndicator(e,l){
 	ctx.fillText(l+'%',e.width/2,70/1.7);
 }
 
-Object.assign(Chart.defaults.datasets.line,{borderWidth:1.5,tension:.3});
+Object.assign(Chart.defaults.datasets.line,{borderWidth:1.3,tension:.3});
 Chart.defaults.layout.padding={top:20,left:20,right:20};
 Chart.defaults.scales.linear={offset:false,display:false};
 Chart.defaults.interaction={mode:'index',intersect:false};
@@ -839,7 +839,7 @@ ichart.canvas.addEventListener('pointerup',e=>{
 		}
 	}else{
 		let d=prompt('Día',Math.round(ichart.scales.x.getValueForPixel(e.clientX-r.left)));
-		if(d!==null&&!isNaN(d)&&d>0){
+		if(d!=null&&!isNaN(d)&&d>0){
 			if(ichart.data.datasets[0].data.some(p=>p.x==parseInt(d))){
 				alert('Ya existe un registro para ese día.');
 				return;
@@ -850,7 +850,7 @@ ichart.canvas.addEventListener('pointerup',e=>{
 			for(let i=0;i<Chart1Labels.length;i++){
 				let cc=prompt(`Cantidad de CC de ${Chart1Labels[i].label} a ${i==0?'Regar':'Incorporar'}`,Math.round(ichart.scales.y.getValueForPixel(e.clientY-r.top)));
 
-				if(cc!==null&&!isNaN(cc)){
+				if(cc!=null&&!isNaN(cc)){
 					td.push({dsi:i,p:{x:parseInt(d),y:parseFloat(cc)}});
 
 					if(i+1==Chart1Labels.length)
