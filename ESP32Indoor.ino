@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260409_0718"
+#define FIRMWAREVERSION "V420260409_1216"
 
 #include <map>
 #include <Secrets.h>
@@ -280,9 +280,9 @@ uint64_t millis64() { return esp_timer_get_time() / 1000ULL; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Sets the system time and timezone based on a given Unix timestamp.
 // Updates the system's internal clock to the provided timestamp (seconds since epoch).
-void SetCurrentDatetime(time_t unixTimestamp) {
+void SetCurrentDatetime(time_t nTimestamp) {
 	struct timeval tv;
-	tv.tv_sec = unixTimestamp;
+	tv.tv_sec = nTimestamp;
 	tv.tv_usec = 0;
 
 	settimeofday(&tv, nullptr);
@@ -397,6 +397,44 @@ void WriteToSD(const char* cFileName, const char* cBuffer, bool bAppend, bool bU
 		SafeSDAccess(Write);
 	else
 		Write();
+}
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Writes a text string to a file on the SD card using an atomic write pattern, always wrapped in SafeSDAccess for thread-safe access.
+// Writes to a temporary file first, verifies the content matches the input, then replaces the target file.
+// If verification fails, the temporary file is removed and the target file is left unchanged.
+// - cFileName: Path of the file to write to.
+// - cBuffer: Text string to be written.
+void WriteToSDAtomic(const char* cFileName, const char* cBuffer) {
+	SafeSDAccess([&]() {
+		char cTempFileName[64];
+		snprintf(cTempFileName, sizeof(cTempFileName), "%s.tmp", cFileName);
+
+		File pTempFile = SD.open(cTempFileName, FILE_WRITE);
+		if (!pTempFile)
+			return;
+
+		pTempFile.print(cBuffer);
+		pTempFile.close();
+
+		File pFile = SD.open(cTempFileName, FILE_READ);
+		if (!pFile) {
+			SD.remove(cTempFileName);
+			return;
+		}
+
+		char cContent[strlen(cBuffer) + 1] = {};
+		pFile.readBytes(cContent, sizeof(cContent) - 1);
+
+		pFile.close();
+
+		if (strcmp(cContent, cBuffer) != 0) {
+			SD.remove(cTempFileName);
+			return;
+		}
+
+		SD.remove(cFileName);
+		SD.rename(cTempFileName, cFileName);
+	});
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Logs a formatted message with severity and timestamp to a daily SD log file.
@@ -1252,7 +1290,21 @@ void setup() {
 
 		LOGGER(INFO, false, "Getting Datetime from SD Card...");
 
-		File pTimeFile = SD.open("/time", FILE_READ); // Read Time file
+		/*
+			TODO: Hay que hacer las siguientes cosas
+			1) Hacer una función de escritura que sea atomica, para los archivos de time y quizás settings.
+			2) Poner 2 checks al momento de leer /time. Verificar si existe ese archivo; Si no existe, buscar time.tmp. Si ese existe, renombrarlo a time. Por otro lado si /time si existe; Verificar si el tiempo que contiene dentro es lógico
+		*/
+
+		File pTimeFile = SD.open("/time", FILE_READ);	// Read Time file
+
+		if (!pTimeFile) {
+			if (SD.exists("/time.tmp"))
+				SD.rename("/time.tmp", "/time");
+
+			pTimeFile = SD.open("/time", FILE_READ);
+		}
+
 		if (pTimeFile) {
 			setenv("TZ", TIMEZONE, 1);
 			tzset();
@@ -1263,18 +1315,24 @@ void setup() {
 
 			LOGGER(INFO, false, "Time file raw content: '%s', length: %d", strRawTime.c_str(), strRawTime.length());
 
-			SetCurrentDatetime(strRawTime.toInt());
+			time_t nTime = strRawTime.toInt();
 
-			LOGGER(INFO, false, "Current datetime setted.");
+			if (nTime > 1577836800) {
+				SetCurrentDatetime(nTime);
 
-			GetLocalTimeNow(&currentTime);
+				LOGGER(INFO, false, "Current datetime setted.");
 
-			LOGGER(INFO, false, "Current Datetime: %02d/%02d/%04d %02d:%02d:%02d.", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
+				GetLocalTimeNow(&currentTime);
+
+				LOGGER(INFO, false, "Current Datetime: %02d/%02d/%04d %02d:%02d:%02d.", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
+			} else {
+				LOGGER(ERROR, false, "Time file contains invalid timestamp: %ld", nTime);
+			}
 
 			pTimeFile.close();
 		}
 	})) {
-		LOGGER(ERROR, false, "SD initialization failed. Settings & Time will not be loaded, but the system will not restart to avoid unexpected relay behavior.");
+		LOGGER(ERROR, true, "SD initialization failed. Settings & Time will not be loaded, but the system will not restart to avoid unexpected relay behavior.");
 	}
 
 	LOGGER(INFO, true, "Loading Profile...");
@@ -1774,11 +1832,10 @@ void setup() {
 				// ================================================== Irrigation Section ================================================== //
 				strResponse += ":" + String(g_nIrrigationDayCounter);
 
-
 				if (g_nIrrigationStartedAt != 0)
-          strResponse += ":" + String(TicksToSeconds(g_fIrrigationDuration - (millis64() - g_nIrrigationStartedAt)));
-        else
-          strResponse += ":0";
+					strResponse += ":" + String(TicksToSeconds(g_fIrrigationDuration - (millis64() - g_nIrrigationStartedAt)));
+				else
+					strResponse += ":0";
 				// ================================================== Firmware Versioning Section ================================================== //
 				strResponse += ":" + String(FIRMWAREVERSION);
 				// ========================================================================================================================= //
@@ -1915,7 +1972,7 @@ void setup() {
 			char cBuffer[11];
 			snprintf(cBuffer, sizeof(cBuffer), "%lu", (long)pTimeNow);
 
-			WriteToSD("/time", cBuffer, false); // Write current time to SD Card
+			WriteToSDAtomic("/time", cBuffer);	// Write current time to SD Card
 
 			SaveSettings();
 
@@ -2106,13 +2163,13 @@ void loop() {
 	static uint64_t nLastSecondTick = 0;
 	uint64_t nCurrentMillis = millis64();
 	// ================================================== Fertilizers Incorporation Section ================================================== //
-  static FertilizerIncorporationStage Stages[MAX_FERTILIZER_PUMPS] = {};
-  static uint8_t nMaxStages = 0;
-  // ================================================== Irrigation Section ================================================== //
-  static bool bApplyIrrigation = false;
-  static uint8_t nTotalPulses = 0;  // Not need clean
-  static uint8_t nCurrentPulse = 0; // It is over write in for loop call; Not need clean.
-  static uint8_t nCurrentPulseHour = 0;
+	static FertilizerIncorporationStage Stages[MAX_FERTILIZER_PUMPS] = {};
+	static uint8_t nMaxStages = 0;
+	// ================================================== Irrigation Section ================================================== //
+	static bool bApplyIrrigation = false;
+	static uint8_t nTotalPulses = 0;  // Not need clean
+	static uint8_t nCurrentPulse = 0; // It is over write in for loop call; Not need clean.
+	static uint8_t nCurrentPulseHour = 0;
 
 	if ((nCurrentMillis - nLastSecondTick) >= 1000) { // Check if 1 second has passed since the last tick to perform once-per-second tasks
 		nLastSecondTick = nCurrentMillis;
@@ -2138,7 +2195,7 @@ void loop() {
 
 				char cBuffer[11];
 				snprintf(cBuffer, sizeof(cBuffer), "%lu", (long)pTimeNow);
-				WriteToSD("/time", cBuffer, false); // Write current time to SD Card
+				WriteToSDAtomic("/time", cBuffer); // Write current time to SD Card
 			}
 		}
 		// ================================================== Environment Section ================================================== //
@@ -2620,7 +2677,7 @@ void loop() {
 	{
 		if (bApplyIrrigation) {  // Si se está aplicando un Riego; Verificar si ya se puede dejar de regar.
 			if (PowerSupplyControl(true)) {
-				static uint64_t nIrrigationTimer = 0;	// TODO: Esto se podria volver una variable global, para poder calcular el tiempo transcurrido de riego...
+				static uint64_t nIrrigationTimer = 0;
 
 				if (nIrrigationTimer == 0) {
 					nIrrigationTimer = nCurrentMillis;
