@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260402_0137" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260409_0709" // TODO: Update this value before export binary
 
 #include <map>
 #include <Secrets.h>
@@ -2064,7 +2064,7 @@ void loop() {
                   float fCCToApply = Watering.FertilizerToApply[j];
 
                   if (fCCToApply > 0.001f) {
-                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), ((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f };
+                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), ((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) };
 
                     LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
                   }
@@ -2081,7 +2081,7 @@ void loop() {
                   float fCCToApply = Watering.FertilizerToApply[j];
 
                   if (fCCToApply > 0.001f) {
-                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), ((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) * 1000.0f };
+                    Stages[nMaxStages++] = { static_cast<uint8_t>(FERTILIZER_PUMP_0 + j), ((fCCToApply * FLOW_TEST_DURATION) / g_nFertilizersPumpsFlowPerMinute[j]) };
 
                     LOGGER(INFO, true, "Preparing to apply %.1fcc of %s.", fCCToApply, RELAYS_MAP[FERTILIZER_PUMP_0 + j].Name);
                   }
@@ -2153,7 +2153,7 @@ void loop() {
                 nCurrentPulseHour = (nStartIrrigationHour + nCurrentPulse * nPulseInterval) % 24; // Calcular la hora exacta de cada Pulso de Riego (Los Pulsos de Riego se hacen a la Hora en punto)
 
                 if (nCurrentPulseHour == currentTime.tm_hour) {  // En la Hora actual, es posible hacer un Pulso de Riego.
-                  g_fIrrigationDuration = (((static_cast<float>(nLastKnownCC) / nTotalPulses) * FLOW_TEST_DURATION) / g_nIrrigationFlowPerMinute) * 1000.0f;
+                  g_fIrrigationDuration = (((static_cast<float>(nLastKnownCC) / nTotalPulses) * FLOW_TEST_DURATION) / g_nIrrigationFlowPerMinute);
 
                   if (nCurrentPulse == (nTotalPulses - 1))  // Verifica si es el último Pulso de Riego del Día
                     bIsTheLastPulse = true;
