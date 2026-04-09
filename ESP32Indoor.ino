@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260409_0709" // TODO: Update this value before export binary
+#define FIRMWAREVERSION "V420260409_1208"
 
 #include <map>
 #include <Secrets.h>
@@ -20,7 +20,6 @@
 #include <SimpleDHT.h>  // DHT11: 5~95%RH ±5% | -20~60°C ±2°C (ASAIR Sensor) | DHT22: 0~100%RH ±2-5% | -40~80°C ±0.5°C (FMD)
 #include <HTTPClient.h>
 #include <ESPAsyncWebServer.h>
-// TODO: A futuro sería ideal agregar un archivo durante el proceso de incorporación de Fertilizantes. Así en caso de pérdida de energía, se pueda reanudar el proceso donde se haya quedado. (En caso de hacerlo, poner esto es // NOTES: // After unexpected energy shutdown, the fertilizer incorporation process gonna continue with the remaining CC and/or remaining stages to be incorporated.)
 
 // NOTES:
 // Default IP for AP mode is: 192.168.4.1
@@ -256,6 +255,7 @@ float g_fEnvironmentHumidity = 0.0f;
 uint8_t g_nIrrigationSolutionLevel = 0;
 uint8_t g_nSoilsHumidity[nSoilMoisturePinsCount] = { 0 };
 uint64_t g_nFansRestTimeStartedAt = 0;
+uint64_t g_nIrrigationStartedAt = 0;
 uint8_t g_nTestPumpID = 0;  // 0 Equals to no pump to test
 bool g_bApplyFertilizers = false;
 bool g_bManualMixing = false;
@@ -321,7 +321,7 @@ inline uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60;
 //inline uint32_t HoursToTicks(uint32_t nHours) { return nHours * 1000 * 60 * 60; }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Executes the provided function (`fn`) with safe, exclusive access to the SD card.
-// - Tries to acquire the SD card mutex within 100 ms to ensure thread-safe access.
+// - Tries to acquire the SD card mutex within 200 ms to ensure thread-safe access.
 //   If the mutex cannot be acquired, exits immediately and returns false.
 // - Once the mutex is acquired, it is automatically released when the function scope ends,
 //   using RAII via the ScopedMutexUnlock helper.
@@ -333,7 +333,7 @@ inline uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60;
 //   If the directory is invalid or inaccessible, resets internal SD state, calls SD.end(), and returns false.
 // - If all checks pass, executes `fn()` while the mutex is held and returns true.
 bool SafeSDAccess(std::function<void()> fn) {
-  if (!xSemaphoreTake(g_pSDMutex, pdMS_TO_TICKS(100 /*ms*/)))
+  if (!xSemaphoreTake(g_pSDMutex, pdMS_TO_TICKS(200 /*ms*/)))
     return false;
 
   struct ScopedMutexUnlock {
@@ -1603,7 +1603,11 @@ void setup() {
         strResponse += ":" + String(digitalRead(RELAYS_MAP[VENTILATION_FANS].Pin));  // 1 = stopped, 0 turn on
         // ================================================== Irrigation Section ================================================== //
         strResponse += ":" + String(g_nIrrigationDayCounter);
-        strResponse += ":" + String(TicksToSeconds(g_fIrrigationDuration));
+
+        if (g_nIrrigationStartedAt != 0)
+          strResponse += ":" + String(TicksToSeconds(g_fIrrigationDuration - (millis64() - g_nIrrigationStartedAt)));
+        else
+          strResponse += "0";
         // ================================================== Firmware Versioning Section ================================================== //
         strResponse += ":" + String(FIRMWAREVERSION);
         // ================================================== Graph Section ================================================== //
@@ -2503,11 +2507,11 @@ void loop() {
                   if (digitalRead(RELAYS_MAP[IRRIGATION_PUMP].Pin)) {
                     digitalWrite(RELAYS_MAP[IRRIGATION_PUMP].Pin, RELAY_PIN_ON);
 
-                    nIrrigationTimer = nCurrentMillis;
+                    g_nIrrigationStartedAt = nCurrentMillis;
 
                     LOGGER(INFO, true, "Irrigation Pump Started. Irrigation Info: Pulse Number: %d/%d Current Hour: %d Pulse Duration: %.2f seconds.", (nCurrentPulse + 1), nTotalPulses, nCurrentPulseHour, TicksToSeconds(g_fIrrigationDuration));
                   } else {
-                    if ((nCurrentMillis - nIrrigationTimer) >= g_fIrrigationDuration) {
+                    if ((nCurrentMillis - g_nIrrigationStartedAt) >= g_fIrrigationDuration) {
                       digitalWrite(RELAYS_MAP[IRRIGATION_PUMP].Pin, RELAY_PIN_OFF);
 
                       LOGGER(INFO, true, "Irrigation Pump Stopped. Irrigation Finished.");
@@ -2521,6 +2525,7 @@ void loop() {
                       bPowerStabilized = false;
                       nStage = 0;
                       nIrrigationTimer = 0;
+                      g_nIrrigationStartedAt = 0;
                       g_fIrrigationDuration = 0;
                       bApplyIrrigation = false;
                       g_nLastWateredHour = nCurrentPulseHour;
