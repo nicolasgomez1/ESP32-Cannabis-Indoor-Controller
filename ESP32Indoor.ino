@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260409_1216"
+#define FIRMWAREVERSION "V420260410_1124"
 
 #include <map>
 #include <Secrets.h>
@@ -175,7 +175,7 @@ struct WateringData {
 	uint16_t TargetCC;
 	float FertilizerToApply[MAX_FERTILIZER_PUMPS] = { 0.0f };
 
-	bool operator==(const WateringData& other) const {  // Little overload but needed for compare
+	bool operator==(const WateringData& other) const {	// Little overload but needed for compare
 		if (Day != other.Day || TargetCC != other.TargetCC)
 			return false;
 
@@ -189,8 +189,8 @@ struct WateringData {
 };
 
 struct FertilizerIncorporationStage {
-	uint8_t Pin;        // Pin Number
-	float Duration;  // Turn ON Time
+	uint8_t Pin;		// Pin Number
+	float Duration;	// Turn ON Time
 };
 
 const char* g_cProfiles[] = {
@@ -265,7 +265,7 @@ uint8_t g_nIrrigationSolutionLevel = 0;
 uint8_t g_nSoilsHumidity[nSoilMoisturePinsCount] = { 0 };
 uint64_t g_nFansRestTimeStartedAt = 0;
 uint64_t g_nIrrigationStartedAt = 0;
-uint8_t g_nTestPumpID = 0;  // 0 Equals to no pump to test
+uint8_t g_nTestPumpID = 0;	// 0 Equals to no pump to test
 bool g_bApplyFertilizers = false;
 bool g_bManualMixing = false;
 g_Recommendations g_LastRecommendation = THIS_COULD_GET_UGLY;
@@ -276,7 +276,7 @@ SimpleDHT22 g_pDHT22(DHT_DATA_PIN);						// Interface to DHT22 Temperature & Hum
 TaskHandle_t g_pWiFiReconnect;								// Task handle for Wifi reconnect logic running on core 0
 SemaphoreHandle_t g_pSDMutex;									// Mutex to synchronize concurrent access to the SD card across tasks
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-uint64_t millis64() { return esp_timer_get_time() / 1000ULL; }
+inline uint64_t millis64() { return esp_timer_get_time() / 1000ULL; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Sets the system time and timezone based on a given Unix timestamp.
 // Updates the system's internal clock to the provided timestamp (seconds since epoch).
@@ -407,7 +407,7 @@ void WriteToSD(const char* cFileName, const char* cBuffer, bool bAppend, bool bU
 void WriteToSDAtomic(const char* cFileName, const char* cBuffer) {
 	SafeSDAccess([&]() {
 		char cTempFileName[64];
-		snprintf(cTempFileName, sizeof(cTempFileName), "%s.tmp", cFileName);
+		snprintf(cTempFileName, sizeof(cTempFileName), "%s.atomic", cFileName);
 
 		File pTempFile = SD.open(cTempFileName, FILE_WRITE);
 		if (!pTempFile)
@@ -777,7 +777,9 @@ void SendNotification(const char* cMessage) {
 // It estimates the difference between the air's maximum moisture capacity and its current water content.
 // High values indicate dry air (high transpiration), while low values indicate high humidity.
 // Returns the result as a float.
-float CalculateVPD(float fTemperature, float fHumidity) { return ((6.112f * expf((17.67f * fTemperature) / (243.5f + fTemperature))) * (1.0f - fHumidity / 100.0f)) / 10.0f; }
+float CalculateVPD(float fTemperature, float fHumidity) {
+	return ((6.112f * expf((17.67f * fTemperature) / (243.5f + fTemperature))) * (1.0f - fHumidity / 100.0f)) / 10.0f;
+}
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Evaluates current environmental conditions and determines the optimal climate adjustment.
 // Checks if temperature or humidity are outside their safe ranges first, prioritizing corrections
@@ -1290,17 +1292,11 @@ void setup() {
 
 		LOGGER(INFO, false, "Getting Datetime from SD Card...");
 
-		/*
-			TODO: Hay que hacer las siguientes cosas
-			1) Hacer una función de escritura que sea atomica, para los archivos de time y quizás settings.
-			2) Poner 2 checks al momento de leer /time. Verificar si existe ese archivo; Si no existe, buscar time.tmp. Si ese existe, renombrarlo a time. Por otro lado si /time si existe; Verificar si el tiempo que contiene dentro es lógico
-		*/
-
 		File pTimeFile = SD.open("/time", FILE_READ);	// Read Time file
 
 		if (!pTimeFile) {
-			if (SD.exists("/time.tmp"))
-				SD.rename("/time.tmp", "/time");
+			if (SD.exists("/time.atomic"))
+				SD.rename("/time.atomic", "/time");
 
 			pTimeFile = SD.open("/time", FILE_READ);
 		}
@@ -2334,13 +2330,13 @@ void loop() {
 		{
 			static bool bIsTheLastPulse = false;
 
-			if (!bApplyIrrigation) { // Si no se está aplicando un Riego; Verificar si se puede aplicar un Riego
+			if (!bApplyIrrigation) {
 				static int8_t nLastKnownCurrentProfile = -1;
 
-				if (nLastKnownCurrentProfile == -1) // Si todavía no se asignó un valor (Porque es el primer inicio; Asignarlo)
+				if (nLastKnownCurrentProfile == -1)
 					nLastKnownCurrentProfile = g_nCurrentProfile;
 
-				if (nLastKnownCurrentProfile != g_nCurrentProfile) {  // El perfil cambió desde el último check; Hay que reiniciar variables
+				if (nLastKnownCurrentProfile != g_nCurrentProfile) {
 					nCurrentPulseHour = 0;
 					bIsTheLastPulse = false;
 					nLastKnownCurrentProfile = g_nCurrentProfile;
@@ -2355,19 +2351,17 @@ void loop() {
 				if (!bIsTheLastPulse && g_nLastWateredHour == nLastPossibleIrrigationHour)
 					bIsTheLastPulse = true;
 
-				if (((currentTime.tm_hour - g_nLastWateredHour + 24) % 24) > 0 && !bIsTheLastPulse && !digitalRead(RELAYS_MAP[LIGHTS].Pin)) {  // Cada Hora en punto verificar si se puede Aplicar un Pulso de Riego
+				if (((currentTime.tm_hour - g_nLastWateredHour + 24) % 24) > 0 && !bIsTheLastPulse && !digitalRead(RELAYS_MAP[LIGHTS].Pin)) {
 					CheckReservoirLevel();  // Check Reservoir level before try anything (This is not very usefull cuz after this, checks for g_nIrrigationSolutionLevel > 0, but is better than nothing)
 
-					// Permitir regar si: se están incorporando los fertilizantes. Ni si se está haciendo una prueba de flujo de las Bombas. Ni si se está mezclando la solución de Riego. Ó se está ejecutando un riego.
-					// NOTE: Estos checks son livianos así que por esa parte no hay Drama. En cambio, el check para verificar si TargetCC es > 0 es algo más pesado; Así que lo pongo por separado después de hacer estos checks.
-					bApplyIrrigation = nTotalPulses > 0 &&  // Si al menos hay un pulso de Riego posible. (Tiene que haber 5 horas de luz minimo; Porque son 2 horas de encendido previo necesario, 2 al menos 2 horas restantes de luz encendida)
-														!g_bApplyFertilizers && // Si no se están incorporando Fertilizantes.
-														g_nTestPumpID == 0 && // Si no se está probando ninguna Bomba.
-														!g_bManualMixing && // Si no se está mezclando la Solución de Riego.
-														g_nIrrigationFlowPerMinute > 0 && // Si se definipo el Flujo por minutos de la Bomba de Riego.
-														g_nIrrigationSolutionLevel > 0;  // Si el nivel de Solución de Riego es mayor que 0
+					bApplyIrrigation = nTotalPulses > 0 &&
+														!g_bApplyFertilizers &&
+														g_nTestPumpID == 0 &&
+														!g_bManualMixing &&
+														g_nIrrigationFlowPerMinute > 0 &&
+														g_nIrrigationSolutionLevel > 0;
 
-					if (bApplyIrrigation) { // Si hasta ahora si se puede aplicar un Pulso de Riego; Verificar si hay definido un TargetCC de Riego > 0
+					if (bApplyIrrigation) {
 						uint16_t nLastKnownCC = 0;
 
 						for (const auto& Watering : g_vecWateringStages) {
@@ -2378,37 +2372,36 @@ void loop() {
 						}
 
 						if (nLastKnownCC > 0) {
-							for (nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) {  // Iterar por el total de Pulsos de Riego disponibles
-								nCurrentPulseHour = (nStartIrrigationHour + nCurrentPulse * g_nPulseIntervalDivider) % 24; // Calcular la hora exacta de cada Pulso de Riego (Los Pulsos de Riego se hacen a la Hora en punto)
+							for (nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) {
+								nCurrentPulseHour = (nStartIrrigationHour + nCurrentPulse * g_nPulseIntervalDivider) % 24;
 
-								if (nCurrentPulseHour == currentTime.tm_hour) {  // En la Hora actual, es posible hacer un Pulso de Riego.
+								if (nCurrentPulseHour == currentTime.tm_hour) {
 									g_fIrrigationDuration = (((static_cast<float>(nLastKnownCC) / nTotalPulses) * FLOW_TEST_DURATION) / g_nIrrigationFlowPerMinute);
 
-									if (nCurrentPulse == (nTotalPulses - 1))  // Verifica si es el último Pulso de Riego del Día
+									if (nCurrentPulse == (nTotalPulses - 1))
 										bIsTheLastPulse = true;
 
 									break;
 								}
 							}
-						} else {  // No hay un TargetCC definido; Por lo que no se puede iniciar un Pulso de Riego.
+						} else {
 							LOGGER(INFO, true, "Irrigation pulse skipped (No CC defined).");
 
-							g_nLastWateredHour = currentTime.tm_hour;  // Se marca esta Hora cómo regada; Para no volver a verificar hasta la próxima
+							g_nLastWateredHour = currentTime.tm_hour;
 
 							SaveProfile(g_nCurrentProfile);
 
 							bApplyIrrigation = false;
 						}
-					} else {  // No se puede iniciar un Pulso de Riego. Por X motivo
-						if (g_nIrrigationSolutionLevel == 0 || g_nIrrigationFlowPerMinute == 0) {  // No hay Solución de Riego, Avisar por Whatsapp
+					} else {
+						if (g_nIrrigationSolutionLevel == 0 || g_nIrrigationFlowPerMinute == 0) {
 							if (g_nIrrigationSolutionLevel == 0)
 								SendNotification("No hay suficiente Solución de Riego para hacer este Pulso.");
 
 							if (g_nIrrigationFlowPerMinute == 0)
 								SendNotification("No se definió el Caudal de la Bomba de Riego.");
 
-							// Estos 2 casos son bastante críticos, así que marcar la Hora cómo Regada. Además si no lo hiciera, SendNotification spamearía.
-							g_nLastWateredHour = currentTime.tm_hour;  // Se marca esta Hora cómo regada; Para no volver a verificar hasta la próxima
+							g_nLastWateredHour = currentTime.tm_hour;
 
 							SaveProfile(g_nCurrentProfile);
 						}
@@ -2416,14 +2409,11 @@ void loop() {
 						bApplyIrrigation = false;
 					}
 
-					bApplyIrrigation = bApplyIrrigation && g_fIrrigationDuration > 0.0f; // Finalmente si hasta ahora los checks fueron pasados exitosamente, verificar si g_fIrrigationDuration es > 0 quiere decir que ya pasó por for (uint8_t nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) y se asignó la duración del Pulso de Riego a hacer a continuación.
+					bApplyIrrigation = bApplyIrrigation && g_fIrrigationDuration > 0.0f;
 				}
 			}
 
-			if (!bApplyIrrigation && // Si no se está aplicando un Pulso de Riego
-					bIsTheLastPulse &&  // Si es/fue el último Pulso de Riego
-					digitalRead(RELAYS_MAP[LIGHTS].Pin)) {  // El relé se apagó (Completo el fotoperiodo)
-				// Ahora si, incrementamos el contador de "Días"
+			if (!bApplyIrrigation && bIsTheLastPulse && digitalRead(RELAYS_MAP[LIGHTS].Pin)) {
 				g_nIrrigationDayCounter++;
 
 				g_nLastWateredHour = -1;
@@ -2673,9 +2663,9 @@ void loop() {
 			}
 		}
 	}
-  // ================================================== Irrigation Section ================================================== //
+	// ================================================== Irrigation Section ================================================== //
 	{
-		if (bApplyIrrigation) {  // Si se está aplicando un Riego; Verificar si ya se puede dejar de regar.
+		if (bApplyIrrigation) {
 			if (PowerSupplyControl(true)) {
 				static uint64_t nIrrigationTimer = 0;
 
