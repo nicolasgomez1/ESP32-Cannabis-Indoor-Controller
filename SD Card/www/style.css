@@ -38,7 +38,7 @@ hr{border:1px dashed#1A1D21;width:20%}
 .hl{text-decoration:line-through}
 .sl{cursor:pointer}
 
-#updateflash{position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;background:linear-gradient(to right,rgba(255,207,71,.3),transparent 5%),linear-gradient(to left,rgba(255,207,71,.3),transparent 5%);animation:flash.3s ease-out;}
+#updateflash{position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;background:linear-gradient(to right,rgba(255,207,71,.3),transparent 1%),linear-gradient(to left,rgba(255,207,71,.3),transparent 1%);animation:flash.3s ease-out;}
 @keyframes flash{from{opacity:1}to{opacity:0}}
 
 #loaderoverlay{display:flex;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:999;align-items:center;justify-content:center}

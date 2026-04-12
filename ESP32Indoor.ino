@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260410_1124"
+#define FIRMWAREVERSION "V420260412_1758"
 
 #include <map>
 #include <Secrets.h>
@@ -161,7 +161,7 @@ const char* g_cWebServerFiles[] = { // Add here files to be server by the webser
 	"/www/style.css",
 	"/www/script.js",
 	"/www/logs.html",
-	"/www/.binnacle.html"
+	"/www/binnacle.html"
 };
 
 // DO NOT TOUCH IT!
@@ -2372,16 +2372,28 @@ void loop() {
 						}
 
 						if (nLastKnownCC > 0) {
-							for (nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) {
-								nCurrentPulseHour = (nStartIrrigationHour + nCurrentPulse * g_nPulseIntervalDivider) % 24;
+							float fTotalDuration = (static_cast<float>(nLastKnownCC) * FLOW_TEST_DURATION) / g_nIrrigationFlowPerMinute;
 
-								if (nCurrentPulseHour == currentTime.tm_hour) {
-									g_fIrrigationDuration = (((static_cast<float>(nLastKnownCC) / nTotalPulses) * FLOW_TEST_DURATION) / g_nIrrigationFlowPerMinute);
+							if (fTotalDuration / nTotalPulses < 1000.0f) {
+								nTotalPulses = 1;
+								nCurrentPulseHour = nStartIrrigationHour;
 
-									if (nCurrentPulse == (nTotalPulses - 1))
-										bIsTheLastPulse = true;
+								if (nStartIrrigationHour == currentTime.tm_hour) {
+									g_fIrrigationDuration = fTotalDuration;
+									bIsTheLastPulse = true;
+								}
+							} else {
+								for (nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) {
+									nCurrentPulseHour = (nStartIrrigationHour + nCurrentPulse * g_nPulseIntervalDivider) % 24;
 
-									break;
+									if (nCurrentPulseHour == currentTime.tm_hour) {
+										g_fIrrigationDuration = (((static_cast<float>(nLastKnownCC) / nTotalPulses) * FLOW_TEST_DURATION) / g_nIrrigationFlowPerMinute);
+
+										if (nCurrentPulse == (nTotalPulses - 1))
+											bIsTheLastPulse = true;
+
+										break;
+									}
 								}
 							}
 						} else {

@@ -288,7 +288,6 @@ function SendAction(action,...args){
 
 			if(bFirst){
 				bFirst=false;
-
 				GetElement('loaderoverlay').style.display='none';
 			}
 
@@ -457,7 +456,11 @@ function CalcIrrigation(cc){
 	if(avai<=0)
 		return[0,0,0,[]];
 
-	let ccpp=cc/avai,hours=[];
+	let ftd=parseInt(GetElement('ftd').innerText),ccpp=dpm>0?((cc/avai)*ftd)/dpm:0;
+	if(ccpp<1)
+		return[1,parseFloat(cc),ccpp*avai,[(irrstart%12==0?12:irrstart%12)+(irrstart>=12?'PM':'AM')]];
+
+	ccpp=cc/avai,hours=[];
 
 	for(let i=0;i<avai;i++){
 		let h=(irrstart+i*div)%24;
@@ -465,7 +468,7 @@ function CalcIrrigation(cc){
 		hours.push((h%12==0?12:h%12)+(h>=12?'PM':'AM'));
 	}
 
-	return[avai,ccpp,dpm>0?(ccpp*parseInt(GetElement('ftd').innerText))/dpm:0,hours];
+	return[avai,ccpp,dpm>0?(ccpp*ftd)/dpm:0,hours];
 }
 
 function SetSelectedProfile(s){
@@ -688,7 +691,6 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 					label:item=>item.dataset.label+`: ${item.raw.y}cc`,
 					footer:items=>{
 						let d=CalcIrrigation(items[0].raw.y);
-
 						return[
 							'Total de Pulsos: '+d[0],
 							`Cantidad de Riego por Pulso: ${d[1].toFixed(1)}cc (${(d[1]/items[0].raw.y*100).toFixed(1)}% de ${items[0].raw.y}cc)`,
