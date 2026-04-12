@@ -1,4 +1,4 @@
-const JSVersion='V420260402_0115';
+const JSVersion='V420260412_1803';
 let bFirst=true,nTentWork=-1;
 
 function GetElement(n){return document.getElementById(n)}
@@ -379,7 +379,7 @@ function CalcVPD(t,h){
 
 	let e=6.112*Math.exp((17.67*t)/(243.5+t));
 
-	return (e-(h/100)*e)/10;
+	return(e-(h/100)*e)/10;
 }
 
 function CalcTime(s){
@@ -407,7 +407,11 @@ function CalcIrrigation(cc){
 	if(avai<=0)
 		return[0,0,0,[]];
 
-	let ccpp=cc/avai,hours=[];
+	let ftd=parseInt(GetElement('ftd').innerText),ccpp=dpm>0?((cc/avai)*ftd)/dpm:0;
+	if(ccpp<1)
+		return[1,parseFloat(cc),ccpp*avai,[(irrstart%12==0?12:irrstart%12)+(irrstart>=12?'PM':'AM')]];
+
+	ccpp=cc/avai,hours=[];
 
 	for(let i=0;i<avai;i++){
 		let h=(irrstart+i*div)%24;
@@ -415,7 +419,7 @@ function CalcIrrigation(cc){
 		hours.push((h%12==0?12:h%12)+(h>=12?'PM':'AM'));
 	}
 
-	return[avai,ccpp,dpm>0?(ccpp/dpm)*parseInt(GetElement('ftd').innerText):0,hours];
+	return[avai,ccpp,dpm>0?(ccpp*ftd)/dpm:0,hours];
 }
 
 function SetSelectedProfile(s){

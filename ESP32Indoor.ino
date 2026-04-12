@@ -10,7 +10,7 @@
 //  \________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V420260409_1230"
+#define FIRMWAREVERSION "V420260412_1803"
 
 #include <map>
 #include <Secrets.h>
@@ -2151,16 +2151,28 @@ void loop() {
             }
 
             if (nLastKnownCC > 0) {
-              for (nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) {  // Iterar por el total de Pulsos de Riego disponibles
-                nCurrentPulseHour = (nStartIrrigationHour + nCurrentPulse * nPulseInterval) % 24; // Calcular la hora exacta de cada Pulso de Riego (Los Pulsos de Riego se hacen a la Hora en punto)
+              float fTotalDuration = (static_cast<float>(nLastKnownCC) * FLOW_TEST_DURATION) / g_nIrrigationFlowPerMinute;
 
-                if (nCurrentPulseHour == currentTime.tm_hour) {  // En la Hora actual, es posible hacer un Pulso de Riego.
-                  g_fIrrigationDuration = (((static_cast<float>(nLastKnownCC) / nTotalPulses) * FLOW_TEST_DURATION) / g_nIrrigationFlowPerMinute);
+							if (fTotalDuration / nTotalPulses < 1000.0f) {
+								nTotalPulses = 1;
+								nCurrentPulseHour = nStartIrrigationHour;
 
-                  if (nCurrentPulse == (nTotalPulses - 1))  // Verifica si es el último Pulso de Riego del Día
-                    bIsTheLastPulse = true;
+								if (nStartIrrigationHour == currentTime.tm_hour) {
+									g_fIrrigationDuration = fTotalDuration;
+									bIsTheLastPulse = true;
+								}
+							} else {
+                for (nCurrentPulse = 0; nCurrentPulse < nTotalPulses; nCurrentPulse++) {  // Iterar por el total de Pulsos de Riego disponibles
+                  nCurrentPulseHour = (nStartIrrigationHour + nCurrentPulse * nPulseInterval) % 24; // Calcular la hora exacta de cada Pulso de Riego (Los Pulsos de Riego se hacen a la Hora en punto)
 
-                  break;
+                  if (nCurrentPulseHour == currentTime.tm_hour) {  // En la Hora actual, es posible hacer un Pulso de Riego.
+                    g_fIrrigationDuration = (((static_cast<float>(nLastKnownCC) / nTotalPulses) * FLOW_TEST_DURATION) / g_nIrrigationFlowPerMinute);
+
+                    if (nCurrentPulse == (nTotalPulses - 1))  // Verifica si es el último Pulso de Riego del Día
+                      bIsTheLastPulse = true;
+
+                    break;
+                  }
                 }
               }
             } else {  // No hay un TargetCC definido; Por lo que no se puede iniciar un Pulso de Riego.
