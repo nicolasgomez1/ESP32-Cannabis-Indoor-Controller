@@ -1,4 +1,4 @@
-const JSVersion='V420260408_1027';
+const JSVersion='V420260412_1911';
 let bFirst=true,nSendTimeOut=null,stl=false,nTentWork=-1,nT,nH,fVPD;
 
 function GetElement(n){return document.getElementById(n)}
@@ -451,14 +451,17 @@ function CalcTime(s){
 }
 
 function CalcIrrigation(cc){
+	cc=parseFloat(cc);
+
 	let r=GetLightStartStop(),dpm=GetWheelValue(elements[10].e),div=GetWheelValue(elements[24].e),irrstart=((r[0]==24?0:r[0])+GetWheelValue(elements[25].e))%24;
+
 	let avai=Math.floor((((((r[1]==24?0:r[1])-GetWheelValue(elements[26].e)+24)%24)-irrstart+24)%24)/div);
-	if(avai<=0)
+	if(avai<=0||cc<=0)
 		return[0,0,0,[]];
 
 	let ftd=parseInt(GetElement('ftd').innerText),ccpp=dpm>0?((cc/avai)*ftd)/dpm:0;
 	if(ccpp<1)
-		return[1,parseFloat(cc),ccpp*avai,[(irrstart%12==0?12:irrstart%12)+(irrstart>=12?'PM':'AM')]];
+		return[1,cc,ccpp*avai,[(irrstart%12==0?12:irrstart%12)+(irrstart>=12?'PM':'AM')]];
 
 	ccpp=cc/avai,hours=[];
 
@@ -480,11 +483,7 @@ function SetSelectedProfile(s){
 		SendAction('reload',e_profile.id,v);
 }
 
-function UpdateVPDCorrectorPriority(){
-	let v=parseInt(GetElement('priority').value);
-
-	GetElement('ind_priority').innerText=v==0?'Humedad':'Temperatura';
-}
+function UpdateVPDCorrectorPriority(){GetElement('ind_priority').innerText=parseInt(GetElement('priority').value)==0?'Humedad':'Temperatura'}
 
 function SetFertsIncorporationMode(s){
 	let v=parseInt(e_fim.value);
@@ -693,9 +692,9 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 						let d=CalcIrrigation(items[0].raw.y);
 						return[
 							'Total de Pulsos: '+d[0],
-							`Cantidad de Riego por Pulso: ${d[1].toFixed(1)}cc (${(d[1]/items[0].raw.y*100).toFixed(1)}% de ${items[0].raw.y}cc)`,
+							`Cantidad de Riego por Pulso: ${d[1].toFixed(1)}cc (${d[1]>0?(d[1]/items[0].raw.y*100).toFixed(1):0}% de ${items[0].raw.y}cc)`,
 							`Duración de cada Pulso: ${d[2].toFixed(2)} segundos`,
-							'Horas de Riego: '+d[3].join(' '),
+							'Horas de Riego: '+d[3].join(' ')
 						];
 					}
 				}
