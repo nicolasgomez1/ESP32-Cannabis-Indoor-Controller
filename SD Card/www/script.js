@@ -1,4 +1,4 @@
-const JSVersion='V420260412_1803';
+const JSVersion='V420260412_1911';
 let bFirst=true,nTentWork=-1;
 
 function GetElement(n){return document.getElementById(n)}
@@ -402,14 +402,17 @@ function CalcTime(s){
 }
 
 function CalcIrrigation(cc){
+	cc=parseFloat(cc);
+
 	let r=GetLightStartStop(),dpm=GetWheelValue(elements[10].e),effstart=(r[0]==24)?0:r[0],effstop=(r[1]==24)?0:r[1],div=(parseInt(e_profile.value)==1)?2:1,irrstart=(effstart+1)%24;
+
 	let avai=Math.floor(((((effstop-2+24)%24)-irrstart+24)%24)/div);
-	if(avai<=0)
+	if(avai<=0||cc<=0)
 		return[0,0,0,[]];
 
 	let ftd=parseInt(GetElement('ftd').innerText),ccpp=dpm>0?((cc/avai)*ftd)/dpm:0;
 	if(ccpp<1)
-		return[1,parseFloat(cc),ccpp*avai,[(irrstart%12==0?12:irrstart%12)+(irrstart>=12?'PM':'AM')]];
+		return[1,cc,ccpp*avai,[(irrstart%12==0?12:irrstart%12)+(irrstart>=12?'PM':'AM')]];
 
 	ccpp=cc/avai,hours=[];
 
@@ -612,9 +615,9 @@ let ichart=new Chart(GetElement('ichart'),{type:'line',data:{datasets:Chart1Labe
 
 						return[
 							'Total de Pulsos: '+d[0],
-							`Cantidad de Riego por Pulso: ${d[1].toFixed(1)}cc (${(d[1]/items[0].raw.y*100).toFixed(1)}% de ${items[0].raw.y}cc)`,
+							`Cantidad de Riego por Pulso: ${d[1].toFixed(1)}cc (${d[1]>0?(d[1]/items[0].raw.y*100).toFixed(1):0}% de ${items[0].raw.y}cc)`,
 							`Duración de cada Pulso: ${d[2].toFixed(2)} segundos`,
-							'Horas de Riego: '+d[3].join(' '),
+							'Horas de Riego: '+d[3].join(' ')
 						];
 					}
 				}
